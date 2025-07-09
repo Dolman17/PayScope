@@ -1,0 +1,7 @@
+
+/*! tailwindcss v3.3.2 | MIT License | https://tailwindcss.com */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* This line assumes usage with PostCSS or Tailwind CLI. For raw static use, precompiled CSS is needed. */

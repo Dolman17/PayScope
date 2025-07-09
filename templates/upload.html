@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block title %}Upload Data{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Upload Pay Rate Data</h1>
+
+<!-- Upload Form -->
+<form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="space-y-4 max-w-lg bg-white p-6 rounded shadow">
+  <div>
+    <label for="file" class="block font-semibold mb-1">Select Excel File (.xlsx only)</label>
+    <input type="file" name="file" accept=".xlsx" required class="w-full border rounded px-3 py-2">
+  </div>
+
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+    Upload
+  </button>
+</form>
+
+<!-- Toast Messages (Flashed via Flask) -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="mt-4">
+      {% for category, message in messages %}
+        <div class="bg-green-100 text-green-800 p-3 rounded mb-2" role="alert">
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+{% endblock %}
