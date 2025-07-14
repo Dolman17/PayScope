@@ -1,7 +1,16 @@
-{% extends "layout.html" %}
+
+{% extends "base.html" %}
+
+{% block title %}Pay Rate Map: {{ sector }}{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-6">
-  <h1 class="text-2xl font-bold mb-4">Pay Rate Map: {{ sector }}</h1>
+  <div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-bold text-blue-700">Pay Rate Map: {{ sector }}</h1>
+    <a href="{{ url_for('map_sector_select') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm px-4 py-2 rounded">
+      ← Back to Sectors
+    </a>
+  </div>
 
   <!-- Filter Bar -->
   <form method="GET" class="flex flex-wrap gap-4 mb-4">
@@ -19,57 +28,61 @@
   </form>
 
   <!-- Map Container -->
-  <div id="map" class="w-full h-[600px] rounded shadow-md" style="height: 600px;"></div>
+  <div id="map" style="height: 600px;" class="w-full rounded shadow-md"></div>
+
+  <!-- Leaflet JS & CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- MarkerCluster plugin -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <script>
+    const map = L.map('map').setView([54.5, -3], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markerClusterGroup = L.markerClusterGroup();
+    const bounds = L.latLngBounds();
+
+    {% for record in records %}
+      {% if record.latitude and record.longitude %}
+        (function() {
+          const coords = [{{ record.latitude }}, {{ record.longitude }}];
+
+          const popupHtml = `
+            <div class="text-sm">
+              <strong>Company ID:</strong> {{ record.company_id }}<br>
+              <strong>Company:</strong> {{ record.company_name }}<br>
+              <strong>Job Role:</strong> {{ record.job_role }}<br>
+              <strong>Pay Rate:</strong> £{{ "%.2f"|format(record.pay_rate) }}<br>
+              <strong>Postcode:</strong> {{ record.postcode }}<br>
+              <strong>County:</strong> {{ record.county }}<br>
+              <strong>Uploaded:</strong> {{ record.imported_month }} {{ record.imported_year }}
+            </div>
+          `;
+
+          const icon = L.icon({
+            iconUrl: "{{ record.logo_url }}",
+            iconSize: [40, 40],
+            iconAnchor: [20, 40],
+            popupAnchor: [0, -40]
+          });
+
+          const marker = L.marker(coords, { icon: icon }).bindPopup(popupHtml);
+          markerClusterGroup.addLayer(marker);
+          bounds.extend(coords);
+        })();
+      {% endif %}
+    {% endfor %}
+
+    map.addLayer(markerClusterGroup);
+    if (bounds.isValid()) {
+      map.fitBounds(bounds);
+    }
+  </script>
 </div>
-
-<!-- Leaflet & Cluster Scripts -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-
-<script>
-// Init the map
-const map = L.map('map').setView([54.5, -3], 6); // Center over UK
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors'
-}).addTo(map);
-
-// Marker cluster group
-const markerCluster = L.markerClusterGroup();
-
-// Markers
-{% for record in records %}
-  (function() {
-    const coords = [{{ record.latitude }}, {{ record.longitude }}];
-
-    const popupHtml = `
-      <div class="text-sm">
-        <strong>Company ID:</strong> {{ record.company_id }}<br>
-        <strong>Company:</strong> {{ record.company_name }}<br>
-        <strong>Job Role:</strong> {{ record.job_role }}<br>
-        <strong>Pay Rate:</strong> £{{ "%.2f"|format(record.pay_rate) }}<br>
-        <strong>Postcode:</strong> {{ record.postcode }}<br>
-        <strong>County:</strong> {{ record.county }}<br>
-        <strong>Uploaded:</strong> {{ record.imported_month }} {{ record.imported_year }}
-      </div>
-    `;
-
-    const icon = L.icon({
-      iconUrl: "{{ record.logo_url }}",
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
-      popupAnchor: [0, -40]
-    });
-
-    const marker = L.marker(coords, { icon: icon }).bindPopup(popupHtml);
-    markerCluster.addLayer(marker);
-  })();
-{% endfor %}
-
-
-map.addLayer(markerCluster);
-</script>
 {% endblock %}

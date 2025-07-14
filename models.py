@@ -17,3 +17,9 @@ class JobRecord(db.Model):
     imported_month = db.Column(db.String(20), nullable=True)
     imported_year = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    admin_level = db.Column(db.Integer, default=0)  # 0=user, 1=admin, 2=superuser

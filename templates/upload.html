@@ -1,33 +1,88 @@
-{% extends "layout.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Upload Pay Data</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
 
-{% block title %}Upload Data{% endblock %}
+  <div class="bg-white shadow-md rounded-lg p-8 w-full max-w-md">
+    <h1 class="text-2xl font-bold text-center text-blue-700 mb-6">Upload Pay Rate File</h1>
 
-{% block content %}
-<h1 class="text-2xl font-bold mb-4">Upload Pay Rate Data</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="text-sm px-4 py-2 rounded border
+                        {% if category == 'success' %}bg-green-100 text-green-700 border-green-300
+                        {% elif category == 'error' %}bg-red-100 text-red-700 border-red-300
+                        {% else %}bg-gray-100 text-gray-700 border-gray-300{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
-<!-- Upload Form -->
-<form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="space-y-4 max-w-lg bg-white p-6 rounded shadow">
-  <div>
-    <label for="file" class="block font-semibold mb-1">Select Excel File (.xlsx only)</label>
-    <input type="file" name="file" accept=".xlsx" required class="w-full border rounded px-3 py-2">
+    <form id="uploadForm" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" required class="mb-4 block w-full text-sm text-gray-700 file:py-2 file:px-4 file:border-0 file:rounded file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition duration-200">
+        Upload File
+      </button>
+    </form>
   </div>
 
-  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
-    Upload
-  </button>
-</form>
-
-<!-- Toast Messages (Flashed via Flask) -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <div class="mt-4">
-      {% for category, message in messages %}
-        <div class="bg-green-100 text-green-800 p-3 rounded mb-2" role="alert">
-          {{ message }}
-        </div>
-      {% endfor %}
+  <!-- Progress Modal -->
+  <div id="progressModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-11/12 max-w-md text-center">
+      <h2 class="text-lg font-semibold mb-4">Uploading and processing...</h2>
+      <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+        <div id="progressBar" class="bg-blue-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
     </div>
-  {% endif %}
-{% endwith %}
+  </div>
 
-{% endblock %}
+  <script>
+    const form = document.getElementById('uploadForm');
+    const modal = document.getElementById('progressModal');
+    const progressBar = document.getElementById('progressBar');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      const xhr = new XMLHttpRequest();
+
+      // Show modal
+      modal.classList.remove('hidden');
+
+      // Simulate progress
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress = Math.min(progress + Math.random() * 10, 95);
+        progressBar.style.width = progress + '%';
+      }, 200);
+
+      xhr.open('POST', '/upload', true);
+      xhr.onload = function () {
+        clearInterval(interval);
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+          modal.classList.add('hidden');
+          location.reload();
+        }, 700);
+      };
+      xhr.onerror = function () {
+        clearInterval(interval);
+        modal.classList.add('hidden');
+        alert("Upload failed. Please try again.");
+      };
+
+      xhr.send(formData);
+    });
+  </script>
+
+</body>
+</html>

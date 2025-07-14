@@ -1,19 +1,79 @@
-{% extends "layout.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pay Rate Map Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
 
-{% block title %}Home - Pay Rate Map{% endblock %}
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <!-- Header -->
+    <div class="text-center mb-10">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-16 mx-auto mb-4">
+      <h1 class="text-4xl font-bold text-[#0160B1]">Pay Rate Map</h1>
+      <p class="mt-2 text-lg text-gray-600">Visualise and manage social care pay data across the UK</p>
+    </div>
 
-{% block content %}
-<h1 class="text-3xl font-semibold mb-4">Choose a Sector</h1>
-<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-  <!-- Placeholder sectors -->
-  <a href="#" class="p-6 bg-white rounded-xl shadow hover:bg-blue-50 transition">
-    <h2 class="text-xl font-bold text-blue-700">Health and Social Care</h2>
-  </a>
-  <a href="#" class="p-6 bg-white rounded-xl shadow hover:bg-blue-50 transition">
-    <h2 class="text-xl font-bold text-blue-700">Education</h2>
-  </a>
-  <a href="#" class="p-6 bg-white rounded-xl shadow hover:bg-blue-50 transition">
-    <h2 class="text-xl font-bold text-blue-700">Construction</h2>
-  </a>
-</div>
-{% endblock %}
+    <!-- User Info -->
+    <div class="text-center mb-8">
+      <p class="text-base text-gray-700">Logged in as <span class="font-semibold text-green-700">{{ current_user.username }}</span></p>
+      <a href="{{ url_for('logout') }}" class="text-sm text-red-600 underline hover:text-red-800">Logout</a>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="grid sm:grid-cols-3 gap-4 text-center mb-12">
+      <a href="{{ url_for('upload') }}" class="bg-[#0160B1] hover:bg-blue-800 text-white py-3 rounded-lg shadow transition">
+        Upload Pay Data
+      </a>
+      <a href="{{ url_for('records') }}" class="bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg shadow transition">
+        View Records
+      </a>
+      <a href="{{ url_for('map_sector_select') }}" class="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg shadow transition">
+        Explore Map
+      </a>
+    </div>
+
+    <!-- About the App -->
+    <div class="text-center mb-12 max-w-3xl mx-auto">
+      <h2 class="text-2xl font-semibold text-[#0160B1] mb-4">Why use Pay Rate Map?</h2>
+      <p class="text-gray-700 leading-relaxed">
+        Pay Rate Map helps care organisations visualise, compare, and track pay rates across roles, regions, and sectors.
+        Upload job data, see it on an interactive map, and filter by region or care type to make informed recruitment and strategy decisions.
+      </p>
+    </div>
+
+    <!-- Sample Screenshots -->
+    <div class="grid md:grid-cols-3 gap-6 mb-10">
+      <div class="bg-white rounded-lg shadow p-4">
+        <img src="{{ url_for('static', filename='img/sample_1.jpg') }}" alt="Sample Upload" class="rounded">
+        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Quick Data Uploads</h3>
+        <p class="text-sm text-gray-600 mt-1">Upload Excel pay data and automatically geocode postcodes.</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <img src="{{ url_for('static', filename='img/sample_2.jpg') }}" alt="Sample Records" class="rounded">
+        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Clean Record Management</h3>
+        <p class="text-sm text-gray-600 mt-1">Easily edit, filter, and export pay data by role or location.</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <img src="{{ url_for('static', filename='img/sample_3.jpg') }}" alt="Sample Map" class="rounded">
+        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Interactive Pay Map</h3>
+        <p class="text-sm text-gray-600 mt-1">Visualise patterns across the UK by pay rate, provider, or care type.</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-sm text-gray-500 mt-12">
+      &copy; {{ now().year }} Pay Rate Map. Built for clarity in care workforce data.
+    </div>
+  </div>
+
+</body>
+</html>

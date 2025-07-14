@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Pay Rate Map{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center h-[70vh]">
+    <div class="text-center">
+        <h1 class="text-4xl font-bold text-[#0160B1] mb-4">Welcome to Pay Rate Map</h1>
+        <p class="mb-6 text-gray-700">Visualise and explore social care pay across the UK.</p>
+        <a href="{{ url_for('records') }}" class="bg-[#0160B1] text-white px-6 py-2 rounded-full hover:bg-blue-800 transition">
+            Go to Records
+        </a>
+    </div>
+</div>
+{% endblock %}

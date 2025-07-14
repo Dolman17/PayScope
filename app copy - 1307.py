@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, login_required, login_user, logout_user, current_user
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_login import LoginManager, login_required, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from werkzeug.security import check_password_hash
@@ -11,7 +11,6 @@ import requests
 
 app = Flask(__name__)
 app.config.from_pyfile("config.py")
-
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
@@ -39,84 +38,21 @@ from flask_login import UserMixin
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    admin_level = db.Column(db.Integer, default=0)
-
-    def is_admin(self):
-        return self.admin_level in [1, 2]
-
-    def is_superuser(self):
-        return self.admin_level == 1
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(120), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
-
-
-
-@app.route("/admin/users", methods=["GET", "POST"])
-@login_required
-def manage_users():
-    if not current_user.is_authenticated or not current_user.is_superuser():
-        flash("Access denied – superuser only.", "error")
-        return redirect(url_for("home"))
-
-    if request.method == "POST":
-        action = request.form.get("action")
-        
-        if action == "add":
-            username = request.form.get("username")
-            password = request.form.get("password")
-            admin_level = int(request.form.get("admin_level", 0))
-
-            if User.query.filter_by(username=username).first():
-                flash("Username already exists.", "error")
-            else:
-                from werkzeug.security import generate_password_hash
-                new_user = User(
-                    username=username,
-                    password=generate_password_hash(password),
-                    admin_level=admin_level
-                )
-                db.session.add(new_user)
-                db.session.commit()
-                flash(f"User '{username}' added.", "success")
-
-        elif action == "delete":
-            user_id = request.form.get("user_id")
-            if int(user_id) == current_user.id:
-                flash("You cannot delete your own account.", "error")
-            else:
-                user = User.query.get(user_id)
-                if user:
-                    db.session.delete(user)
-                    db.session.commit()
-                    flash("User deleted.", "info")
-
-        elif action == "update":
-            user_id = request.form.get("user_id")
-            admin_level = int(request.form.get("admin_level"))
-            user = User.query.get(user_id)
-            if user:
-                user.admin_level = admin_level
-                db.session.commit()
-                flash("User updated.", "success")
-
-    users = User.query.all()
-    return render_template("manage_users.html", users=users)
-
+    return db.session.get(User, int(user_id))
 
 # ---------------------- ROUTES ----------------------
 
 @app.route("/")
-@login_required
 def home():
-    return render_template("index.html", now=datetime.now)
-
+    return redirect(url_for("records"))
 
 @app.route("/records")
-@login_required
 def records():
     page = request.args.get("page", 1, type=int)
     edit_id = request.args.get("edit_id", type=int)
@@ -129,6 +65,7 @@ def records():
     }
 
     query = JobRecord.query
+
     for key, value in filters.items():
         if value:
             if key == "month":
@@ -170,7 +107,7 @@ def edit_record(record_id):
         record.pay_rate = float(request.form["pay_rate"])
         db.session.commit()
         flash(f"Record {record_id} updated.", "success")
-        return redirect(url_for("map_sector_select"))
+        return redirect(url_for("records"))
 
     return {
         "id": record.id,
@@ -219,6 +156,7 @@ def sector_map(sector):
 
     records = query.all()
 
+    # Pre-check logo file existence
     for record in records:
         logo_path = f"static/logos/{record.company_id}.png"
         if os.path.exists(logo_path):
@@ -239,6 +177,7 @@ def sector_map(sector):
             "max_pay": max_pay or ""
         }
     )
+
 
 @app.route("/admin/backfill-counties")
 @login_required
@@ -267,11 +206,7 @@ def backfill_counties():
 
     db.session.commit()
     flash(f"✅ County backfill complete. Updated: {updated}, Skipped: {skipped}", "success")
-    return redirect(url_for('upload'))
-
-@app.context_processor
-def inject_now():
-    return {'current_year': datetime.now().year}
+    return redirect(url_for('records'))
 
 
 # ---------------------- UPLOAD + GEOCODE ----------------------
@@ -349,13 +284,11 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        remember = 'remember' in request.form
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
-            login_user(user, remember=remember)
+            login_user(user)
             flash('Logged in successfully.', 'success')
-            next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('home'))
+            return redirect(request.args.get('next') or url_for('upload'))
         flash('Invalid username or password.', 'error')
     return render_template('login.html')
 
@@ -365,7 +298,6 @@ def logout():
     flash('Logged out.', 'info')
     return redirect(url_for('login'))
 
-# ---------------------- MAIN ----------------------
 
 if __name__ == '__main__':
     import os

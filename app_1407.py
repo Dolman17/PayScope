@@ -39,21 +39,15 @@ from flask_login import UserMixin
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    admin_level = db.Column(db.Integer, default=0)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(120), nullable=False)
+    admin_level = db.Column(db.Integer, default=0)  # 0 = user, 1 = superuser, 2 = admin
 
     def is_admin(self):
-        return self.admin_level in [1, 2]
+        return self.admin_level == 2 or self.admin_level == 1
 
     def is_superuser(self):
         return self.admin_level == 1
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-
 
 @app.route("/admin/users", methods=["GET", "POST"])
 @login_required

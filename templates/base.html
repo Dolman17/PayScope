@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Pay Rate Map{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Satoshi&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Satoshi', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-4">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Pay Rate Map Logo" class="h-10 w-auto">
+        <h1 class="text-xl font-bold text-[#0160B1]">Pay Rate Map</h1>
+      </div>
+      
+      <nav class="space-x-4 text-sm flex items-center">
+        {% if current_user.is_authenticated %}
+          <span class="text-gray-600 hidden sm:inline">Hi, <strong>{{ current_user.username }}</strong></span>
+          <a href="{{ url_for('upload') }}" class="text-[#0160B1] hover:underline">Upload</a>
+          <a href="{{ url_for('map_sector_select') }}" class="text-[#0160B1] hover:underline">Map View</a>
+          <a href="{{ url_for('records') }}" class="text-[#0160B1] hover:underline">Records</a>
+          {% if current_user.admin_level in [1, 2] %}
+            <a href="{{ url_for('backfill_counties') }}" class="text-[#0160B1] hover:underline">Backfill Counties</a>
+          {% endif %}
+          {% if current_user.admin_level == 1 %}
+            <a href="{{ url_for('manage_users') }}" class="text-[#0160B1] hover:underline">User Management</a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}" class="text-gray-500 hover:underline">Logout</a>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="text-[#0160B1] hover:underline">Login</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <!-- Flash Messages -->
+  <div class="max-w-7xl mx-auto px-4 mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="space-y-2">
+          {% for category, message in messages %}
+            <div class="px-4 py-2 rounded text-sm
+              {% if category == 'success' %}bg-green-100 text-green-800{% endif %}
+              {% if category == 'error' %}bg-red-100 text-red-800{% endif %}
+              {% if category == 'info' %}bg-blue-100 text-blue-800{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-grow max-w-7xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white text-center text-sm text-gray-500 py-4 shadow-inner">
+    &copy; {{ current_year }} Pay Rate Map. Built for clarity in care workforce data.
+  </footer>
+
+</body>
+</html>
