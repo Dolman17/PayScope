@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime
+from sqlalchemy import func
 import pandas as pd
 import os
 import requests
@@ -274,35 +275,63 @@ def inject_now():
     return {'current_year': datetime.now().year}
 
 
-@app.route("/dashboard")
+@app.route('/dashboard')
 @login_required
 def dashboard():
-    if not current_user.admin_level in [1, 2]:
-        flash("Access denied – admin only.", "error")
-        return redirect(url_for("home"))
+    # Get filter values from query string
+    selected_sector = request.args.get('sector')
+    selected_county = request.args.get('county')
+    selected_role = request.args.get('role')
 
-    total_records = JobRecord.query.count()
-    total_companies = db.session.query(JobRecord.company_id).distinct().count()
+    # Base query
+    query = JobRecord.query
 
-    avg_pay = db.session.query(db.func.avg(JobRecord.pay_rate)).scalar()
+    # Apply filters
+    if selected_sector:
+        query = query.filter(JobRecord.sector == selected_sector)
+    if selected_county:
+        query = query.filter(JobRecord.county == selected_county)
+    if selected_role:
+        query = query.filter(JobRecord.job_role == selected_role)
 
+    filtered_records = query.all()
+
+    # Totals and averages from filtered records
+    total_records = len(filtered_records)
+    total_companies = len(set(r.company_id for r in filtered_records))
+    avg_pay = round(sum(r.pay_rate for r in filtered_records) / total_records, 2) if total_records > 0 else 0
+
+    # Group by sector
     by_sector = db.session.query(
         JobRecord.sector,
-        db.func.count(JobRecord.id),
-        db.func.avg(JobRecord.pay_rate)
-    ).group_by(JobRecord.sector).all()
+        func.count(),
+        func.avg(JobRecord.pay_rate)
+    ).filter(query.whereclause).group_by(JobRecord.sector).all()
 
+    # Group by county
     by_county = db.session.query(
         JobRecord.county,
-        db.func.count(JobRecord.id)
-    ).group_by(JobRecord.county).all()
+        func.count()
+    ).filter(query.whereclause).group_by(JobRecord.county).all()
 
-    return render_template("dashboard.html",
-                           total_records=total_records,
-                           total_companies=total_companies,
-                           avg_pay=avg_pay,
-                           by_sector=by_sector,
-                           by_county=by_county)
+    # Available options for filters
+    all_records = JobRecord.query.all()
+    available_sectors = sorted(set(r.sector for r in all_records if r.sector))
+    available_counties = sorted(set(r.county for r in all_records if r.county))
+    available_roles = sorted(set(r.job_role for r in all_records if r.job_role))
+
+    return render_template(
+        "dashboard.html",
+        total_records=total_records,
+        total_companies=total_companies,
+        avg_pay=avg_pay,
+        by_sector=by_sector,
+        by_county=by_county,
+        available_sectors=available_sectors,
+        available_counties=available_counties,
+        available_roles=available_roles,
+    )
+
 
 @app.route("/insights")
 @login_required
@@ -367,6 +396,77 @@ def insights():
         },
         options=options
     )
+@app.route('/company/<company_id>')
+@login_required
+def company_profile(company_id):
+    jobs = JobRecord.query.filter_by(company_id=company_id).all()
+    if not jobs:
+        flash("No records found for this company.", "warning")
+        return redirect(url_for('records'))
+
+    company_name = jobs[0].company_name
+    sector = jobs[0].sector
+    logo_url = url_for('static', filename=f'logos/{company_id}.png')
+    average_pay = round(
+        sum(j.pay_rate for j in jobs if j.pay_rate is not None) / len(jobs), 2
+    )
+
+    from collections import defaultdict
+    county_pay = defaultdict(list)
+
+    for j in jobs:
+        if j.county:
+            county_pay[j.county].append(j.pay_rate)
+
+    county_avg = {k: round(sum(v) / len(v), 2) for k, v in county_pay.items()}
+    counties = list(county_avg.keys())
+    if not counties:
+        flash("This company has no valid county data. Showing job list only.", "warning")
+        peer_companies = []
+    # No `else:` — just let the code below run if `counties` exists
+
+    # Peer companies in same county + same sector
+    peer_jobs = JobRecord.query.filter(
+        JobRecord.company_id != company_id,
+        JobRecord.county.in_(counties),
+        JobRecord.sector == sector
+    ).all()
+
+
+    # Group by peer company
+    peer_data = {}
+    for j in peer_jobs:
+        if j.company_id not in peer_data:
+            peer_data[j.company_id] = {
+                'company_name': j.company_name,
+                'jobs': [],
+                'logo': f"/static/logos/{j.company_id}.png"
+            }
+        peer_data[j.company_id]['jobs'].append(j.pay_rate)
+
+    peer_companies = []
+    for cid, data in peer_data.items():
+        avg = round(sum(data['jobs']) / len(data['jobs']), 2)
+        peer_companies.append({
+            'company_id': cid,
+            'company_name': data['company_name'],
+            'logo_url': data['logo'],
+            'average_pay': avg
+        })
+
+    return render_template(
+        'company_profile.html',
+        company_name=company_name,
+        logo_url=logo_url,
+        jobs=jobs,
+        average_pay=average_pay,
+        county_avg=county_avg,
+        peer_companies=peer_companies
+    )
+
+
+
+
 
 
 # ---------------------- UPLOAD + GEOCODE ----------------------

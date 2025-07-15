@@ -43,27 +43,62 @@
       <h2 class="text-xl font-semibold">Average Pay by Sector</h2>
       <button onclick="downloadChart('sectorChart')" class="text-sm text-blue-600 underline">Download PNG</button>
     </div>
-    <canvas id="sectorChart" class="mb-8"></canvas>
+    <div class="resizable">
+      <canvas id="sectorChart"></canvas>
+    </div>
 
-    <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center justify-between mt-6 mb-2">
       <h2 class="text-xl font-semibold">Average Pay by Role</h2>
       <button onclick="downloadChart('roleChart')" class="text-sm text-blue-600 underline">Download PNG</button>
     </div>
-    <canvas id="roleChart" class="mb-8"></canvas>
+    <div class="resizable">
+      <canvas id="roleChart"></canvas>
+    </div>
 
-    <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center justify-between mt-6 mb-2">
       <h2 class="text-xl font-semibold">Records by County</h2>
       <button onclick="downloadChart('countyPieChart')" class="text-sm text-blue-600 underline">Download PNG</button>
     </div>
-    <canvas id="countyPieChart" class="mb-8"></canvas>
+    <div class="resizable">
+      <canvas id="countyPieChart"></canvas>
+    </div>
 
-    <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center justify-between mt-6 mb-2">
       <h2 class="text-xl font-semibold">Records by Sector</h2>
       <button onclick="downloadChart('sectorPieChart')" class="text-sm text-blue-600 underline">Download PNG</button>
     </div>
-    <canvas id="sectorPieChart"></canvas>
+    <div class="resizable">
+      <canvas id="sectorPieChart"></canvas>
+    </div>
   </div>
 </div>
+
+<style>
+  .resizable {
+    resize: vertical;
+    overflow: auto;
+    min-height: 300px;
+    max-height: 600px;
+    border: 1px solid #e5e7eb; /* Tailwind gray-200 */
+    padding: 1rem;
+    border-radius: 0.5rem;
+    position: relative;
+    background-color: white;
+  }
+
+  .resizable:after {
+    content: "";
+    display: block;
+    width: 20px;
+    height: 20px;
+    background: url('data:image/svg+xml;utf8,<svg fill="%236b7280" height="20" viewBox="0 0 20 20" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M4 16h2v2H4v-2zm4-4h2v6H8v-6zm4-4h2v10h-2V8zm4-4h2v14h-2V4z"/></svg>') no-repeat right bottom;
+    background-size: contain;
+    cursor: ns-resize;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+  }
+</style>
 
 <!-- Chart Data -->
 <script>

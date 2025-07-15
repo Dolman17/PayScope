@@ -81,7 +81,12 @@
           <tr class="border-t">
             <td class="p-3"><input type="checkbox" name="selected_records" value="{{ record.id }}"></td>
             <td class="p-3">{{ record.company_id }}</td>
-            <td class="p-3">{{ record.company_name }}</td>
+            <td class="p-3">
+  <a href="{{ url_for('company_profile', company_id=record.company_id) }}" class="text-blue-600 hover:underline">
+    {{ record.company_name }}
+  </a>
+</td>
+
             <td class="p-3">{{ record.sector }}</td>
             <td class="p-3">{{ record.job_role }}</td>
             <td class="p-3">{{ record.postcode }}</td>

@@ -28,7 +28,7 @@
   </form>
 
   <!-- Map Container -->
-  <div id="map" style="height: 600px;" class="w-full rounded shadow-md"></div>
+  <div id="map" style="height: 650px;" class="w-full rounded shadow-md"></div>
 
   <!-- Leaflet JS & CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -54,16 +54,32 @@
           const coords = [{{ record.latitude }}, {{ record.longitude }}];
 
           const popupHtml = `
-            <div class="text-sm">
-              <strong>Company ID:</strong> {{ record.company_id }}<br>
-              <strong>Company:</strong> {{ record.company_name }}<br>
-              <strong>Job Role:</strong> {{ record.job_role }}<br>
-              <strong>Pay Rate:</strong> £{{ "%.2f"|format(record.pay_rate) }}<br>
-              <strong>Postcode:</strong> {{ record.postcode }}<br>
-              <strong>County:</strong> {{ record.county }}<br>
-              <strong>Uploaded:</strong> {{ record.imported_month }} {{ record.imported_year }}
-            </div>
-          `;
+  <div class="text-sm space-y-1 max-w-[240px]">
+    <div class="flex items-center gap-2 mb-2">
+      <img src="{{ record.logo_url }}"
+     alt="{{ record.company_name }}"
+     class="w-8 h-8 object-contain rounded"
+     onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">
+      <a href="/company/{{ record.company_id }}" target="_blank" class="text-blue-700 font-semibold hover:underline">
+        {{ record.company_name }}
+      </a>
+    </div>
+    <div><strong>Job Role:</strong> {{ record.job_role }}</div>
+    <div><strong>Pay Rate:</strong> £{{ "%.2f"|format(record.pay_rate) }}</div>
+    <div><strong>Postcode:</strong> {{ record.postcode }}</div>
+    <div><strong>County:</strong> {{ record.county }}</div>
+    <div><strong>Uploaded:</strong> {{ record.imported_month }} {{ record.imported_year }}</div>
+    <div class="mt-2">
+      <a href="/company/{{ record.company_id }}" target="_blank"
+         class="inline-block bg-blue-600 text-white text-xs px-3 py-1 rounded hover:bg-blue-700">
+         View Company Profile →
+      </a>
+    </div>
+  </div>
+`;
+
+
+
 
           const icon = L.icon({
             iconUrl: "{{ record.logo_url }}",

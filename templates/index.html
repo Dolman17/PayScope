@@ -14,10 +14,27 @@
 </head>
 <body class="bg-gray-100 text-gray-800">
 
+  <!-- Navigation Bar -->
+  <nav class="bg-white shadow px-6 py-4 flex justify-between items-center">
+    <a href="{{ url_for('home') }}" class="text-xl font-bold text-blue-600">🏠 Pay Rate Map</a>
+    <div class="space-x-4">
+      <a href="{{ url_for('records') }}" class="hover:text-blue-600">Records</a>
+      <a href="{{ url_for('upload') }}" class="hover:text-blue-600">Upload</a>
+      <a href="{{ url_for('map_sector_select') }}" class="hover:text-blue-600">Map</a>
+      <a href="{{ url_for('insights') }}" class="hover:text-blue-600">Insights</a>
+      {% if current_user.is_authenticated and current_user.is_superuser() %}
+        <a href="{{ url_for('manage_users') }}" class="hover:text-blue-600">Users</a>
+      {% endif %}
+      <a href="{{ url_for('logout') }}" class="hover:text-red-600">Logout</a>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
   <div class="max-w-6xl mx-auto px-6 py-10">
+
     <!-- Header -->
     <div class="text-center mb-10">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-16 mx-auto mb-4">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-20 mx-auto mb-6">
       <h1 class="text-4xl font-bold text-[#0160B1]">Pay Rate Map</h1>
       <p class="mt-2 text-lg text-gray-600">Visualise and manage social care pay data across the UK</p>
     </div>
@@ -28,46 +45,70 @@
       <a href="{{ url_for('logout') }}" class="text-sm text-red-600 underline hover:text-red-800">Logout</a>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="grid sm:grid-cols-3 gap-4 text-center mb-12">
-      <a href="{{ url_for('upload') }}" class="bg-[#0160B1] hover:bg-blue-800 text-white py-3 rounded-lg shadow transition">
-        Upload Pay Data
-      </a>
-      <a href="{{ url_for('records') }}" class="bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg shadow transition">
-        View Records
-      </a>
-      <a href="{{ url_for('map_sector_select') }}" class="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg shadow transition">
-        Explore Map
-      </a>
-    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
-    <!-- About the App -->
-    <div class="text-center mb-12 max-w-3xl mx-auto">
-      <h2 class="text-2xl font-semibold text-[#0160B1] mb-4">Why use Pay Rate Map?</h2>
-      <p class="text-gray-700 leading-relaxed">
-        Pay Rate Map helps care organisations visualise, compare, and track pay rates across roles, regions, and sectors.
-        Upload job data, see it on an interactive map, and filter by region or care type to make informed recruitment and strategy decisions.
-      </p>
+  <!-- Upload Pay Data -->
+  <a href="{{ url_for('upload') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
+    <div class="flex items-center gap-2 text-blue-700 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16l4-4m0 0l-4-4m4 4H8m4 4v-8m8 4a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <h2 class="text-lg font-semibold">Upload Pay Data</h2>
     </div>
+    <p>Import pay rates via Excel with automatic geocoding.</p>
+  </a>
 
-    <!-- Sample Screenshots -->
-    <div class="grid md:grid-cols-3 gap-6 mb-10">
-      <div class="bg-white rounded-lg shadow p-4">
-        <img src="{{ url_for('static', filename='img/sample_1.jpg') }}" alt="Sample Upload" class="rounded">
-        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Quick Data Uploads</h3>
-        <p class="text-sm text-gray-600 mt-1">Upload Excel pay data and automatically geocode postcodes.</p>
-      </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <img src="{{ url_for('static', filename='img/sample_2.jpg') }}" alt="Sample Records" class="rounded">
-        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Clean Record Management</h3>
-        <p class="text-sm text-gray-600 mt-1">Easily edit, filter, and export pay data by role or location.</p>
-      </div>
-      <div class="bg-white rounded-lg shadow p-4">
-        <img src="{{ url_for('static', filename='img/sample_3.jpg') }}" alt="Sample Map" class="rounded">
-        <h3 class="text-lg font-semibold mt-3 text-[#0160B1]">Interactive Pay Map</h3>
-        <p class="text-sm text-gray-600 mt-1">Visualise patterns across the UK by pay rate, provider, or care type.</p>
-      </div>
+  <!-- View Records -->
+  <a href="{{ url_for('records') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
+    <div class="flex items-center gap-2 text-blue-700 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-8-4h8M5 20h14a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v14a1 1 0 001 1z" />
+      </svg>
+      <h2 class="text-lg font-semibold">View Records</h2>
     </div>
+    <p>Browse, filter, and edit uploaded pay records.</p>
+  </a>
+
+  <!-- View Map -->
+  <a href="{{ url_for('map_sector_select') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
+    <div class="flex items-center gap-2 text-blue-700 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c1.104 0 2-.896 2-2s-.896-2-2-2-2 .896-2 2 .896 2 2 2zm0 2c-2.21 0-4 1.79-4 4v1h8v-1c0-2.21-1.79-4-4-4z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3C8.134 3 5 6.134 5 10c0 5.25 7 11 7 11s7-5.75 7-11c0-3.866-3.134-7-7-7z" />
+      </svg>
+      <h2 class="text-lg font-semibold">View Map</h2>
+    </div>
+    <p>Explore pay data visually on an interactive map.</p>
+  </a>
+
+  <!-- Dashboard -->
+  <a href="{{ url_for('dashboard') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
+    <div class="flex items-center gap-2 text-blue-700 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M9 17V9m4 8v-5m4 5V5" />
+      </svg>
+      <h2 class="text-lg font-semibold">Dashboard</h2>
+    </div>
+    <p>High-level overview of records, companies, and trends.</p>
+  </a>
+
+  <!-- Insights -->
+  <a href="{{ url_for('insights') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
+    <div class="flex items-center gap-2 text-blue-700 mb-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a7 7 0 107 7 7.008 7.008 0 00-7-7zM21 21l-4.35-4.35" />
+      </svg>
+      <h2 class="text-lg font-semibold">Insights</h2>
+    </div>
+    <p>Drill down into filtered analytics by role, location, or sector.</p>
+  </a>
+
+</div>
+
+
+
+
+
 
     <!-- Footer -->
     <div class="text-center text-sm text-gray-500 mt-12">
