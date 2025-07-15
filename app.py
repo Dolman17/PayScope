@@ -274,6 +274,101 @@ def inject_now():
     return {'current_year': datetime.now().year}
 
 
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    if not current_user.admin_level in [1, 2]:
+        flash("Access denied – admin only.", "error")
+        return redirect(url_for("home"))
+
+    total_records = JobRecord.query.count()
+    total_companies = db.session.query(JobRecord.company_id).distinct().count()
+
+    avg_pay = db.session.query(db.func.avg(JobRecord.pay_rate)).scalar()
+
+    by_sector = db.session.query(
+        JobRecord.sector,
+        db.func.count(JobRecord.id),
+        db.func.avg(JobRecord.pay_rate)
+    ).group_by(JobRecord.sector).all()
+
+    by_county = db.session.query(
+        JobRecord.county,
+        db.func.count(JobRecord.id)
+    ).group_by(JobRecord.county).all()
+
+    return render_template("dashboard.html",
+                           total_records=total_records,
+                           total_companies=total_companies,
+                           avg_pay=avg_pay,
+                           by_sector=by_sector,
+                           by_county=by_county)
+
+@app.route("/insights")
+@login_required
+def insights():
+    sector = request.args.get("sector")
+    job_role = request.args.get("job_role")
+    county = request.args.get("county")
+    month = request.args.get("month")
+    year = request.args.get("year")
+
+    # Base query
+    query = JobRecord.query
+
+    # Apply filters if present
+    if sector:
+        query = query.filter(JobRecord.sector == sector)
+    if job_role:
+        query = query.filter(JobRecord.job_role == job_role)
+    if county:
+        query = query.filter(JobRecord.county == county)
+    if month:
+        query = query.filter(JobRecord.imported_month == month)
+    if year:
+        query = query.filter(JobRecord.imported_year == year)
+
+    records = query.all()
+
+    # Convert records to serializable format for JS
+    serialized_records = [
+        {
+            "company_id": r.company_id,
+            "company_name": r.company_name,
+            "sector": r.sector,
+            "job_role": r.job_role,
+            "postcode": r.postcode,
+            "county": r.county,
+            "pay_rate": r.pay_rate,
+            "month": r.imported_month,
+            "year": r.imported_year
+        }
+        for r in records
+    ]
+
+    # Filter options
+    options = {
+        "sectors": sorted({r.sector for r in JobRecord.query.all() if r.sector}),
+        "roles": sorted({r.job_role for r in JobRecord.query.all() if r.job_role}),
+        "counties": sorted({r.county for r in JobRecord.query.all() if r.county}),
+        "months": sorted({r.imported_month for r in JobRecord.query.all() if r.imported_month}),
+        "years": sorted({r.imported_year for r in JobRecord.query.all() if r.imported_year}),
+    }
+
+    return render_template(
+        "insights.html",
+        records=serialized_records,
+        filters={
+            "sector": sector or "",
+            "job_role": job_role or "",
+            "county": county or "",
+            "month": month or "",
+            "year": year or "",
+        },
+        options=options
+    )
+
+
 # ---------------------- UPLOAD + GEOCODE ----------------------
 
 def geocode_postcode(postcode):

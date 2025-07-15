@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-6">
+  <h1 class="text-2xl font-bold mb-6">Insights & Analytics</h1>
+
+  <!-- Filters -->
+  <form method="get" class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+    <select name="sector" class="border rounded p-2">
+      <option value="">All Sectors</option>
+      {% for s in options.sectors %}
+        <option value="{{ s }}" {% if filters.sector == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <select name="county" class="border rounded p-2">
+      <option value="">All Counties</option>
+      {% for c in options.counties %}
+        <option value="{{ c }}" {% if filters.county == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <select name="job_role" class="border rounded p-2">
+      <option value="">All Roles</option>
+      {% for r in options.roles %}
+        <option value="{{ r }}" {% if filters.job_role == r %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+    </select>
+    <select name="year" class="border rounded p-2">
+      <option value="">All Years</option>
+      {% for y in options.years %}
+        <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" name="min_pay" value="{{ filters.min_pay or '' }}" class="border rounded p-2" placeholder="Min Pay">
+    <input type="number" name="max_pay" value="{{ filters.max_pay or '' }}" class="border rounded p-2" placeholder="Max Pay">
+    <div class="sm:col-span-3 lg:col-span-6">
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded mt-2">Apply Filters</button>
+    </div>
+  </form>
+
+  <!-- Charts -->
+  <div class="mb-10">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Average Pay by Sector</h2>
+      <button onclick="downloadChart('sectorChart')" class="text-sm text-blue-600 underline">Download PNG</button>
+    </div>
+    <canvas id="sectorChart" class="mb-8"></canvas>
+
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Average Pay by Role</h2>
+      <button onclick="downloadChart('roleChart')" class="text-sm text-blue-600 underline">Download PNG</button>
+    </div>
+    <canvas id="roleChart" class="mb-8"></canvas>
+
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Records by County</h2>
+      <button onclick="downloadChart('countyPieChart')" class="text-sm text-blue-600 underline">Download PNG</button>
+    </div>
+    <canvas id="countyPieChart" class="mb-8"></canvas>
+
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-semibold">Records by Sector</h2>
+      <button onclick="downloadChart('sectorPieChart')" class="text-sm text-blue-600 underline">Download PNG</button>
+    </div>
+    <canvas id="sectorPieChart"></canvas>
+  </div>
+</div>
+
+<!-- Chart Data -->
+<script>
+  const records = {{ records|tojson }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='insights_charts.js') }}"></script>
+{% endblock %}

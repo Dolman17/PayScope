@@ -21,22 +21,29 @@
       </div>
       
       <nav class="space-x-4 text-sm flex items-center">
-        {% if current_user.is_authenticated %}
-          <span class="text-gray-600 hidden sm:inline">Hi, <strong>{{ current_user.username }}</strong></span>
-          <a href="{{ url_for('upload') }}" class="text-[#0160B1] hover:underline">Upload</a>
-          <a href="{{ url_for('map_sector_select') }}" class="text-[#0160B1] hover:underline">Map View</a>
-          <a href="{{ url_for('records') }}" class="text-[#0160B1] hover:underline">Records</a>
-          {% if current_user.admin_level in [1, 2] %}
-            <a href="{{ url_for('backfill_counties') }}" class="text-[#0160B1] hover:underline">Backfill Counties</a>
-          {% endif %}
-          {% if current_user.admin_level == 1 %}
-            <a href="{{ url_for('manage_users') }}" class="text-[#0160B1] hover:underline">User Management</a>
-          {% endif %}
-          <a href="{{ url_for('logout') }}" class="text-gray-500 hover:underline">Logout</a>
-        {% else %}
-          <a href="{{ url_for('login') }}" class="text-[#0160B1] hover:underline">Login</a>
-        {% endif %}
-      </nav>
+  {% if current_user.is_authenticated %}
+    <span class="text-gray-600 hidden sm:inline">Hi, <strong>{{ current_user.username }}</strong></span>
+    <a href="{{ url_for('home') }}" class="text-[#0160B1] hover:underline">Home</a>
+    <a href="{{ url_for('upload') }}" class="text-[#0160B1] hover:underline">Upload</a>
+    <a href="{{ url_for('map_sector_select') }}" class="text-[#0160B1] hover:underline">Map View</a>
+    <a href="{{ url_for('records') }}" class="text-[#0160B1] hover:underline">Records</a>
+    
+    {% if current_user.admin_level in [1, 2] %}
+  <a href="{{ url_for('dashboard') }}" class="text-[#0160B1] hover:underline">Dashboard</a>
+  <a href="{{ url_for('insights') }}" class="text-[#0160B1] hover:underline">Insights</a>
+{% endif %}
+
+  
+    {% if current_user.admin_level == 1 %}
+      <a href="{{ url_for('manage_users') }}" class="text-[#0160B1] hover:underline">User Management</a>
+    {% endif %}
+
+    <a href="{{ url_for('logout') }}" class="text-gray-500 hover:underline">Logout</a>
+  {% else %}
+    <a href="{{ url_for('login') }}" class="text-[#0160B1] hover:underline">Login</a>
+  {% endif %}
+</nav>
+
     </div>
   </header>
 

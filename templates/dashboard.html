@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Summary{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold text-[#0160B1] mb-6">Dashboard Summary</h2>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+  <div class="bg-white p-4 rounded shadow">
+    <h3 class="text-lg font-semibold">Total Records</h3>
+    <p class="text-2xl">{{ total_records }}</p>
+  </div>
+
+  <div class="bg-white p-4 rounded shadow">
+    <h3 class="text-lg font-semibold">Total Companies</h3>
+    <p class="text-2xl">{{ total_companies }}</p>
+  </div>
+
+  <div class="bg-white p-4 rounded shadow">
+    <h3 class="text-lg font-semibold">Average Pay Rate</h3>
+    <p class="text-2xl">£{{ avg_pay | round(2) }}</p>
+  </div>
+</div>
+
+<h3 class="text-xl font-semibold mt-10 mb-2">Records by Sector</h3>
+<table class="w-full bg-white shadow rounded text-sm mb-6">
+  <thead class="bg-gray-100 text-left">
+    <tr>
+      <th class="p-2">Sector</th>
+      <th class="p-2">Count</th>
+      <th class="p-2">Avg Pay Rate (£)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for sector, count, avg in by_sector %}
+    <tr class="border-t">
+      <td class="p-2">{{ sector }}</td>
+      <td class="p-2">{{ count }}</td>
+      <td class="p-2">{{ avg | round(2) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3 class="text-xl font-semibold mb-2">Records by County</h3>
+<table class="w-full bg-white shadow rounded text-sm">
+  <thead class="bg-gray-100 text-left">
+    <tr>
+      <th class="p-2">County</th>
+      <th class="p-2">Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for county, count in by_county %}
+    <tr class="border-t">
+      <td class="p-2">{{ county or "Unknown" }}</td>
+      <td class="p-2">{{ count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
