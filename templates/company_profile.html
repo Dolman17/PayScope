@@ -2,14 +2,14 @@
 {% block content %}
 <div class="max-w-6xl mx-auto p-4">
   <!-- Company Header -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
     <div class="flex items-center gap-4">
-      <img src="{{ logo_url }}" alt="{{ company_name }}" class="w-16 h-16 object-contain" onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">>
-      <h1 class="text-2xl font-bold">{{ company_name }}</h1>
+      <img src="{{ logo_url }}" alt="{{ company_name }}"
+           class="w-14 h-14 sm:w-16 sm:h-16 object-contain"
+           onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">
+      <h1 class="text-xl sm:text-2xl font-bold">{{ company_name }}</h1>
     </div>
-    <div>
-      <p class="text-lg font-semibold text-gray-700">Average Pay: £{{ average_pay }}</p>
-    </div>
+    <p class="text-base sm:text-lg font-semibold text-gray-700">Average Pay: £{{ average_pay }}</p>
   </div>
 
   <!-- Back Link -->
@@ -19,7 +19,7 @@
 
   <!-- Job Listing -->
   <div class="mb-10">
-    <h2 class="text-xl font-semibold mb-2">Job Listings</h2>
+    <h2 class="text-lg sm:text-xl font-semibold mb-2">Job Listings</h2>
     <div class="overflow-x-auto">
       <table class="min-w-full bg-white border border-gray-200 text-sm">
         <thead class="bg-gray-100 text-left">
@@ -32,13 +32,12 @@
         </thead>
         <tbody>
           {% for job in jobs %}
-         <tr class="border-b hover:bg-gray-50">
-  <td class="py-2 px-4">{{ job.job_role }}</td>          {# ✅ correct field #}
-  <td class="py-2 px-4">£{{ "%.2f"|format(job.pay_rate) }}</td>
-  <td class="py-2 px-4">{{ job.sector }}</td>            {# ✅ correct field #}
-  <td class="py-2 px-4">{{ job.postcode }}</td>
-</tr>
-
+          <tr class="border-b hover:bg-gray-50">
+            <td class="py-2 px-4">{{ job.job_role }}</td>
+            <td class="py-2 px-4">£{{ "%.2f"|format(job.pay_rate) }}</td>
+            <td class="py-2 px-4">{{ job.sector }}</td>
+            <td class="py-2 px-4">{{ job.postcode }}</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -47,39 +46,41 @@
 
   <!-- County Breakdown -->
   <div class="mb-10">
-    <h2 class="text-xl font-semibold mb-2">Average Pay by County</h2>
-    <table class="min-w-full bg-white border border-gray-200 text-sm">
-      <thead class="bg-gray-100 text-left">
-        <tr>
-          <th class="py-2 px-4 border-b">County</th>
-          <th class="py-2 px-4 border-b">Average Pay (£)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for county, avg in county_avg.items() %}
-        <tr class="border-b hover:bg-gray-50">
-          <td class="py-2 px-4">{{ county }}</td>
-          <td class="py-2 px-4">{{ avg }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <h2 class="text-lg sm:text-xl font-semibold mb-2">Average Pay by County</h2>
+    <div class="overflow-x-auto">
+      <table class="min-w-full bg-white border border-gray-200 text-sm">
+        <thead class="bg-gray-100 text-left">
+          <tr>
+            <th class="py-2 px-4 border-b">County</th>
+            <th class="py-2 px-4 border-b">Average Pay (£)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for county, avg in county_avg.items() %}
+          <tr class="border-b hover:bg-gray-50">
+            <td class="py-2 px-4">{{ county }}</td>
+            <td class="py-2 px-4">{{ avg }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Other Companies -->
   <div>
-    <h2 class="text-xl font-semibold mb-4">Other Companies in Same Region & Sector</h2>
+    <h2 class="text-lg sm:text-xl font-semibold mb-4">Other Companies in Same Region & Sector</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
       {% for peer in peer_companies %}
       <a href="{{ url_for('company_profile', company_id=peer.company_id) }}"
          class="border border-gray-200 rounded-xl p-4 hover:shadow transition bg-white flex items-center gap-4">
         <img src="{{ peer.logo_url }}"
-     alt="{{ peer.company_name }}"
-     class="w-12 h-12 object-contain"
-     onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">
+             alt="{{ peer.company_name }}"
+             class="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+             onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">
         <div>
-          <h3 class="text-base font-bold text-gray-800">{{ peer.company_name }}</h3>
-          <p class="text-sm text-gray-600">Avg Pay: £{{ peer.average_pay }}</p>
+          <h3 class="text-sm sm:text-base font-bold text-gray-800">{{ peer.company_name }}</h3>
+          <p class="text-xs sm:text-sm text-gray-600">Avg Pay: £{{ peer.average_pay }}</p>
         </div>
       </a>
       {% endfor %}

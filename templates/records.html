@@ -15,42 +15,43 @@
 {% endif %}
 
   <!-- Filters -->
-  <form method="GET" action="{{ url_for('records') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-    <select name="sector" class="border rounded px-3 py-2 text-sm">
-      <option value="">All Sectors</option>
-      {% for sector in options.sectors %}
-        <option value="{{ sector }}" {% if filters.sector == sector %}selected{% endif %}>{{ sector }}</option>
-      {% endfor %}
-    </select>
-    <select name="job_role" class="border rounded px-3 py-2 text-sm">
-      <option value="">All Roles</option>
-      {% for role in options.roles %}
-        <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
-      {% endfor %}
-    </select>
-    <select name="county" class="border rounded px-3 py-2 text-sm">
-      <option value="">All Counties</option>
-      {% for county in options.counties %}
-        <option value="{{ county }}" {% if filters.county == county %}selected{% endif %}>{{ county }}</option>
-      {% endfor %}
-    </select>
-    <select name="month" class="border rounded px-3 py-2 text-sm">
-      <option value="">All Months</option>
-      {% for month in options.months %}
-        <option value="{{ month }}" {% if filters.month == month %}selected{% endif %}>{{ month }}</option>
-      {% endfor %}
-    </select>
-    <select name="year" class="border rounded px-3 py-2 text-sm">
-      <option value="">All Years</option>
-      {% for year in options.years %}
-        <option value="{{ year }}" {% if filters.year == year %}selected{% endif %}>{{ year }}</option>
-      {% endfor %}
-    </select>
-    <div class="flex items-center space-x-2">
-      <button type="submit" class="bg-blue-600 text-white text-sm px-4 py-2 rounded">Filter</button>
-      <a href="{{ url_for('records') }}" class="text-sm text-blue-600 hover:underline">Clear</a>
-    </div>
-  </form>
+<form method="GET" action="{{ url_for('records') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+  <select name="sector" class="border rounded px-3 py-2 text-sm w-full">
+    <option value="">All Sectors</option>
+    {% for sector in options.sectors %}
+      <option value="{{ sector }}" {% if filters.sector == sector %}selected{% endif %}>{{ sector }}</option>
+    {% endfor %}
+  </select>
+  <select name="job_role" class="border rounded px-3 py-2 text-sm w-full">
+    <option value="">All Roles</option>
+    {% for role in options.roles %}
+      <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
+    {% endfor %}
+  </select>
+  <select name="county" class="border rounded px-3 py-2 text-sm w-full">
+    <option value="">All Counties</option>
+    {% for county in options.counties %}
+      <option value="{{ county }}" {% if filters.county == county %}selected{% endif %}>{{ county }}</option>
+    {% endfor %}
+  </select>
+  <select name="month" class="border rounded px-3 py-2 text-sm w-full">
+    <option value="">All Months</option>
+    {% for month in options.months %}
+      <option value="{{ month }}" {% if filters.month == month %}selected{% endif %}>{{ month }}</option>
+    {% endfor %}
+  </select>
+  <select name="year" class="border rounded px-3 py-2 text-sm w-full">
+    <option value="">All Years</option>
+    {% for year in options.years %}
+      <option value="{{ year }}" {% if filters.year == year %}selected{% endif %}>{{ year }}</option>
+    {% endfor %}
+  </select>
+  <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-2 gap-2">
+    <button type="submit" class="bg-blue-600 text-white text-sm px-4 py-2 rounded w-full sm:w-auto">Filter</button>
+    <a href="{{ url_for('records') }}" class="text-sm text-blue-600 hover:underline text-center sm:text-left">Clear</a>
+  </div>
+</form>
+
 
   <!-- Export -->
   <div class="mb-4 text-right">
@@ -61,7 +62,7 @@
 
   <!-- Table -->
   <div class="overflow-x-auto bg-white shadow rounded-lg">
-    <table class="min-w-full text-sm">
+    <table class="min-w-full text-sm whitespace-nowrap">
       <thead class="bg-gray-50 text-gray-700 font-medium">
         <tr>
           <th class="p-3"><input type="checkbox" onclick="toggleAll(this)"></th>

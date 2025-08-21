@@ -1,36 +1,44 @@
-
 {% extends "base.html" %}
 
 {% block title %}Pay Rate Map: {{ sector }}{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-6">
-  <div class="flex justify-between items-center mb-4">
-    <h1 class="text-2xl font-bold text-blue-700">Pay Rate Map: {{ sector }}</h1>
-    <a href="{{ url_for('map_sector_select') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm px-4 py-2 rounded">
+
+  <!-- Header and Back Link -->
+  <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+    <h1 class="text-xl sm:text-2xl font-bold text-blue-700">Pay Rate Map: {{ sector }}</h1>
+    <a href="{{ url_for('map_sector_select') }}"
+       class="bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm px-4 py-2 rounded w-full sm:w-auto text-center">
       ← Back to Sectors
     </a>
   </div>
 
   <!-- Filter Bar -->
-  <form method="GET" class="flex flex-wrap gap-4 mb-4">
-    <select name="job_role" class="border rounded px-2 py-1">
+  <form method="GET" class="flex flex-wrap gap-3 mb-4">
+    <select name="job_role" class="border rounded px-2 py-2 w-full sm:w-auto">
       <option value="">All Job Roles</option>
       {% for role in job_roles %}
         <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
       {% endfor %}
     </select>
 
-    <input type="number" step="0.01" name="min_pay" placeholder="Min £" class="border rounded px-2 py-1" value="{{ filters.min_pay }}">
-    <input type="number" step="0.01" name="max_pay" placeholder="Max £" class="border rounded px-2 py-1" value="{{ filters.max_pay }}">
+    <input type="number" step="0.01" name="min_pay" placeholder="Min £" class="border rounded px-2 py-2 w-full sm:w-auto" value="{{ filters.min_pay }}">
+    <input type="number" step="0.01" name="max_pay" placeholder="Max £" class="border rounded px-2 py-2 w-full sm:w-auto" value="{{ filters.max_pay }}">
 
-    <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Filter</button>
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded w-full sm:w-auto">
+      Filter
+    </button>
   </form>
 
-  <!-- Map Container -->
-  <div id="map" style="height: 650px;" class="w-full rounded shadow-md"></div>
+  <!-- Map Container (guaranteed height even if Tailwind is missing/purged) -->
+  <div id="map" class="w-full rounded shadow-md" style="height:70vh;"></div>
 
-  <!-- Leaflet JS & CSS -->
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -40,65 +48,79 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <script>
-    const map = L.map('map').setView([54.5, -3], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    document.addEventListener("DOMContentLoaded", function () {
+      // Create map
+      const map = L.map('map').setView([54.5, -3], 6);
 
-    const markerClusterGroup = L.markerClusterGroup();
-    const bounds = L.latLngBounds();
+      // Tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
 
-    {% for record in records %}
-      {% if record.latitude and record.longitude %}
-        (function() {
-          const coords = [{{ record.latitude }}, {{ record.longitude }}];
+      const markerClusterGroup = L.markerClusterGroup();
+      const bounds = L.latLngBounds();
 
-          const popupHtml = `
-  <div class="text-sm space-y-1 max-w-[240px]">
-    <div class="flex items-center gap-2 mb-2">
-      <img src="{{ record.logo_url }}"
-     alt="{{ record.company_name }}"
-     class="w-8 h-8 object-contain rounded"
-     onerror="this.onerror=null;this.src='/static/logos/no-logo.png';">
-      <a href="/company/{{ record.company_id }}" target="_blank" class="text-blue-700 font-semibold hover:underline">
-        {{ record.company_name }}
-      </a>
-    </div>
-    <div><strong>Job Role:</strong> {{ record.job_role }}</div>
-    <div><strong>Pay Rate:</strong> £{{ "%.2f"|format(record.pay_rate) }}</div>
-    <div><strong>Postcode:</strong> {{ record.postcode }}</div>
-    <div><strong>County:</strong> {{ record.county }}</div>
-    <div><strong>Uploaded:</strong> {{ record.imported_month }} {{ record.imported_year }}</div>
-    <div class="mt-2">
-      <a href="/company/{{ record.company_id }}" target="_blank"
-         class="inline-block bg-blue-600 text-white text-xs px-3 py-1 rounded hover:bg-blue-700">
-         View Company Profile →
-      </a>
-    </div>
-  </div>
-`;
+      {% for record in records %}
+        {% if record.latitude and record.longitude %}
+          (function () {
+            const lat = {{ record.latitude }};
+            const lon = {{ record.longitude }};
+            const coords = [lat, lon];
 
+            const logo = {{ (record.logo_url or url_for('static', filename='logos/placeholder.png')) | tojson }};
+            const companyName = {{ (record.company_name or 'Unknown') | tojson }};
+            const companyId = {{ (record.company_id or '') | tojson }};
+            const jobRole = {{ (record.job_role or '—') | tojson }};
+            const payRate = {{ (record.pay_rate if record.pay_rate is not none else 0) | tojson }};
+            const postcode = {{ (record.postcode or '—') | tojson }};
+            const county = {{ (record.county or '—') | tojson }};
+            const month = {{ (record.imported_month or '—') | tojson }};
+            const year = {{ (record.imported_year or '—') | tojson }};
 
+            const popupHtml = `
+              <div class="text-sm space-y-1 max-w-[240px]">
+                <div class="flex items-center gap-2 mb-2">
+                  <img src="${logo}" alt="${companyName}"
+                       class="w-8 h-8 object-contain rounded"
+                       onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
+                  <a href="/company/${companyId}" target="_blank"
+                     class="text-blue-700 font-semibold hover:underline">
+                    ${companyName}
+                  </a>
+                </div>
+                <div><strong>Job Role:</strong> ${jobRole}</div>
+                <div><strong>Pay Rate:</strong> £${Number(payRate).toFixed(2)}</div>
+                <div><strong>Postcode:</strong> ${postcode}</div>
+                <div><strong>County:</strong> ${county}</div>
+                <div><strong>Uploaded:</strong> ${month} ${year}</div>
+                <div class="mt-2">
+                  <a href="/company/${companyId}" target="_blank"
+                     class="inline-block bg-blue-600 text-white text-xs px-3 py-1 rounded hover:bg-blue-700">
+                     View Company Profile →
+                  </a>
+                </div>
+              </div>
+            `;
 
+            const icon = L.icon({
+              iconUrl: logo,
+              iconSize: [40, 40],
+              iconAnchor: [20, 40],
+              popupAnchor: [0, -40]
+            });
 
-          const icon = L.icon({
-            iconUrl: "{{ record.logo_url }}",
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-            popupAnchor: [0, -40]
-          });
+            const marker = L.marker(coords, { icon }).bindPopup(popupHtml);
+            markerClusterGroup.addLayer(marker);
+            bounds.extend(coords);
+          })();
+        {% endif %}
+      {% endfor %}
 
-          const marker = L.marker(coords, { icon: icon }).bindPopup(popupHtml);
-          markerClusterGroup.addLayer(marker);
-          bounds.extend(coords);
-        })();
-      {% endif %}
-    {% endfor %}
+      map.addLayer(markerClusterGroup);
 
-    map.addLayer(markerClusterGroup);
-    if (bounds.isValid()) {
-      map.fitBounds(bounds);
-    }
+      if (bounds.isValid() && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    });
   </script>
-</div>
 {% endblock %}

@@ -3,13 +3,13 @@
 {% block title %}Upload Pay Data{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-center min-h-screen bg-gray-50">
-  <div class="bg-white shadow-md rounded-lg p-8 w-full max-w-md">
-    <h1 class="text-2xl font-bold text-center text-blue-700 mb-6">Upload Pay Rate File</h1>
+<div class="flex items-center justify-center min-h-screen bg-gray-50 px-4 sm:px-6">
+  <div class="bg-white shadow-md rounded-lg p-6 sm:p-8 w-full max-w-md">
+    <h1 class="text-2xl sm:text-3xl font-bold text-center text-blue-700 mb-6">Upload Pay Rate File</h1>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="mb-4">
+        <div class="mb-4 space-y-2">
           {% for category, message in messages %}
             <div class="text-sm px-4 py-2 rounded border
                         {% if category == 'success' %}bg-green-100 text-green-700 border-green-300
@@ -22,9 +22,13 @@
       {% endif %}
     {% endwith %}
 
-    <form id="uploadForm" method="post" enctype="multipart/form-data">
-      <input type="file" name="file" required class="mb-4 block w-full text-sm text-gray-700 file:py-2 file:px-4 file:border-0 file:rounded file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition duration-200">
+    <form id="uploadForm" method="post" enctype="multipart/form-data" class="space-y-4">
+      <input type="file" name="file" required
+             class="block w-full text-sm text-gray-700
+                    file:py-2 file:px-4 file:border-0 file:rounded
+                    file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+      <button type="submit"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition duration-200">
         Upload File
       </button>
     </form>
@@ -32,11 +36,15 @@
 </div>
 
 <!-- Progress Modal -->
-<div id="progressModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white p-6 rounded-lg shadow-lg w-11/12 max-w-md text-center">
+<div id="progressModal"
+     class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md text-center">
     <h2 class="text-lg font-semibold mb-4">Uploading and processing...</h2>
     <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-      <div id="progressBar" class="bg-blue-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+      <div id="progressBar"
+           class="bg-blue-600 h-4 rounded-full transition-all duration-300"
+           style="width: 0%">
+      </div>
     </div>
   </div>
 </div>

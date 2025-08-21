@@ -3,61 +3,63 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-6">
-  <h2 class="text-3xl font-bold text-[#0160B1] mb-6">Dashboard Summary</h2>
+  <h2 class="text-2xl sm:text-3xl font-bold text-[#0160B1] mb-6">Dashboard Summary</h2>
 
   <!-- Filters -->
   <form method="GET" class="flex flex-wrap gap-4 mb-8">
-    <select name="sector" class="border rounded px-3 py-2">
+    <select name="sector" class="border rounded px-3 py-2 w-full sm:w-auto">
       <option value="">All Sectors</option>
       {% for sector in available_sectors %}
         <option value="{{ sector }}" {% if request.args.get('sector') == sector %}selected{% endif %}>{{ sector }}</option>
       {% endfor %}
     </select>
 
-    <select name="county" class="border rounded px-3 py-2">
+    <select name="county" class="border rounded px-3 py-2 w-full sm:w-auto">
       <option value="">All Counties</option>
       {% for county in available_counties %}
         <option value="{{ county }}" {% if request.args.get('county') == county %}selected{% endif %}>{{ county or "Unknown" }}</option>
       {% endfor %}
     </select>
 
-    <select name="job_role" class="border rounded px-3 py-2">
+    <select name="job_role" class="border rounded px-3 py-2 w-full sm:w-auto">
       <option value="">All Job Roles</option>
       {% for role in available_roles %}
         <option value="{{ role }}" {% if request.args.get('job_role') == role %}selected{% endif %}>{{ role }}</option>
       {% endfor %}
     </select>
 
-    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Apply Filters</button>
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded w-full sm:w-auto">
+      Apply Filters
+    </button>
   </form>
 
   <!-- Summary Cards -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
     <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-lg font-semibold text-gray-700">Total Records</h3>
-      <p class="text-3xl font-bold text-[#0160B1]">{{ total_records }}</p>
+      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Records</h3>
+      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">{{ total_records }}</p>
     </div>
 
     <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-lg font-semibold text-gray-700">Total Companies</h3>
-      <p class="text-3xl font-bold text-[#0160B1]">{{ total_companies }}</p>
+      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Companies</h3>
+      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">{{ total_companies }}</p>
     </div>
 
     <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-lg font-semibold text-gray-700">Average Pay Rate</h3>
-      <p class="text-3xl font-bold text-[#0160B1]">£{{ avg_pay | round(2) }}</p>
+      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Average Pay Rate</h3>
+      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">£{{ avg_pay | round(2) }}</p>
     </div>
   </div>
 
   <!-- Records by Sector -->
-  <h3 class="text-2xl font-semibold text-[#0160B1] mb-4">Records by Sector</h3>
+  <h3 class="text-xl sm:text-2xl font-semibold text-[#0160B1] mb-4">Records by Sector</h3>
   <div class="overflow-x-auto mb-10">
     <table class="min-w-full bg-white shadow rounded text-sm">
       <thead class="bg-gray-100 text-left">
         <tr>
-          <th class="p-3">Sector</th>
-          <th class="p-3">Count</th>
-          <th class="p-3">Avg Pay Rate (£)</th>
+          <th class="p-3 whitespace-nowrap">Sector</th>
+          <th class="p-3 whitespace-nowrap">Count</th>
+          <th class="p-3 whitespace-nowrap">Avg Pay Rate (£)</th>
         </tr>
       </thead>
       <tbody>
@@ -73,13 +75,13 @@
   </div>
 
   <!-- Records by County -->
-  <h3 class="text-2xl font-semibold text-[#0160B1] mb-4">Records by County</h3>
+  <h3 class="text-xl sm:text-2xl font-semibold text-[#0160B1] mb-4">Records by County</h3>
   <div class="overflow-x-auto">
     <table class="min-w-full bg-white shadow rounded text-sm">
       <thead class="bg-gray-100 text-left">
         <tr>
-          <th class="p-3">County</th>
-          <th class="p-3">Count</th>
+          <th class="p-3 whitespace-nowrap">County</th>
+          <th class="p-3 whitespace-nowrap">Count</th>
         </tr>
       </thead>
       <tbody>
