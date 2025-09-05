@@ -3,29 +3,39 @@
 {% block title %}Login | Pay Rate Map{% endblock %}
 
 {% block content %}
-<div class="max-w-md mx-auto bg-white p-8 rounded shadow">
-    <h1 class="text-2xl font-semibold text-center text-[#0160B1] mb-6">Login to Pay Rate Map</h1>
-    <form method="POST" action="{{ url_for('login') }}">
-        <div class="mb-4">
-            <label class="block text-gray-700 text-sm font-medium mb-2" for="username">Username</label>
-            <input type="text" name="username" required
-                   class="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring focus:border-blue-300" />
-        </div>
-        <div class="mb-4">
-            <label class="block text-gray-700 text-sm font-medium mb-2" for="password">Password</label>
-            <input type="password" name="password" required
-                   class="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:ring focus:border-blue-300" />
-        </div>
-        <div class="mb-4">
-            <label class="inline-flex items-center">
-                <input type="checkbox" name="remember" class="form-checkbox">
-                <span class="ml-2 text-sm text-gray-700">Remember Me</span>
-            </label>
-        </div>
-        <button type="submit"
-                class="w-full bg-[#0160B1] text-white py-2 rounded hover:bg-blue-800 transition">
-            Login
-        </button>
+<div class="max-w-md mx-auto">
+
+  <div class="card p-6 sm:p-8">
+    <h1 class="text-2xl font-bold text-center mb-6" style="color: var(--brand);">
+      Login to Pay Rate Map
+    </h1>
+
+    <form method="POST" action="{{ url_for('login') }}" class="space-y-5">
+      <!-- Username -->
+      <div>
+        <label for="username" class="label">Username</label>
+        <input id="username" type="text" name="username" required class="input" />
+      </div>
+
+      <!-- Password -->
+      <div>
+        <label for="password" class="label">Password</label>
+        <input id="password" type="password" name="password" required class="input" />
+      </div>
+
+      <!-- Remember Me -->
+      <div class="flex items-center">
+        <input type="checkbox" id="remember" name="remember"
+               class="h-4 w-4 text-[var(--brand)] border-gray-300 rounded focus:ring-[var(--brand)]">
+        <label for="remember" class="ml-2 text-sm text-gray-700">Remember Me</label>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn btn-primary w-full">
+        Login
+      </button>
     </form>
+  </div>
+
 </div>
 {% endblock %}

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.sqlite3
+*.db
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+.eggs/
+
+# Environment & secrets
+.env
+*.key
+*.pem
+
+# VS Code / IDE files
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Flask / instance folder
+instance/
+
+# Build / dist
+build/
+dist/
+*.egg
+*.manifest
+
+# Coverage / testing
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/

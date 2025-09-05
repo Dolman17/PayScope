@@ -3,67 +3,89 @@
 {% block title %}Uploaded Records | Pay Rate Map{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 py-6">
-  <h1 class="text-3xl font-bold text-blue-700 mb-6 text-center">Uploaded Records</h1>
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+
+  <h1 class="text-2xl sm:text-3xl font-bold text-center mb-6" style="color: var(--brand);">Uploaded Records</h1>
 
   {% if current_user.admin_level in [1, 2] %}
   <form action="{{ url_for('backfill_counties') }}" method="get" class="mb-4">
-    <button type="submit" class="bg-[#0160B1] text-white px-4 py-2 rounded hover:bg-blue-700">
+    <button type="submit" class="btn btn-primary">
       Backfill Counties
     </button>
   </form>
-{% endif %}
+  {% endif %}
 
   <!-- Filters -->
-<form method="GET" action="{{ url_for('records') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-  <select name="sector" class="border rounded px-3 py-2 text-sm w-full">
-    <option value="">All Sectors</option>
-    {% for sector in options.sectors %}
-      <option value="{{ sector }}" {% if filters.sector == sector %}selected{% endif %}>{{ sector }}</option>
-    {% endfor %}
-  </select>
-  <select name="job_role" class="border rounded px-3 py-2 text-sm w-full">
-    <option value="">All Roles</option>
-    {% for role in options.roles %}
-      <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
-    {% endfor %}
-  </select>
-  <select name="county" class="border rounded px-3 py-2 text-sm w-full">
-    <option value="">All Counties</option>
-    {% for county in options.counties %}
-      <option value="{{ county }}" {% if filters.county == county %}selected{% endif %}>{{ county }}</option>
-    {% endfor %}
-  </select>
-  <select name="month" class="border rounded px-3 py-2 text-sm w-full">
-    <option value="">All Months</option>
-    {% for month in options.months %}
-      <option value="{{ month }}" {% if filters.month == month %}selected{% endif %}>{{ month }}</option>
-    {% endfor %}
-  </select>
-  <select name="year" class="border rounded px-3 py-2 text-sm w-full">
-    <option value="">All Years</option>
-    {% for year in options.years %}
-      <option value="{{ year }}" {% if filters.year == year %}selected{% endif %}>{{ year }}</option>
-    {% endfor %}
-  </select>
-  <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-2 gap-2">
-    <button type="submit" class="bg-blue-600 text-white text-sm px-4 py-2 rounded w-full sm:w-auto">Filter</button>
-    <a href="{{ url_for('records') }}" class="text-sm text-blue-600 hover:underline text-center sm:text-left">Clear</a>
-  </div>
-</form>
+  <section class="card mb-5">
+    <form method="GET" action="{{ url_for('records') }}" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div>
+        <label class="label" for="sector">Sector</label>
+        <select id="sector" name="sector" class="input text-sm">
+          <option value="">All Sectors</option>
+          {% for sector in options.sectors %}
+            <option value="{{ sector }}" {% if filters.sector == sector %}selected{% endif %}>{{ sector }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
+      <div>
+        <label class="label" for="job_role">Job Role</label>
+        <select id="job_role" name="job_role" class="input text-sm">
+          <option value="">All Roles</option>
+          {% for role in options.roles %}
+            <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="label" for="county">County</label>
+        <select id="county" name="county" class="input text-sm">
+          <option value="">All Counties</option>
+          {% for county in options.counties %}
+            <option value="{{ county }}" {% if filters.county == county %}selected{% endif %}>{{ county }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="label" for="month">Month</label>
+        <select id="month" name="month" class="input text-sm">
+          <option value="">All Months</option>
+          {% for month in options.months %}
+            <option value="{{ month }}" {% if filters.month == month %}selected{% endif %}>{{ month }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="label" for="year">Year</label>
+        <select id="year" name="year" class="input text-sm">
+          <option value="">All Years</option>
+          {% for year in options.years %}
+            <option value="{{ year }}" {% if filters.year == year %}selected{% endif %}>{{ year }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <button type="submit" class="btn btn-primary w-full sm:w-auto">Filter</button>
+        <a href="{{ url_for('records') }}" class="nav-chip">Clear</a>
+      </div>
+    </form>
+  </section>
 
   <!-- Export -->
   <div class="mb-4 text-right">
-    <a href="{{ url_for('export_records') }}?{{ filter_query }}" class="text-blue-600 hover:underline text-sm">
+    <a href="{{ url_for('export_records') }}?{{ filter_query }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
       Export to Excel
     </a>
   </div>
 
   <!-- Table -->
-  <div class="overflow-x-auto bg-white shadow rounded-lg">
+  <section class="card overflow-x-auto">
     <table class="min-w-full text-sm whitespace-nowrap">
-      <thead class="bg-gray-50 text-gray-700 font-medium">
+      <thead class="bg-gray-50 text-gray-700 font-semibold">
         <tr>
           <th class="p-3"><input type="checkbox" onclick="toggleAll(this)"></th>
           <th class="p-3 text-left">Company ID</th>
@@ -77,41 +99,42 @@
           <th class="p-3 text-left">Actions</th>
         </tr>
       </thead>
-      <tbody class="text-gray-800">
+      <tbody class="bg-white text-gray-900">
         {% for record in records %}
-          <tr class="border-t">
-            <td class="p-3"><input type="checkbox" name="selected_records" value="{{ record.id }}"></td>
-            <td class="p-3">{{ record.company_id }}</td>
-            <td class="p-3">
-  <a href="{{ url_for('company_profile', company_id=record.company_id) }}" class="text-blue-600 hover:underline">
-    {{ record.company_name }}
-  </a>
-</td>
-
-            <td class="p-3">{{ record.sector }}</td>
-            <td class="p-3">{{ record.job_role }}</td>
-            <td class="p-3">{{ record.postcode }}</td>
-            <td class="p-3">{{ record.county }}</td>
-            <td class="p-3">£{{ "%.2f"|format(record.pay_rate) }}</td>
-            <td class="p-3">{{ record.imported_month }} {{ record.imported_year }}</td>
-            <td class="p-3">
-              <button onclick="openEditModal({{ record.id }})" class="text-blue-600 hover:underline mr-2">Edit</button>
-              <form method="POST" action="{{ url_for('delete_record', record_id=record.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
-                <button type="submit" class="text-red-600 hover:underline">Delete</button>
-              </form>
-            </td>
-          </tr>
+        <tr class="border-t">
+          <td class="p-3"><input type="checkbox" name="selected_records" value="{{ record.id }}"></td>
+          <td class="p-3">{{ record.company_id }}</td>
+          <td class="p-3">
+            <a href="{{ url_for('company_profile', company_id=record.company_id) }}" class="hover:underline" style="color: var(--brand);">
+              {{ record.company_name }}
+            </a>
+          </td>
+          <td class="p-3">{{ record.sector }}</td>
+          <td class="p-3">{{ record.job_role }}</td>
+          <td class="p-3">{{ record.postcode }}</td>
+          <td class="p-3">{{ record.county }}</td>
+          <td class="p-3">£{{ "%.2f"|format(record.pay_rate) }}</td>
+          <td class="p-3">{{ record.imported_month }} {{ record.imported_year }}</td>
+          <td class="p-3">
+            <button onclick="openEditModal({{ record.id }})" class="hover:underline mr-2" style="color: var(--brand);">Edit</button>
+            <form method="POST" action="{{ url_for('delete_record', record_id=record.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+              <button type="submit" class="hover:underline" style="color:#ef4444;">Delete</button>
+            </form>
+          </td>
+        </tr>
         {% else %}
-          <tr><td colspan="10" class="p-4 text-center text-gray-500">No records found.</td></tr>
+        <tr>
+          <td colspan="10" class="p-4 text-center text-gray-500">No records found.</td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
-  </div>
+  </section>
 
   <!-- Pagination -->
   <div class="flex justify-between items-center mt-6 text-sm text-gray-700">
     {% if pagination.has_prev %}
-      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.prev_num }}" class="text-blue-600 hover:underline">← Previous</a>
+      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.prev_num }}" class="hover:underline" style="color: var(--brand);">← Previous</a>
     {% else %}
       <span class="text-gray-400">← Previous</span>
     {% endif %}
@@ -119,61 +142,79 @@
     <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
 
     {% if pagination.has_next %}
-      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.next_num }}" class="text-blue-600 hover:underline">Next →</a>
+      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.next_num }}" class="hover:underline" style="color: var(--brand);">Next →</a>
     {% else %}
       <span class="text-gray-400">Next →</span>
     {% endif %}
   </div>
+
 </div>
 
 <!-- Edit Modal -->
 <div id="editModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
-  <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-xl">
-    <h2 class="text-xl font-semibold text-blue-700 mb-4">Edit Record</h2>
-    <form id="editForm">
-      <input type="hidden" id="editRecordId">
+  <div class="card w-full max-w-xl">
+    <div class="p-5 sm:p-6">
+      <h2 class="text-xl font-semibold mb-4" style="color: var(--brand);">Edit Record</h2>
 
-      <div class="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <label class="block text-sm font-medium">Company ID</label>
-          <input type="text" id="editCompanyId" name="company_id" class="w-full border px-3 py-2 rounded">
+      <form id="editForm" class="space-y-4">
+        <input type="hidden" id="editRecordId">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="label" for="editCompanyId">Company ID</label>
+            <input type="text" id="editCompanyId" name="company_id" class="input">
+          </div>
+          <div>
+            <label class="label" for="editCompanyName">Company Name</label>
+            <input type="text" id="editCompanyName" name="company_name" class="input">
+          </div>
         </div>
+
         <div>
-          <label class="block text-sm font-medium">Company Name</label>
-          <input type="text" id="editCompanyName" name="company_name" class="w-full border px-3 py-2 rounded">
+          <label class="label" for="editSector">Sector</label>
+          <input type="text" id="editSector" name="sector" class="input">
         </div>
-      </div>
 
-      <div class="mb-4">
-        <label class="block text-sm font-medium">Sector</label>
-        <input type="text" id="editSector" name="sector" class="w-full border px-3 py-2 rounded">
-      </div>
-      <div class="mb-4">
-        <label class="block text-sm font-medium">Job Role</label>
-        <input type="text" id="editJobRole" name="job_role" class="w-full border px-3 py-2 rounded">
-      </div>
-      <div class="mb-4">
-        <label class="block text-sm font-medium">Postcode</label>
-        <input type="text" id="editPostcode" name="postcode" class="w-full border px-3 py-2 rounded">
-      </div>
-      <div class="mb-4">
-        <label class="block text-sm font-medium">County</label>
-        <input type="text" id="editCounty" name="county" class="w-full border px-3 py-2 rounded">
-      </div>
-      <div class="mb-6">
-        <label class="block text-sm font-medium">Pay Rate (£)</label>
-        <input type="number" step="0.01" id="editPayRate" name="pay_rate" class="w-full border px-3 py-2 rounded">
-      </div>
+        <div>
+          <label class="label" for="editJobRole">Job Role</label>
+          <input type="text" id="editJobRole" name="job_role" class="input">
+        </div>
 
-      <div class="flex justify-end gap-2">
-        <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-400 text-white rounded">Cancel</button>
-        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
-      </div>
-    </form>
+        <div>
+          <label class="label" for="editPostcode">Postcode</label>
+          <input type="text" id="editPostcode" name="postcode" class="input">
+        </div>
+
+        <div>
+          <label class="label" for="editCounty">County</label>
+          <input type="text" id="editCounty" name="county" class="input">
+        </div>
+
+        <div>
+          <label class="label" for="editPayRate">Pay Rate (£)</label>
+          <input type="number" step="0.01" id="editPayRate" name="pay_rate" class="input">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeEditModal()" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+
+        <div class="mb-4 text-right space-x-4">
+          <a href="{{ url_for('export_records') }}?{{ filter_query }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
+                    Export to Excel</a>
+        <a href="{{ url_for('export_records') }}?{{ filter_query }}&format=csv" class="text-sm hover:underline" style="color: var(--brand);">
+            Export to CSV
+          </a>
+        </div>
+
+      </form>
+    </div>
   </div>
 </div>
+{% endblock %}
 
-<!-- Scripts -->
+{% block scripts %}
 <script>
   function toggleAll(source) {
     document.querySelectorAll('input[name="selected_records"]').forEach(cb => cb.checked = source.checked);
@@ -184,13 +225,13 @@
       .then(res => res.json())
       .then(data => {
         document.getElementById('editRecordId').value = data.id;
-        document.getElementById('editCompanyId').value = data.company_id;
-        document.getElementById('editCompanyName').value = data.company_name;
-        document.getElementById('editSector').value = data.sector;
-        document.getElementById('editJobRole').value = data.job_role;
-        document.getElementById('editPostcode').value = data.postcode;
-        document.getElementById('editCounty').value = data.county;
-        document.getElementById('editPayRate').value = data.pay_rate;
+        document.getElementById('editCompanyId').value = data.company_id || '';
+        document.getElementById('editCompanyName').value = data.company_name || '';
+        document.getElementById('editSector').value = data.sector || '';
+        document.getElementById('editJobRole').value = data.job_role || '';
+        document.getElementById('editPostcode').value = data.postcode || '';
+        document.getElementById('editCounty').value = data.county || '';
+        document.getElementById('editPayRate').value = data.pay_rate ?? '';
         document.getElementById('editModal').classList.remove('hidden');
       });
   }
@@ -203,13 +244,11 @@
     e.preventDefault();
     let id = document.getElementById('editRecordId').value;
     let data = new FormData(this);
-    fetch(`/edit/${id}`, {
-      method: 'POST',
-      body: data
-    }).then(response => {
-      if (response.ok) location.reload();
-      else alert('Update failed');
-    });
+    fetch(`/edit/${id}`, { method: 'POST', body: data })
+      .then(response => {
+        if (response.ok) location.reload();
+        else alert('Update failed');
+      });
   };
 </script>
 {% endblock %}

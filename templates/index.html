@@ -1,116 +1,103 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Pay Rate Map Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-    body {
-      font-family: 'Inter', sans-serif;
-    }
-  </style>
-</head>
-<body class="bg-gray-100 text-gray-800">
+{% extends "base.html" %}
+{% block title %}Pay Rate Map Dashboard{% endblock %}
 
-  <!-- Navigation Bar -->
-  <nav class="bg-white shadow px-6 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
-    <a href="{{ url_for('home') }}" class="text-xl font-bold text-blue-600">🏠 Pay Rate Map</a>
-    <div class="flex flex-wrap justify-start sm:justify-end gap-3 text-sm">
-      <a href="{{ url_for('records') }}" class="hover:text-blue-600">Records</a>
-      <a href="{{ url_for('upload') }}" class="hover:text-blue-600">Upload</a>
-      <a href="{{ url_for('map_sector_select') }}" class="hover:text-blue-600">Map</a>
-      <a href="{{ url_for('insights') }}" class="hover:text-blue-600">Insights</a>
-      {% if current_user.is_authenticated and current_user.is_superuser() %}
-        <a href="{{ url_for('manage_users') }}" class="hover:text-blue-600">Users</a>
-      {% endif %}
-      <a href="{{ url_for('logout') }}" class="hover:text-red-600">Logout</a>
-    </div>
-  </nav>
+{% block content %}
+<div class="max-w-6xl mx-auto px-2 sm:px-4 py-8">
 
-  <!-- Main Container -->
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+  <!-- Header -->
+  <section class="text-center mb-8">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-16 sm:h-20 mx-auto mb-5 rounded-md border border-gray-200 bg-white">
+    <h1 class="text-3xl sm:text-4xl font-bold" style="color: var(--brand);">Pay Rate Map</h1>
+    <p class="mt-2 text-sm sm:text-base text-gray-600">Visualise and manage social care pay data across the UK</p>
+  </section>
 
-    <!-- Header -->
-    <div class="text-center mb-10">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-20 mx-auto mb-6">
-      <h1 class="text-3xl sm:text-4xl font-bold text-[#0160B1]">Pay Rate Map</h1>
-      <p class="mt-2 text-base sm:text-lg text-gray-600">Visualise and manage social care pay data across the UK</p>
-    </div>
+  <!-- User Info -->
+  <section class="card p-4 sm:p-5 mb-8 text-center">
+    <p class="text-sm sm:text-base text-gray-700">
+      Logged in as <span class="font-semibold" style="color: var(--brand);">{{ current_user.username }}</span>
+    </p>
+    <a href="{{ url_for('logout') }}" class="text-xs sm:text-sm text-red-600 underline hover:text-red-800 mt-1 inline-block">Logout</a>
+  </section>
 
-    <!-- User Info -->
-    <div class="text-center mb-8">
-      <p class="text-sm sm:text-base text-gray-700">Logged in as <span class="font-semibold text-green-700">{{ current_user.username }}</span></p>
-      <a href="{{ url_for('logout') }}" class="text-sm text-red-600 underline hover:text-red-800">Logout</a>
-    </div>
+  <!-- Dashboard Cards -->
+  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
-    <!-- Dashboard Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Upload Pay Data -->
+    <a href="{{ url_for('upload') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- Upload icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16l4-4m0 0l-4-4m4 4H8m4 4v-8m8 4a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">Upload Pay Data</h2>
+      </div>
+      <p class="text-sm text-gray-600">Import pay rates via Excel with automatic geocoding.</p>
+    </a>
 
-      <!-- Upload Pay Data -->
-      <a href="{{ url_for('upload') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
-        <div class="flex items-center gap-2 text-blue-700 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16l4-4m0 0l-4-4m4 4H8m4 4v-8m8 4a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h2 class="text-base font-semibold">Upload Pay Data</h2>
-        </div>
-        <p class="text-sm">Import pay rates via Excel with automatic geocoding.</p>
-      </a>
+    <!-- View Records -->
+    <a href="{{ url_for('records') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- List icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-8-4h8M5 20h14a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v14a1 1 0 001 1z"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">View Records</h2>
+      </div>
+      <p class="text-sm text-gray-600">Browse, filter, and edit uploaded pay records.</p>
+    </a>
 
-      <!-- View Records -->
-      <a href="{{ url_for('records') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
-        <div class="flex items-center gap-2 text-blue-700 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-8-4h8M5 20h14a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-          <h2 class="text-base font-semibold">View Records</h2>
-        </div>
-        <p class="text-sm">Browse, filter, and edit uploaded pay records.</p>
-      </a>
+    <!-- View Map -->
+    <a href="{{ url_for('map_sector_select') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- Map pin icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11a2 2 0 100-4 2 2 0 000 4z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3a7 7 0 00-7 7c0 5.25 7 11 7 11s7-5.75 7-11a7 7 0 00-7-7z"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">View Map</h2>
+      </div>
+      <p class="text-sm text-gray-600">Explore pay data visually on an interactive map.</p>
+    </a>
 
-      <!-- View Map -->
-      <a href="{{ url_for('map_sector_select') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
-        <div class="flex items-center gap-2 text-blue-700 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c1.104 0 2-.896 2-2s-.896-2-2-2-2 .896-2 2 .896 2 2 2zm0 2c-2.21 0-4 1.79-4 4v1h8v-1c0-2.21-1.79-4-4-4z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3C8.134 3 5 6.134 5 10c0 5.25 7 11 7 11s7-5.75 7-11c0-3.866-3.134-7-7-7z" />
-          </svg>
-          <h2 class="text-base font-semibold">View Map</h2>
-        </div>
-        <p class="text-sm">Explore pay data visually on an interactive map.</p>
-      </a>
+    <!-- Dashboard -->
+    <a href="{{ url_for('dashboard') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- Chart bars icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M9 17V9m4 8v-5m4 5V5"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">Dashboard</h2>
+      </div>
+      <p class="text-sm text-gray-600">High-level overview of records, companies, and trends.</p>
+    </a>
 
-      <!-- Dashboard -->
-      <a href="{{ url_for('dashboard') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
-        <div class="flex items-center gap-2 text-blue-700 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M9 17V9m4 8v-5m4 5V5" />
-          </svg>
-          <h2 class="text-base font-semibold">Dashboard</h2>
-        </div>
-        <p class="text-sm">High-level overview of records, companies, and trends.</p>
-      </a>
+    <!-- Insights -->
+    <a href="{{ url_for('insights') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- Search/insight icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a7 7 0 107 7 7.008 7.008 0 00-7-7zM21 21l-4.35-4.35"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">Insights</h2>
+      </div>
+      <p class="text-sm text-gray-600">Drill down into filtered analytics by role, location, or sector.</p>
+    </a>
 
-      <!-- Insights -->
-      <a href="{{ url_for('insights') }}" class="block bg-white shadow p-4 rounded hover:shadow-md transition">
-        <div class="flex items-center gap-2 text-blue-700 mb-2">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a7 7 0 107 7 7.008 7.008 0 00-7-7zM21 21l-4.35-4.35" />
-          </svg>
-          <h2 class="text-base font-semibold">Insights</h2>
-        </div>
-        <p class="text-sm">Drill down into filtered analytics by role, location, or sector.</p>
-      </a>
+    {% if current_user.is_authenticated and current_user.is_superuser() %}
+    <!-- Users (visible to superusers only) -->
+    <a href="{{ url_for('manage_users') }}" class="card p-5 hover:shadow transition block">
+      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
+        <!-- Users icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m2-9a4 4 0 110 8 4 4 0 010-8zm6 4a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+        <h2 class="text-base font-semibold text-gray-900">User Management</h2>
+      </div>
+      <p class="text-sm text-gray-600">Add, edit, and manage application users.</p>
+    </a>
+    {% endif %}
 
-    </div>
+  </section>
 
-    <!-- Footer -->
-    <div class="text-center text-sm text-gray-500 mt-12">
-      &copy; {{ now().year }} Pay Rate Map. Built for clarity in care workforce data.
-    </div>
-  </div>
-
-</body>
-</html>
+</div>
+{% endblock %}

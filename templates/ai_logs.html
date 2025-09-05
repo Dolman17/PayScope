@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}AI Logs{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+  <div class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold" style="color: var(--brand);">AI Analysis Logs</h1>
+      <p class="text-sm text-gray-500 mt-1">Audit trail of AI analyses run by admins and users.</p>
+    </div>
+
+    <form method="get" class="flex gap-2">
+      <input type="text" name="q" value="{{ q }}" class="input" placeholder="Search filters, output, IDs…">
+      <select name="per_page" class="input">
+        {% for n in [10,20,50,100] %}
+          <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}/page</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="p-4 sm:p-5 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="text-left text-gray-600">
+          <tr>
+            <th class="py-2 pr-3">When (UTC)</th>
+            <th class="py-2 pr-3">User</th>
+            <th class="py-2 pr-3">Records</th>
+            <th class="py-2 pr-3">Filters</th>
+            <th class="py-2 pr-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="align-top">
+          {% for row in logs %}
+          <tr class="border-t">
+            <td class="py-3 pr-3 whitespace-nowrap">{{ row.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+            <td class="py-3 pr-3">
+              {% if row.user %}
+                <div class="font-semibold">{{ row.user.username or ('User #' ~ row.user_id) }}</div>
+                <div class="text-xs text-gray-500">ID: {{ row.user_id }}</div>
+              {% else %}
+                <div class="text-gray-500">Unknown (ID {{ row.user_id or '—' }})</div>
+              {% endif %}
+            </td>
+            <td class="py-3 pr-3">{{ row.record_count or 0 }}</td>
+            <td class="py-3 pr-3 max-w-lg">
+              {% set f = (row.filters or '') %}
+              {% if f|length > 160 %}
+                <div class="text-gray-700">{{ f[:160] }}…</div>
+                <button type="button"
+                        class="text-xs text-blue-700 hover:underline mt-1"
+                        onclick="showJsonModal({{ row.id }}, {{ f|tojson|safe }})">View full</button>
+              {% else %}
+                <div class="text-gray-700 break-words">{{ f }}</div>
+              {% endif %}
+            </td>
+            <td class="py-3 pr-3">
+              <button class="btn btn-secondary text-xs"
+                      onclick="showOutputModal({{ row.id }})">View Output</button>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% if not logs %}
+          <tr><td class="py-6 text-gray-500" colspan="5">No logs found.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      {% if pagination.pages > 1 %}
+      <div class="mt-4 flex items-center gap-2">
+        {% if pagination.has_prev %}
+          <a class="nav-chip" href="?q={{ q }}&per_page={{ per_page }}&page={{ pagination.prev_num }}">← Prev</a>
+        {% else %}
+          <span class="nav-chip opacity-50 cursor-not-allowed">← Prev</span>
+        {% endif %}
+
+        <span class="text-sm text-gray-600">
+          Page {{ pagination.page }} of {{ pagination.pages }}
+        </span>
+
+        {% if pagination.has_next %}
+          <a class="nav-chip" href="?q={{ q }}&per_page={{ per_page }}&page={{ pagination.next_num }}">Next →</a>
+        {% else %}
+          <span class="nav-chip opacity-50 cursor-not-allowed">Next →</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Output Modal -->
+<div id="outputModal" class="fixed inset-0 z-[1000] hidden" aria-hidden="true">
+  <div class="absolute inset-0 bg-black/40" onclick="closeOutputModal()"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[80vh] overflow-auto">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold">AI Output</h3>
+          <button class="nav-chip" onclick="closeOutputModal()">Close</button>
+        </div>
+        <div id="outputModalBody" class="prose max-w-none mt-4"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JSON Modal -->
+<div id="jsonModal" class="fixed inset-0 z-[1000] hidden" aria-hidden="true">
+  <div class="absolute inset-0 bg-black/40" onclick="closeJsonModal()"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[80vh] overflow-auto">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Filters JSON</h3>
+          <button class="nav-chip" onclick="closeJsonModal()">Close</button>
+        </div>
+        <pre id="jsonModalBody" class="mt-4 text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-auto"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Simple modal state
+  const outputModal = document.getElementById('outputModal');
+  const outputBody  = document.getElementById('outputModalBody');
+  const jsonModal   = document.getElementById('jsonModal');
+  const jsonBody    = document.getElementById('jsonModalBody');
+
+  // Load output HTML for a given log via a tiny JSON endpoint or embed via data-* attributes
+  // Here we inline-fetch by injecting HTML we already have? We don’t have it on this page,
+  // so let’s call a tiny endpoint to get the output.
+  async function showOutputModal(id){
+    try{
+      const r = await fetch(`/ai-logs/${id}`);
+      const data = await r.json();
+      outputBody.innerHTML = data.output_html || '<p class="text-gray-500">No output stored.</p>';
+    }catch(e){
+      outputBody.innerHTML = `<p class="text-red-600 text-sm">Failed to load: ${e}</p>`;
+    }
+    outputModal.classList.remove('hidden');
+  }
+  function closeOutputModal(){ outputModal.classList.add('hidden'); }
+
+  function showJsonModal(id, jsonObj){
+    try{
+      jsonBody.textContent = JSON.stringify(jsonObj, null, 2);
+    }catch(e){
+      jsonBody.textContent = 'Invalid JSON';
+    }
+    jsonModal.classList.remove('hidden');
+  }
+  function closeJsonModal(){ jsonModal.classList.add('hidden'); }
+</script>
+{% endblock %}

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+import re
+import time
+import json
+from datetime import datetime, timezone
 from functools import lru_cache
+from io import BytesIO
+from typing import Any, Mapping, Tuple
 
-import pandas as pd
-import requests
+from openai import OpenAI
+from dotenv import load_dotenv
+from flask_login import LoginManager, login_required, login_user, logout_user, current_user, UserMixin
 from flask import (
     Flask,
     render_template,
@@ -13,83 +19,79 @@ from flask import (
     redirect,
     url_for,
     flash,
-    session,
     jsonify,
+    send_file,
+    abort,
 )
-from flask_login import (
-    LoginManager,
-    login_required,
-    login_user,
-    logout_user,
-    current_user,
-    UserMixin,
-)
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
+from sqlalchemy import func, desc, or_, cast, String
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+import click
+import pandas as pd
+import requests
 
-# ---------------------- APP & DB SETUP ----------------------
+# Shared db + migrate
+from extensions import db, migrate
+
+# Load environment variables from .env
+load_dotenv()
+
+# ---------------------- APP SETUP ----------------------
 
 app = Flask(__name__)
 app.config.from_pyfile("config.py")
 
-# Ensure upload folder exists if configured
+# Sensible defaults if not set in config.py
+app.config.setdefault("UPLOAD_FOLDER", os.path.join(app.root_path, "uploads"))
+app.config.setdefault("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)  # 20 MB
+app.config.setdefault("ALLOWED_EXTENSIONS", {".xlsx", ".xls", ".csv"})
+
+# Ensure upload folder exists
 if app.config.get("UPLOAD_FOLDER"):
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+# Bind db + migrate
+db.init_app(app)
+migrate.init_app(app, db)
 
+from models import AIAnalysisLog, JobRecord, User, AIAnalysisLog  # must come after db.init_app
+
+# Setup login manager
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
+# ---------------------- MODELS ----------------------
+from models import AIAnalysisLog  # must come after db.init_app
+
 
 # ---------------------- MODELS ----------------------
 
-class JobRecord(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.String(50), index=True)
-    company_name = db.Column(db.String(100))
-    sector = db.Column(db.String(50), index=True)
-    job_role = db.Column(db.String(100), index=True)
-    postcode = db.Column(db.String(20))
-    county = db.Column(db.String(50), index=True)
-    pay_rate = db.Column(db.Float)
-    imported_month = db.Column(db.String(20), index=True)
-    imported_year = db.Column(db.String(10), index=True)
-    latitude = db.Column(db.Float)
-    longitude = db.Column(db.Float)
-
-
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    admin_level = db.Column(db.Integer, default=0)
-
-    def is_admin(self) -> bool:
-        return self.admin_level in [1, 2]
-
-    def is_superuser(self) -> bool:
-        return self.admin_level == 1
-
-
 @login_manager.user_loader
 def load_user(user_id: str):
-    # Works with SQLAlchemy 1.x/2.x
     try:
         return db.session.get(User, int(user_id))
     except Exception:
         return None
 
-
 # ---------------------- HELPERS ----------------------
 
+def _ttl_cache(seconds: int = 120):
+    """Tiny TTL cache decorator for frequently-used helpers (e.g., dropdown options)."""
+    def deco(fn):
+        store = {"t": 0.0, "val": None}
+        def wrapper(*a, **k):
+            now = time.time()
+            if now - store["t"] > seconds:
+                store["val"] = fn(*a, **k)
+                store["t"] = now
+            return store["val"]
+        return wrapper
+    return deco
+
+@_ttl_cache(seconds=120)
 def get_filter_options():
-    """Fetch distinct values for dropdowns efficiently (no full-table scans)."""
+    """Fetch distinct values for dropdowns efficiently."""
     def col_distinct(col):
         return [
             v[0]
@@ -99,7 +101,6 @@ def get_filter_options():
             .order_by(col)
             .all()
         ]
-
     return {
         "sectors": col_distinct(JobRecord.sector),
         "roles": col_distinct(JobRecord.job_role),
@@ -108,8 +109,7 @@ def get_filter_options():
         "years": col_distinct(JobRecord.imported_year),
     }
 
-
-def build_filters_from_request(mapping: dict[str, any]):
+def build_filters_from_request(mapping: Mapping[str, Any]):
     """Return a list of SQLAlchemy filter expressions based on provided mapping."""
     filters = []
     if mapping.get("sector"):
@@ -124,14 +124,12 @@ def build_filters_from_request(mapping: dict[str, any]):
         filters.append(JobRecord.imported_year == mapping["year"])
     return filters
 
-
 def commit_or_rollback():
     try:
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         raise e
-
 
 def logo_url_for(company_id: str) -> str:
     """Return URL for company logo, falling back to placeholder; uses FS-safe check."""
@@ -140,6 +138,92 @@ def logo_url_for(company_id: str) -> str:
         return url_for("static", filename=f"logos/{company_id}.png")
     return url_for("static", filename="logos/placeholder.png")
 
+# ---------------------- UK GEOCODING ----------------------
+
+# UK-specific fast geocoding (postcodes.io), with Nominatim fallback
+
+POSTCODES_IO_BULK_URL = "https://api.postcodes.io/postcodes"
+POSTCODES_IO_SINGLE_URL = "https://api.postcodes.io/postcodes/{pc}"
+
+def normalize_uk_postcode(pc: str) -> str:
+    """Uppercase, strip non-alphanumerics, insert space before last 3 chars."""
+    s = re.sub(r"[^A-Za-z0-9]", "", (pc or "")).upper()
+    if len(s) < 5:
+        return s
+    return s[:-3] + " " + s[-3:]
+
+def bulk_geocode_postcodes(postcodes: list[str]) -> dict[str, tuple[float | None, float | None]]:
+    """Return {postcode: (lat, lon)} using postcodes.io in chunks of 100."""
+    results: dict[str, tuple[float | None, float | None]] = {}
+    cleaned = [normalize_uk_postcode(p) for p in postcodes if p]
+    unique = sorted(set(cleaned))
+    for i in range(0, len(unique), 100):
+        chunk = unique[i:i + 100]
+        try:
+            resp = requests.post(POSTCODES_IO_BULK_URL, json={"postcodes": chunk}, timeout=20)
+            resp.raise_for_status()
+            data = resp.json() or {}
+            for item in data.get("result", []):
+                query = item.get("query")
+                res = item.get("result")
+                if res:
+                    results[query] = (res.get("latitude"), res.get("longitude"))
+                else:
+                    results[query] = (None, None)
+        except Exception as e:
+            print(f"Bulk geocode error for chunk {i}-{i+len(chunk)}: {e}")
+            for q in chunk:
+                results.setdefault(q, (None, None))
+    return results
+
+@lru_cache(maxsize=5000)
+def geocode_postcode_cached(postcode: str) -> Tuple[float | None, float | None]:
+    return geocode_postcode(postcode)
+
+def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
+    """Try postcodes.io (fast) then Nominatim (fallback) for a *single* postcode."""
+    pc = normalize_uk_postcode(postcode)
+    if not pc:
+        return (None, None)
+
+    # 1) postcodes.io single
+    try:
+        r = requests.get(POSTCODES_IO_SINGLE_URL.format(pc=pc), timeout=10)
+        if r.status_code == 200:
+            d = (r.json() or {}).get("result")
+            if d:
+                return (float(d["latitude"]), float(d["longitude"]))
+    except Exception as e:
+        print(f"postcodes.io error for {pc}: {e}")
+
+    # 2) Fallback to Nominatim
+    response = None
+    try:
+        for attempt in range(3):
+            try:
+                response = requests.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"format": "json", "q": pc},
+                    headers={
+                        "User-Agent": "PayRateMapUploader (contact: you@example.com)",
+                        "Accept-Language": "en-GB",
+                    },
+                    timeout=15,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data:
+                    return (float(data[0]["lat"]), float(data[0]["lon"]))
+                break
+            except requests.HTTPError:
+                if response is not None and response.status_code in (429, 502, 503, 504):
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise
+    except Exception as e:
+        print(f"Geocoding error for {pc}: {e}")
+
+    return (None, None)
 
 # ---------------------- ADMIN: USERS ----------------------
 
@@ -172,7 +256,7 @@ def manage_users():
                 try:
                     commit_or_rollback()
                     flash(f"User '{username}' added.", "success")
-                except Exception as e:
+                except Exception:
                     flash("Failed to add user.", "error")
 
         elif action == "delete":
@@ -213,15 +297,12 @@ def manage_users():
     users = User.query.all()
     return render_template("manage_users.html", users=users)
 
-
 # ---------------------- ROUTES ----------------------
 
 @app.route("/")
 @login_required
 def home():
-    # Pass the function so Jinja can call it if desired
-    return render_template("index.html", now=datetime.now)
-
+    return render_template("index.html", now=lambda: datetime.now(timezone.utc))
 
 @app.route("/records")
 @login_required
@@ -240,7 +321,7 @@ def records():
     filters = build_filters_from_request(filters_map)
     base_q = JobRecord.query.filter(*filters)
 
-    pagination = base_q.paginate(page=page, per_page=25)
+    pagination = base_q.paginate(page=page, per_page=25, error_out=False)
     all_records = pagination.items
 
     options = get_filter_options()
@@ -255,7 +336,6 @@ def records():
         filter_query=request.query_string.decode(),
         selected_record=selected_record,
     )
-
 
 @app.route("/edit/<int:record_id>", methods=["GET", "POST"])
 @login_required
@@ -281,9 +361,8 @@ def edit_record(record_id: int):
             flash(f"Record {record_id} updated.", "success")
         except Exception:
             flash("Failed to update record.", "error")
-        return redirect(url_for("map_sector_select"))
+        return redirect(request.referrer or url_for("records"))
 
-    # GET -> JSON for inline editor
     return jsonify(
         {
             "id": record.id,
@@ -297,7 +376,6 @@ def edit_record(record_id: int):
         }
     )
 
-
 @app.route("/delete/<int:record_id>", methods=["POST"])
 @login_required
 def delete_record(record_id: int):
@@ -310,12 +388,68 @@ def delete_record(record_id: int):
         flash("Failed to delete record.", "error")
     return redirect(request.referrer or url_for("records"))
 
-
 @app.route("/export")
 @login_required
 def export_records():
-    return "🚧 Export feature coming soon!"
+    """Export current filtered records to Excel (default) or CSV via ?format=csv."""
+    export_format = (request.args.get("format") or "xlsx").lower()
 
+    filters_map = {
+        "sector": request.args.get("sector"),
+        "job_role": request.args.get("job_role"),
+        "county": request.args.get("county"),
+        "month": request.args.get("month"),
+        "year": request.args.get("year"),
+    }
+    filters = build_filters_from_request(filters_map)
+    rows = (
+        db.session.query(JobRecord)
+        .filter(*filters)
+        .order_by(JobRecord.imported_year.desc(), JobRecord.imported_month.desc())
+        .all()
+    )
+
+    data = [
+        {
+            "company_id": r.company_id,
+            "company_name": r.company_name,
+            "sector": r.sector,
+            "job_role": r.job_role,
+            "postcode": r.postcode,
+            "county": r.county,
+            "pay_rate": r.pay_rate,
+            "imported_month": r.imported_month,
+            "imported_year": r.imported_year,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+        }
+        for r in rows
+    ]
+
+    df = pd.DataFrame(data)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+    if export_format == "csv":
+        buf = BytesIO()
+        df.to_csv(buf, index=False)
+        buf.seek(0)
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=f"pay-rate-export-{stamp}.csv",
+            mimetype="text/csv",
+        )
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="records")
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"pay-rate-export-{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 @app.route("/map")
 @login_required
@@ -329,7 +463,6 @@ def map_sector_select():
         .all()
     ]
     return render_template("map_select.html", sectors=sectors)
-
 
 @app.route("/map/<sector>")
 @login_required
@@ -348,7 +481,6 @@ def sector_map(sector: str):
 
     records = query.all()
 
-    # Attach logo URLs safely
     for record in records:
         record.logo_url = logo_url_for(record.company_id or "placeholder")
 
@@ -373,13 +505,14 @@ def sector_map(sector: str):
         },
     )
 
-
 @app.route("/admin/backfill-counties")
 @login_required
 def backfill_counties():
     if not current_user.is_superuser():
         flash("Access denied – superuser only.", "error")
         return redirect(url_for("home"))
+
+    limit = request.args.get("limit", type=int)
 
     from geopy.geocoders import Nominatim
     from geopy.extra.rate_limiter import RateLimiter
@@ -390,10 +523,11 @@ def backfill_counties():
     updated = 0
     skipped = 0
 
-    missing = (
-        JobRecord.query.filter((JobRecord.county == None) | (JobRecord.county == ""))
-        .all()
-    )
+    q = JobRecord.query.filter((JobRecord.county == None) | (JobRecord.county == ""))  # noqa: E711
+    if limit:
+        q = q.limit(limit)
+    missing = q.all()
+
     for record in missing:
         if record.latitude and record.longitude:
             try:
@@ -417,16 +551,13 @@ def backfill_counties():
         flash("Failed to save backfill results.", "error")
     return redirect(url_for("upload"))
 
-
 @app.context_processor
 def inject_now():
-    return {"current_year": datetime.now().year}
-
+    return {"current_year": datetime.now(timezone.utc).year}
 
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # Filters from query string
     selected_sector = request.args.get("sector")
     selected_county = request.args.get("county")
     selected_role = request.args.get("role")
@@ -440,16 +571,13 @@ def dashboard():
         filters.append(JobRecord.job_role == selected_role)
 
     base_q = JobRecord.query.filter(*filters)
-
     filtered_records = base_q.all()
 
-    # Totals and averages from filtered records
     total_records = len(filtered_records)
     total_companies = len({r.company_id for r in filtered_records})
     pays = [r.pay_rate for r in filtered_records if r.pay_rate is not None]
     avg_pay = round(sum(pays) / len(pays), 2) if pays else 0
 
-    # Group by sector / county using the same filters
     by_sector = (
         db.session.query(JobRecord.sector, func.count(), func.avg(JobRecord.pay_rate))
         .filter(*filters)
@@ -463,7 +591,6 @@ def dashboard():
         .all()
     )
 
-    # Dropdown options
     opts = get_filter_options()
 
     return render_template(
@@ -478,7 +605,6 @@ def dashboard():
         available_roles=opts["roles"],
     )
 
-
 @app.route("/insights")
 @login_required
 def insights():
@@ -488,20 +614,12 @@ def insights():
     month = request.args.get("month")
     year = request.args.get("year")
 
-    # Base query with filters
     filters = build_filters_from_request(
-        {
-            "sector": sector,
-            "job_role": job_role,
-            "county": county,
-            "month": month,
-            "year": year,
-        }
+        {"sector": sector, "job_role": job_role, "county": county, "month": month, "year": year}
     )
     base_q = JobRecord.query.filter(*filters)
     records = base_q.all()
 
-    # Convert records to serializable format for JS
     serialized_records = [
         {
             "company_id": r.company_id,
@@ -532,7 +650,6 @@ def insights():
         options=options,
     )
 
-
 @app.route("/company/<company_id>")
 @login_required
 def company_profile(company_id: str):
@@ -560,21 +677,19 @@ def company_profile(company_id: str):
 
     peer_companies = []
     if counties:
-        # Peer companies in same county + same sector (excluding this company)
         peer_jobs = JobRecord.query.filter(
             JobRecord.company_id != company_id,
             JobRecord.county.in_(counties),
             JobRecord.sector == sector,
         ).all()
 
-        # Group by peer company
         peer_data = {}
         for j in peer_jobs:
             if j.company_id not in peer_data:
                 peer_data[j.company_id] = {
                     "company_name": j.company_name,
                     "jobs": [],
-                    "logo": f"/static/logos/{j.company_id}.png",
+                    "logo": logo_url_for(j.company_id),
                 }
             if j.pay_rate is not None:
                 peer_data[j.company_id]["jobs"].append(j.pay_rate)
@@ -590,11 +705,8 @@ def company_profile(company_id: str):
                         "average_pay": avg,
                     }
                 )
-
     else:
-        flash(
-            "This company has no valid county data. Showing job list only.", "warning"
-        )
+        flash("This company has no valid county data. Showing job list only.", "warning")
 
     return render_template(
         "company_profile.html",
@@ -605,34 +717,65 @@ def company_profile(company_id: str):
         county_avg=county_avg,
         peer_companies=peer_companies,
     )
+@app.route("/ai-logs", methods=["GET"])
+@login_required
+def ai_logs():
+    # Only admins
+    if getattr(current_user, "admin_level", 0) not in (1, 2):
+        abort(403)
 
+    # Query params
+    q = (request.args.get("q") or "").strip()
+    page = max(int(request.args.get("page", 1) or 1), 1)
+    per_page = min(max(int(request.args.get("per_page", 20) or 20), 5), 100)
 
-# ---------------------- UPLOAD + GEOCODE ----------------------
+    # Base query
+    query = AIAnalysisLog.query.order_by(desc(AIAnalysisLog.created_at))
 
-@lru_cache(maxsize=5000)
-def geocode_postcode_cached(postcode: str):
-    return geocode_postcode(postcode)
-
-
-def geocode_postcode(postcode: str) -> tuple[float | None, float | None]:
-    postcode = (postcode or "").strip()
-    if not postcode:
-        return (None, None)
-    try:
-        response = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"format": "json", "q": postcode},
-            headers={"User-Agent": "PayRateMapUploader"},
-            timeout=15,
+    # Optional search
+    if q:
+        like = f"%{q}%"
+        query = (
+            query.join(User, AIAnalysisLog.user, isouter=True)
+                 .filter(
+                     or_(
+                         AIAnalysisLog.filters.ilike(like),
+                         AIAnalysisLog.output_html.ilike(like),
+                         cast(AIAnalysisLog.record_count, String).ilike(like),
+                         User.username.ilike(like),
+                     )
+                 )
         )
-        response.raise_for_status()
-        data = response.json()
-        if data:
-            return (float(data[0]["lat"]), float(data[0]["lon"]))
-    except Exception as e:
-        print(f"Geocoding error for {postcode}: {e}")
-    return (None, None)
 
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    logs = pagination.items
+
+    return render_template(
+        "ai_logs.html",
+        logs=logs,
+        pagination=pagination,
+        q=q,
+        per_page=per_page,
+    )
+
+
+
+@app.route("/ai-logs/<int:log_id>", methods=["GET"])
+@login_required
+def ai_logs_get(log_id):
+    if getattr(current_user, "admin_level", 0) not in (1, 2):
+        abort(403)
+    row = AIAnalysisLog.query.get_or_404(log_id)
+    return jsonify({
+        "id": row.id,
+        "user_id": row.user_id,
+        "created_at": row.created_at.isoformat(),
+        "record_count": row.record_count,
+        "filters": row.filters,
+        "output_html": row.output_html,
+    })
+
+# ---------------------- UPLOAD + IMPORT ----------------------
 
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
@@ -644,53 +787,65 @@ def upload():
             return redirect(request.url)
 
         filename = secure_filename(file.filename)
-        if not filename.lower().endswith((".xlsx", ".xls")):
-            flash("Only Excel files are supported.", "error")
+        ext = os.path.splitext(filename.lower())[1]
+        allowed = app.config.get("ALLOWED_EXTENSIONS", {".xlsx", ".xls"})
+        if ext not in allowed:
+            flash("Only Excel/CSV files are supported.", "error")
             return redirect(request.url)
 
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(filepath)
 
         try:
-            df = pd.read_excel(filepath)
+            if ext == ".csv":
+                df = pd.read_csv(filepath)
+            else:
+                df = pd.read_excel(filepath)
 
-            # Normalize column names to lower-case once
             df.columns = [str(c).strip().lower() for c in df.columns]
 
-            required = {
-                "company_id",
-                "company_name",
-                "sector",
-                "postcode",
-                "job_role",
-                "pay_rate",
-            }
+            required = {"company_id", "company_name", "sector", "postcode", "job_role", "pay_rate"}
             missing = [c for c in required if c not in df.columns]
             if missing:
                 flash(f"Missing columns: {', '.join(missing)}", "error")
                 return redirect(request.url)
 
+            skip_geocode = bool(request.form.get("skip_geocode"))
+
+            # Bulk geocode up-front (unless skipping)
+            pc_to_latlon: dict[str, tuple[float | None, float | None]] = {}
+            if not skip_geocode and "postcode" in df.columns:
+                postcodes = df["postcode"].astype(str).fillna("").map(normalize_uk_postcode).tolist()
+                pc_to_latlon = bulk_geocode_postcodes(postcodes)
+
             added = 0
+            now_utc = datetime.now(timezone.utc)
+
             for _, row in df.iterrows():
-                # Row dict with safe defaults
-                row_dict = row.to_dict()
+                rowd = row.to_dict()
+                postcode_raw = str(rowd.get("postcode", "") or "")
+                postcode = normalize_uk_postcode(postcode_raw)
 
-                postcode = str(row_dict.get("postcode", "") or "").strip()
-                lat, lon = geocode_postcode_cached(postcode.upper())
+                if skip_geocode or not postcode:
+                    lat, lon = (None, None)
+                else:
+                    lat, lon = pc_to_latlon.get(postcode, (None, None))
+                    # Optional: try single-lookup fallback if bulk returned None
+                    if lat is None or lon is None:
+                        lat, lon = geocode_postcode_cached(postcode)
 
-                # Store month/year as strings to match your current model types
                 rec = JobRecord(
-                    company_id=str(row_dict.get("company_id", "") or ""),
-                    company_name=str(row_dict.get("company_name", "") or ""),
-                    sector=str(row_dict.get("sector", "") or ""),
+                    company_id=str(rowd.get("company_id", "") or ""),
+                    company_name=str(rowd.get("company_name", "") or ""),
+                    sector=str(rowd.get("sector", "") or ""),
                     postcode=postcode,
-                    job_role=str(row_dict.get("job_role", "") or ""),
-                    pay_rate=float(row_dict.get("pay_rate") or 0.0),
-                    county=str(row_dict.get("county", "") or ""),
+                    job_role=str(rowd.get("job_role", "") or ""),
+                    pay_rate=float(rowd.get("pay_rate") or 0.0),
+                    county=str(rowd.get("county", "") or ""),
                     latitude=lat,
                     longitude=lon,
-                    imported_month=str(datetime.now().month),
-                    imported_year=str(datetime.now().year),
+                    imported_month=str(now_utc.month),
+                    imported_year=str(now_utc.year),
                 )
                 db.session.add(rec)
                 added += 1
@@ -699,15 +854,76 @@ def upload():
                 commit_or_rollback()
                 flash(f"{added} records successfully uploaded.", "success")
             except Exception as e:
+                print(f"DB commit error during upload: {e}")
                 flash("Failed to save uploaded records.", "error")
 
         except Exception as e:
             flash("Error processing file.", "error")
             print(f"🚫 Upload failed ➡ {e}")
+        finally:
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
 
         return redirect(url_for("upload"))
 
     return render_template("upload.html")
+
+@app.route("/insights/ai-analyze", methods=["POST"])
+@login_required
+def ai_analyze_insights():
+    payload = request.get_json(force=True, silent=True) or {}
+    filters = payload.get("filters", {})
+    recs = payload.get("records", [])[:5000]  # safety cap
+
+    system_prompt = (
+        "You are a data analyst specialising in UK social care workforce pay. "
+        "Be concise and specific. Provide insights in HTML (<h4>, <ul>, <li>)."
+    )
+
+    user_prompt = f"""
+    Current filters: {json.dumps(filters, ensure_ascii=False)}
+
+    Records sample (first {min(len(recs), 200)} of {len(recs)}):
+    {json.dumps(recs[:200], ensure_ascii=False)}
+
+    Please:
+    - Summarise pay levels (mean, median, range).
+    - Highlight differences by sector, role, and county.
+    - Compare against UK RLW (£12.00) and London RLW (£13.15).
+    - Point out outliers and concentrations.
+    - Provide 3–5 actionable insights in under 200 words.
+    """
+
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+        )
+
+        html = resp.choices[0].message.content.strip()
+
+        # 🔹 Log usage
+        log = AIAnalysisLog(
+            user_id=current_user.id,
+            filters=json.dumps(filters, ensure_ascii=False),
+            record_count=len(recs),
+            output_html=html,
+        )
+        db.session.add(log)
+        db.session.commit()
+
+        return jsonify({"ok": True, "html": html})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ---------------------- LOGIN ----------------------
@@ -729,13 +945,115 @@ def login():
 
     return render_template("login.html")
 
-
 @app.route("/logout")
 def logout():
     logout_user()
     flash("Logged out.", "info")
     return redirect(url_for("login"))
 
+# ---------------------- CLI COMMANDS ----------------------
+
+def _read_dataframe_from_path(path: str):
+    ext = os.path.splitext(path.lower())[1]
+    if ext == ".csv":
+        df = pd.read_csv(path)
+    elif ext in {".xlsx", ".xls"}:
+        df = pd.read_excel(path)
+    else:
+        raise ValueError("Unsupported file type; use .csv, .xlsx, or .xls")
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df, ext
+
+def _ingest_df(df, *, month: int | None, year: int | None, skip_geocode: bool = False) -> int:
+    required = {"company_id", "company_name", "sector", "postcode", "job_role", "pay_rate"}
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns: {', '.join(missing)}")
+
+    now_utc = datetime.now(timezone.utc)
+    imonth = str(month or now_utc.month)
+    iyear = str(year or now_utc.year)
+
+    pc_to_latlon: dict[str, tuple[float | None, float | None]] = {}
+    if not skip_geocode and "postcode" in df.columns:
+        postcodes = df["postcode"].astype(str).fillna("").map(normalize_uk_postcode).tolist()
+        pc_to_latlon = bulk_geocode_postcodes(postcodes)
+
+    added = 0
+    for _, row in df.iterrows():
+        rowd = row.to_dict()
+        postcode_raw = str(rowd.get("postcode", "") or "")
+        postcode = normalize_uk_postcode(postcode_raw)
+        if skip_geocode or not postcode:
+            lat, lon = (None, None)
+        else:
+            lat, lon = pc_to_latlon.get(postcode, (None, None))
+            if lat is None or lon is None:
+                lat, lon = geocode_postcode_cached(postcode)
+
+        rec = JobRecord(
+            company_id=str(rowd.get("company_id", "") or ""),
+            company_name=str(rowd.get("company_name", "") or ""),
+            sector=str(rowd.get("sector", "") or ""),
+            postcode=postcode,
+            job_role=str(rowd.get("job_role", "") or ""),
+            pay_rate=float(rowd.get("pay_rate") or 0.0),
+            county=str(rowd.get("county", "") or ""),
+            latitude=lat,
+            longitude=lon,
+            imported_month=imonth,
+            imported_year=iyear,
+        )
+        db.session.add(rec)
+        added += 1
+
+    commit_or_rollback()
+    return added
+
+@app.cli.command("purge-records")
+def purge_records():
+    """Delete ALL JobRecord rows (keeps users)."""
+    count = db.session.query(JobRecord).delete(synchronize_session=False)
+    db.session.commit()
+    # For SQLite: normal INTEGER PRIMARY KEY resets to 1 when empty; no sqlite_sequence needed.
+    click.echo(f"Purged {count} JobRecord rows.")
+
+@app.cli.command("import-data")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--purge", is_flag=True, help="Delete all existing JobRecord rows first.")
+@click.option("--skip-geocode", is_flag=True, help="Do not geocode postcodes (faster).")
+@click.option("--month", type=int, default=None, help="Override imported month (1-12).")
+@click.option("--year", type=int, default=None, help="Override imported year, e.g. 2025.")
+def import_data(path, purge, skip_geocode, month, year):
+    """Import Excel/CSV file into JobRecord."""
+    if purge:
+        ctx = click.get_current_context()
+        ctx.invoke(purge_records)
+    df, _ = _read_dataframe_from_path(path)
+    added = _ingest_df(df, month=month, year=year, skip_geocode=skip_geocode)
+    click.echo(f"Imported {added} records from {os.path.basename(path)} (skip_geocode={skip_geocode}).")
+
+@app.cli.command("geocode-missing")
+@click.option("--limit", type=int, default=None, help="Max rows to process this run.")
+def geocode_missing(limit):
+    """Bulk-geocode JobRecords missing lat/lon using postcodes.io."""
+    q = JobRecord.query.filter(
+        (JobRecord.latitude == None) | (JobRecord.longitude == None)  # noqa: E711
+    )
+    if limit:
+        q = q.limit(limit)
+    rows = q.all()
+    pcs = [normalize_uk_postcode(r.postcode or "") for r in rows if r.postcode]
+    mapping = bulk_geocode_postcodes(pcs)
+    updated = 0
+    for r in rows:
+        pc = normalize_uk_postcode(r.postcode or "")
+        latlon = mapping.get(pc)
+        if latlon and latlon[0] is not None:
+            r.latitude, r.longitude = latlon
+            updated += 1
+    commit_or_rollback()
+    click.echo(f"Geocoded {updated} of {len(rows)} records.")
 
 # ---------------------- MAIN ----------------------
 

@@ -2,97 +2,124 @@
 {% block title %}Dashboard Summary{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 py-6">
-  <h2 class="text-2xl sm:text-3xl font-bold text-[#0160B1] mb-6">Dashboard Summary</h2>
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+
+  <!-- Page Heading -->
+  <div class="mb-6">
+    <h2 class="text-2xl sm:text-3xl font-bold" style="color: var(--brand);">Dashboard Summary</h2>
+    <p class="text-sm text-gray-500 mt-1">High-level overview with sector, county, and role filters.</p>
+  </div>
 
   <!-- Filters -->
-  <form method="GET" class="flex flex-wrap gap-4 mb-8">
-    <select name="sector" class="border rounded px-3 py-2 w-full sm:w-auto">
-      <option value="">All Sectors</option>
-      {% for sector in available_sectors %}
-        <option value="{{ sector }}" {% if request.args.get('sector') == sector %}selected{% endif %}>{{ sector }}</option>
-      {% endfor %}
-    </select>
+  <section class="card mb-8">
+    <form method="GET" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div>
+        <label for="sector" class="label">Sector</label>
+        <select id="sector" name="sector" class="input">
+          <option value="">All Sectors</option>
+          {% for sector in available_sectors %}
+            <option value="{{ sector }}" {% if request.args.get('sector') == sector %}selected{% endif %}>{{ sector }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-    <select name="county" class="border rounded px-3 py-2 w-full sm:w-auto">
-      <option value="">All Counties</option>
-      {% for county in available_counties %}
-        <option value="{{ county }}" {% if request.args.get('county') == county %}selected{% endif %}>{{ county or "Unknown" }}</option>
-      {% endfor %}
-    </select>
+      <div>
+        <label for="county" class="label">County</label>
+        <select id="county" name="county" class="input">
+          <option value="">All Counties</option>
+          {% for county in available_counties %}
+            <option value="{{ county }}" {% if request.args.get('county') == county %}selected{% endif %}>{{ county or "Unknown" }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-    <select name="job_role" class="border rounded px-3 py-2 w-full sm:w-auto">
-      <option value="">All Job Roles</option>
-      {% for role in available_roles %}
-        <option value="{{ role }}" {% if request.args.get('job_role') == role %}selected{% endif %}>{{ role }}</option>
-      {% endfor %}
-    </select>
+      <div>
+        <label for="job_role" class="label">Job Role</label>
+        <select id="job_role" name="job_role" class="input">
+          <option value="">All Job Roles</option>
+          {% for role in available_roles %}
+            <option value="{{ role }}" {% if request.args.get('job_role') == role %}selected{% endif %}>{{ role }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded w-full sm:w-auto">
-      Apply Filters
-    </button>
-  </form>
+      <div class="flex items-end">
+        <button type="submit" class="btn btn-primary w-full">Apply Filters</button>
+      </div>
+    </form>
+  </section>
 
   <!-- Summary Cards -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-    <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Records</h3>
-      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">{{ total_records }}</p>
-    </div>
+  <section class="mb-10">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="card p-6 text-center">
+        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Records</h3>
+        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">{{ total_records }}</p>
+      </div>
 
-    <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Companies</h3>
-      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">{{ total_companies }}</p>
-    </div>
+      <div class="card p-6 text-center">
+        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Companies</h3>
+        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">{{ total_companies }}</p>
+      </div>
 
-    <div class="bg-white p-6 rounded-lg shadow text-center">
-      <h3 class="text-base sm:text-lg font-semibold text-gray-700">Average Pay Rate</h3>
-      <p class="text-2xl sm:text-3xl font-bold text-[#0160B1]">£{{ avg_pay | round(2) }}</p>
+      <div class="card p-6 text-center">
+        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Average Pay Rate</h3>
+        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">£{{ avg_pay | round(2) }}</p>
+      </div>
     </div>
-  </div>
+  </section>
 
   <!-- Records by Sector -->
-  <h3 class="text-xl sm:text-2xl font-semibold text-[#0160B1] mb-4">Records by Sector</h3>
-  <div class="overflow-x-auto mb-10">
-    <table class="min-w-full bg-white shadow rounded text-sm">
-      <thead class="bg-gray-100 text-left">
-        <tr>
-          <th class="p-3 whitespace-nowrap">Sector</th>
-          <th class="p-3 whitespace-nowrap">Count</th>
-          <th class="p-3 whitespace-nowrap">Avg Pay Rate (£)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for sector, count, avg in by_sector %}
-        <tr class="border-t">
-          <td class="p-3">{{ sector }}</td>
-          <td class="p-3">{{ count }}</td>
-          <td class="p-3">{{ avg | round(2) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <section class="card mb-8">
+    <div class="p-5 sm:p-6">
+      <h3 class="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">Records by Sector</h3>
+      <div class="overflow-x-auto -mx-5 sm:mx-0">
+        <table class="min-w-full text-sm">
+          <thead class="text-left bg-gray-50">
+            <tr class="text-gray-600">
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Sector</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Count</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Avg Pay Rate (£)</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white">
+            {% for sector, count, avg in by_sector %}
+            <tr class="border-t hover:bg-gray-50">
+              <td class="py-3 px-5 sm:px-4 font-medium text-gray-900">{{ sector }}</td>
+              <td class="py-3 px-5 sm:px-4">{{ count }}</td>
+              <td class="py-3 px-5 sm:px-4">{{ avg | round(2) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
   <!-- Records by County -->
-  <h3 class="text-xl sm:text-2xl font-semibold text-[#0160B1] mb-4">Records by County</h3>
-  <div class="overflow-x-auto">
-    <table class="min-w-full bg-white shadow rounded text-sm">
-      <thead class="bg-gray-100 text-left">
-        <tr>
-          <th class="p-3 whitespace-nowrap">County</th>
-          <th class="p-3 whitespace-nowrap">Count</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for county, count in by_county %}
-        <tr class="border-t">
-          <td class="p-3">{{ county or "Unknown" }}</td>
-          <td class="p-3">{{ count }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <section class="card">
+    <div class="p-5 sm:p-6">
+      <h3 class="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">Records by County</h3>
+      <div class="overflow-x-auto -mx-5 sm:mx-0">
+        <table class="min-w-full text-sm">
+          <thead class="text-left bg-gray-50">
+            <tr class="text-gray-600">
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">County</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Count</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white">
+            {% for county, count in by_county %}
+            <tr class="border-t hover:bg-gray-50">
+              <td class="py-3 px-5 sm:px-4 font-medium text-gray-900">{{ county or "Unknown" }}</td>
+              <td class="py-3 px-5 sm:px-4">{{ count }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
 </div>
 {% endblock %}

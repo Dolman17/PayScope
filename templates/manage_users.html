@@ -1,71 +1,91 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 py-8">
-  <h2 class="text-xl sm:text-2xl font-bold mb-6">User Management</h2>
+<div class="max-w-5xl mx-auto px-2 sm:px-4 py-8">
 
-  <!-- Add New User Form -->
-  <form method="POST" class="bg-white shadow-md rounded p-4 mb-8">
-    <h3 class="text-lg sm:text-xl font-semibold mb-4">Add New User</h3>
-    <input type="hidden" name="action" value="add" />
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-      <input type="text" name="username" placeholder="Username" required class="border p-2 rounded w-full" />
-      <input type="password" name="password" placeholder="Password" required class="border p-2 rounded w-full" />
-      <select name="admin_level" class="border p-2 rounded w-full">
-        <option value="0">Normal User</option>
-        <option value="2">Admin</option>
-        <option value="1">Superuser</option>
-      </select>
+  <h2 class="text-2xl sm:text-3xl font-bold mb-6" style="color: var(--brand);">User Management</h2>
+
+  <!-- Add New User -->
+  <section class="card p-5 sm:p-6 mb-8">
+    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add New User</h3>
+    <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <input type="hidden" name="action" value="add" />
+      <div>
+        <label class="label" for="username">Username</label>
+        <input id="username" type="text" name="username" required class="input" placeholder="Username" />
+      </div>
+      <div>
+        <label class="label" for="password">Password</label>
+        <input id="password" type="password" name="password" required class="input" placeholder="Password" />
+      </div>
+      <div>
+        <label class="label" for="admin_level_add">Admin Level</label>
+        <select id="admin_level_add" name="admin_level" class="input">
+          <option value="0">Normal User</option>
+          <option value="2">Admin</option>
+          <option value="1">Superuser</option>
+        </select>
+      </div>
+      <div class="sm:col-span-3">
+        <button type="submit" class="btn btn-primary">Add User</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Existing Users -->
+  <section class="card p-5 sm:p-6">
+    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Existing Users</h3>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 text-left">
+          <tr class="text-gray-600">
+            <th class="py-3 px-4 font-semibold">ID</th>
+            <th class="py-3 px-4 font-semibold">Username</th>
+            <th class="py-3 px-4 font-semibold">Admin Level</th>
+            <th class="py-3 px-4 font-semibold">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white">
+          {% for user in users %}
+          <tr class="border-t">
+            <!-- Update form lives across this row up to the Update button -->
+            <form method="POST">
+              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="user_id" value="{{ user.id }}" />
+
+              <td class="py-3 px-4 align-middle">{{ user.id }}</td>
+              <td class="py-3 px-4 align-middle">{{ user.username }}</td>
+              <td class="py-3 px-4 align-middle">
+                <select name="admin_level" class="input">
+                  <option value="0" {% if user.admin_level == 0 %}selected{% endif %}>User</option>
+                  <option value="2" {% if user.admin_level == 2 %}selected{% endif %}>Admin</option>
+                  <option value="1" {% if user.admin_level == 1 %}selected{% endif %}>Superuser</option>
+                </select>
+              </td>
+              <td class="py-3 px-4 align-middle">
+                <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <button type="submit" class="btn btn-primary">Update</button>
+            </form>
+
+            {% if current_user.id != user.id %}
+              <!-- Separate delete form, unchanged action/fields -->
+              <form method="POST">
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="user_id" value="{{ user.id }}" />
+                <button type="submit" class="btn" style="border-color:#ef4444; color:#ef4444;">Delete</button>
+              </form>
+            {% else %}
+              <span class="text-gray-500 italic">Can't delete self</span>
+            {% endif %}
+                </div>
+              </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add User</button>
-  </form>
+  </section>
 
-  <!-- Existing Users Table -->
-  <div class="bg-white shadow-md rounded p-4 overflow-x-auto">
-    <h3 class="text-lg sm:text-xl font-semibold mb-4">Existing Users</h3>
-    <table class="min-w-full text-left border text-sm">
-      <thead>
-        <tr class="bg-gray-100">
-          <th class="py-2 px-4 border">ID</th>
-          <th class="py-2 px-4 border">Username</th>
-          <th class="py-2 px-4 border">Admin Level</th>
-          <th class="py-2 px-4 border">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
-        <tr>
-          <form method="POST">
-            <input type="hidden" name="action" value="update" />
-            <input type="hidden" name="user_id" value="{{ user.id }}" />
-            <td class="py-2 px-4 border">{{ user.id }}</td>
-            <td class="py-2 px-4 border">{{ user.username }}</td>
-            <td class="py-2 px-4 border">
-              <select name="admin_level" class="border p-1 rounded w-full">
-                <option value="0" {% if user.admin_level == 0 %}selected{% endif %}>User</option>
-                <option value="2" {% if user.admin_level == 2 %}selected{% endif %}>Admin</option>
-                <option value="1" {% if user.admin_level == 1 %}selected{% endif %}>Superuser</option>
-              </select>
-            </td>
-            <td class="py-2 px-4 border">
-              <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">Update</button>
-          </form>
-          {% if current_user.id != user.id %}
-          <form method="POST">
-            <input type="hidden" name="action" value="delete" />
-            <input type="hidden" name="user_id" value="{{ user.id }}" />
-            <button type="submit" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">Delete</button>
-          </form>
-          {% else %}
-            <span class="text-gray-500 italic">Can't delete self</span>
-          {% endif %}
-              </div>
-            </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
 </div>
 {% endblock %}
