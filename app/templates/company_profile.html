@@ -25,7 +25,7 @@
 
     <!-- Back link -->
     <div class="mt-4">
-      <a href="{{ url_for('records') }}" class="nav-chip">← Back to Records</a>
+      <a href="{{ url_for('records.records') }}" class="nav-chip">← Back to Records</a>
     </div>
   </div>
 
@@ -96,7 +96,7 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         {% for peer in peer_companies %}
-        <a href="{{ url_for('company_profile', company_id=peer.company_id) }}"
+        <a href="{{ url_for('records.company_profile', company_id=peer.company_id) }}"
            class="border border-gray-200 rounded-xl p-4 hover:shadow transition bg-white flex items-center gap-4">
           <img src="{{ peer.logo_url }}"
                alt="{{ peer.company_name }}"

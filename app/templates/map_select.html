@@ -13,7 +13,7 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 text-left">
     {% for sector in sectors %}
-      <a href="{{ url_for('sector_map', sector=sector) }}"
+      <a href="{{ url_for('maps.sector_map', sector=sector) }}"
          class="card p-5 sm:p-6 hover:shadow transition transform hover:-translate-y-0.5"
          aria-label="Open map for {{ sector }}">
         <div class="flex items-start justify-between gap-3">

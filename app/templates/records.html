@@ -8,7 +8,7 @@
   <h1 class="text-2xl sm:text-3xl font-bold text-center mb-6" style="color: var(--brand);">Uploaded Records</h1>
 
   {% if current_user.admin_level in [1, 2] %}
-  <form action="{{ url_for('backfill_counties') }}" method="get" class="mb-4">
+  <form action="{{ url_for('admin.backfill_counties') }}" method="get" class="mb-4">
     <button type="submit" class="btn btn-primary">
       Backfill Counties
     </button>
@@ -17,7 +17,13 @@
 
   <!-- Filters -->
   <section class="card mb-5">
-    <form method="GET" action="{{ url_for('records') }}" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+    <form method="GET" action="{{ url_for('records.records') }}" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4">
+
+      <div class="lg:col-span-2">
+        <label class="label" for="q">Search</label>
+        <input id="q" name="q" class="input text-sm" placeholder="Company, role, postcode…" value="{{ filters.q or '' }}">
+      </div>
+
       <div>
         <label class="label" for="sector">Sector</label>
         <select id="sector" name="sector" class="input text-sm">
@@ -68,19 +74,32 @@
         </select>
       </div>
 
-      <div class="flex items-end gap-2">
-        <button type="submit" class="btn btn-primary w-full sm:w-auto">Filter</button>
-        <a href="{{ url_for('records') }}" class="nav-chip">Clear</a>
+      <div class="lg:col-span-2">
+        <label class="label">Pay Rate Range (£/hr)</label>
+        <div class="flex gap-2">
+          <input type="number" step="0.01" name="rate_min" placeholder="Min" class="input text-sm" value="{{ filters.rate_min or '' }}">
+          <input type="number" step="0.01" name="rate_max" placeholder="Max" class="input text-sm" value="{{ filters.rate_max or '' }}">
+        </div>
+      </div>
+
+      <div class="sm:col-span-2 lg:col-span-8 flex items-end justify-between">
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="{{ url_for('records.records') }}" class="nav-chip">Clear</a>
+        </div>
+
+        <div class="flex gap-4 text-right">
+          {% set fq = filter_query or '' %}
+          <a href="{{ url_for('records.export_records') }}?{{ fq }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
+            Export to Excel
+          </a>
+          <a href="{{ url_for('records.export_records') }}?{{ fq }}&format=csv" class="text-sm hover:underline" style="color: var(--brand);">
+            Export to CSV
+          </a>
+        </div>
       </div>
     </form>
   </section>
-
-  <!-- Export -->
-  <div class="mb-4 text-right">
-    <a href="{{ url_for('export_records') }}?{{ filter_query }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
-      Export to Excel
-    </a>
-  </div>
 
   <!-- Table -->
   <section class="card overflow-x-auto">
@@ -105,7 +124,8 @@
           <td class="p-3"><input type="checkbox" name="selected_records" value="{{ record.id }}"></td>
           <td class="p-3">{{ record.company_id }}</td>
           <td class="p-3">
-            <a href="{{ url_for('company_profile', company_id=record.company_id) }}" class="hover:underline" style="color: var(--brand);">
+            <a href="{{ url_for('records.company_profile', company_id=record.company_id) }}"
+               class="hover:underline" style="color: var(--brand);">
               {{ record.company_name }}
             </a>
           </td>
@@ -117,7 +137,7 @@
           <td class="p-3">{{ record.imported_month }} {{ record.imported_year }}</td>
           <td class="p-3">
             <button onclick="openEditModal({{ record.id }})" class="hover:underline mr-2" style="color: var(--brand);">Edit</button>
-            <form method="POST" action="{{ url_for('delete_record', record_id=record.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+            <form method="POST" action="{{ url_for('records.delete_record', record_id=record.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
               <button type="submit" class="hover:underline" style="color:#ef4444;">Delete</button>
             </form>
           </td>
@@ -134,7 +154,7 @@
   <!-- Pagination -->
   <div class="flex justify-between items-center mt-6 text-sm text-gray-700">
     {% if pagination.has_prev %}
-      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.prev_num }}" class="hover:underline" style="color: var(--brand);">← Previous</a>
+      <a href="{{ url_for('records.records') }}?{{ fq }}&page={{ pagination.prev_num }}" class="hover:underline" style="color: var(--brand);">← Previous</a>
     {% else %}
       <span class="text-gray-400">← Previous</span>
     {% endif %}
@@ -142,7 +162,7 @@
     <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
 
     {% if pagination.has_next %}
-      <a href="{{ url_for('records') }}?{{ filter_query }}&page={{ pagination.next_num }}" class="hover:underline" style="color: var(--brand);">Next →</a>
+      <a href="{{ url_for('records.records') }}?{{ fq }}&page={{ pagination.next_num }}" class="hover:underline" style="color: var(--brand);">Next →</a>
     {% else %}
       <span class="text-gray-400">Next →</span>
     {% endif %}
@@ -201,9 +221,10 @@
         </div>
 
         <div class="mb-4 text-right space-x-4">
-          <a href="{{ url_for('export_records') }}?{{ filter_query }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
-                    Export to Excel</a>
-        <a href="{{ url_for('export_records') }}?{{ filter_query }}&format=csv" class="text-sm hover:underline" style="color: var(--brand);">
+          <a href="{{ url_for('records.export_records') }}?{{ fq }}" class="text-sm font-semibold hover:underline" style="color: var(--brand);">
+            Export to Excel
+          </a>
+          <a href="{{ url_for('records.export_records') }}?{{ fq }}&format=csv" class="text-sm hover:underline" style="color: var(--brand);">
             Export to CSV
           </a>
         </div>
@@ -231,7 +252,7 @@
         document.getElementById('editJobRole').value = data.job_role || '';
         document.getElementById('editPostcode').value = data.postcode || '';
         document.getElementById('editCounty').value = data.county || '';
-        document.getElementById('editPayRate').value = data.pay_rate ?? '';
+        document.getElementById('editPayRate').value = (data.pay_rate ?? '');
         document.getElementById('editModal').classList.remove('hidden');
       });
   }
@@ -242,8 +263,8 @@
 
   document.getElementById('editForm').onsubmit = function (e) {
     e.preventDefault();
-    let id = document.getElementById('editRecordId').value;
-    let data = new FormData(this);
+    const id = document.getElementById('editRecordId').value;
+    const data = new FormData(this);
     fetch(`/edit/${id}`, { method: 'POST', body: data })
       .then(response => {
         if (response.ok) location.reload();

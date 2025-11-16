@@ -10,6 +10,8 @@
     <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add New User</h3>
     <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <input type="hidden" name="action" value="add" />
+      <!-- Optional CSRF from meta tag, only if present -->
+      <input type="hidden" name="csrf_token" id="csrf_add" value="">
       <div>
         <label class="label" for="username">Username</label>
         <input id="username" type="text" name="username" required class="input" placeholder="Username" />
@@ -49,10 +51,11 @@
         <tbody class="bg-white">
           {% for user in users %}
           <tr class="border-t">
-            <!-- Update form lives across this row up to the Update button -->
+            <!-- Update form -->
             <form method="POST">
               <input type="hidden" name="action" value="update" />
               <input type="hidden" name="user_id" value="{{ user.id }}" />
+              <input type="hidden" name="csrf_token" class="csrf_upd" value="">
 
               <td class="py-3 px-4 align-middle">{{ user.id }}</td>
               <td class="py-3 px-4 align-middle">{{ user.username }}</td>
@@ -69,10 +72,11 @@
             </form>
 
             {% if current_user.id != user.id %}
-              <!-- Separate delete form, unchanged action/fields -->
+              <!-- Delete form -->
               <form method="POST">
                 <input type="hidden" name="action" value="delete" />
                 <input type="hidden" name="user_id" value="{{ user.id }}" />
+                <input type="hidden" name="csrf_token" class="csrf_del" value="">
                 <button type="submit" class="btn" style="border-color:#ef4444; color:#ef4444;">Delete</button>
               </form>
             {% else %}
@@ -88,4 +92,18 @@
   </section>
 
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // If a CSRF meta tag exists (from base.html), copy it into hidden inputs.
+  (function(){
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (!token) return;
+    const single = document.getElementById('csrf_add'); if (single) single.value = token;
+    document.querySelectorAll('.csrf_upd').forEach(i => i.value = token);
+    document.querySelectorAll('.csrf_del').forEach(i => i.value = token);
+  })();
+</script>
 {% endblock %}

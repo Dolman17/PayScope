@@ -34,11 +34,11 @@
       </div>
 
       <div>
-        <label for="job_role" class="label">Job Role</label>
-        <select id="job_role" name="job_role" class="input">
+        <label for="role" class="label">Job Role</label>
+        <select id="role" name="role" class="input">
           <option value="">All Job Roles</option>
           {% for role in available_roles %}
-            <option value="{{ role }}" {% if request.args.get('job_role') == role %}selected{% endif %}>{{ role }}</option>
+            <option value="{{ role }}" {% if request.args.get('role') == role %}selected{% endif %}>{{ role }}</option>
           {% endfor %}
         </select>
       </div>

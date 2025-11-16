@@ -134,12 +134,10 @@
   const jsonModal   = document.getElementById('jsonModal');
   const jsonBody    = document.getElementById('jsonModalBody');
 
-  // Load output HTML for a given log via a tiny JSON endpoint or embed via data-* attributes
-  // Here we inline-fetch by injecting HTML we already have? We don’t have it on this page,
-  // so let’s call a tiny endpoint to get the output.
+  // Load output HTML for a given log via blueprint-prefixed endpoint
   async function showOutputModal(id){
     try{
-      const r = await fetch(`/ai-logs/${id}`);
+      const r = await fetch(`/admin/ai-logs/${id}`);
       const data = await r.json();
       outputBody.innerHTML = data.output_html || '<p class="text-gray-500">No output stored.</p>';
     }catch(e){

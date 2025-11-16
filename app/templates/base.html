@@ -31,7 +31,6 @@
     html, body { height: 100%; }
     body { font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 
-    /* Reusable UI primitives to match PIP app */
     .btn{ 
       display:inline-flex; align-items:center; justify-content:center;
       padding: 0.55rem 0.9rem; border-radius: 0.75rem; font-weight:600;
@@ -47,7 +46,6 @@
       border: 1px solid #e5e7eb;
     }
 
-    /* Inputs */
     .input{
       width: 100%; border:1px solid #e5e7eb; background:#fff; color:var(--ink);
       padding: .6rem .75rem; border-radius:.75rem; outline: none;
@@ -58,7 +56,6 @@
     }
     .label{ display:block; font-weight:600; color: var(--ink-2); margin-bottom:.35rem; }
 
-    /* Nav link “chip” */
     .nav-chip{
       display:inline-flex; align-items:center; height: 2.25rem;
       padding: 0 .8rem; border-radius: 9999px; font-weight:600;
@@ -67,28 +64,26 @@
     }
     .nav-chip:hover{ background: rgba(0,91,90,0.06); transform: translateY(-1px); }
 
-    /* Flash styles aligned to palette */
     .flash{ padding:.75rem 1rem; border-radius:.75rem; font-weight:600; }
     .flash-success{ background: var(--success-bg); color: var(--success-fg); }
     .flash-info{ background: var(--info-bg); color: var(--info-fg); }
     .flash-error{ background: var(--error-bg); color: var(--error-fg); }
 
-    /* Header shadow + sticky feel */
     .app-header{ position: sticky; top:0; z-index:40; background: #ffffffcc; backdrop-filter: saturate(180%) blur(6px); }
   </style>
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
-
 </head>
+
 <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
 
   <!-- Header -->
   <header class="app-header border-b">
     <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
       <div class="flex items-center space-x-3">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Pay Rate Map Logo" class="h-10 w-auto rounded-lg border border-gray-200">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Pay Rate Map Logo" class="h-10 w-auto rounded-lg border border-gray-200"
+             onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
         <div>
           <h1 class="text-lg sm:text-xl font-bold" style="color: var(--brand);">Pay Rate Map</h1>
-          <p class="text-xs text-gray-500 hidden sm:block"></p>
         </div>
       </div>
 
@@ -97,24 +92,23 @@
           <span class="text-gray-600 hidden md:inline">Hi, <strong>{{ current_user.username }}</strong></span>
 
           <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
-          <a href="{{ url_for('upload') }}" class="nav-chip">Upload</a>
-          <a href="{{ url_for('map_sector_select') }}" class="nav-chip">Map View</a>
-          <a href="{{ url_for('records') }}" class="nav-chip">Records</a>
+          <a href="{{ url_for('upload.upload') }}" class="nav-chip">Upload</a>
+          <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
+          <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
 
           {% if current_user.admin_level in [1, 2] %}
-            <a href="{{ url_for('dashboard') }}" class="nav-chip">Dashboard</a>
-            <a href="{{ url_for('insights') }}" class="nav-chip">Insights</a>
-            <a href="{{ url_for('ai_logs') }}" class="nav-chip">AI Logs</a>  {# ← new #}
+            <a href="{{ url_for('dashboard.dashboard') }}" class="nav-chip">Dashboard</a>
+            <a href="{{ url_for('dashboard.insights') }}" class="nav-chip">Insights</a>
+            <a href="{{ url_for('admin.ai_logs') }}" class="nav-chip">AI Logs</a>
           {% endif %}
-
 
           {% if current_user.admin_level == 1 %}
-            <a href="{{ url_for('manage_users') }}" class="nav-chip">User Management</a>
+            <a href="{{ url_for('admin.manage_users') }}" class="nav-chip">User Management</a>
           {% endif %}
 
-          <a href="{{ url_for('logout') }}" class="text-gray-500 hover:underline ml-1">Logout</a>
+          <a href="{{ url_for('auth.logout') }}" class="text-gray-500 hover:underline ml-1">Logout</a>
         {% else %}
-          <a href="{{ url_for('login') }}" class="btn btn-primary">Login</a>
+          <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
         {% endif %}
       </nav>
     </div>
@@ -153,18 +147,16 @@
   {% block scripts %}{% endblock %}
 
   <script>
-  // CSRF helper for fetch
-  function getCsrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-  }
-
-  async function fetchWithCsrf(url, options={}) {
-    const headers = options.headers || {};
-    const token = getCsrfToken();
-    if (token) headers['X-CSRFToken'] = token;
-    return fetch(url, { ...options, headers });
-  }
-</script>
+    function getCsrfToken() {
+      return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    }
+    async function fetchWithCsrf(url, options={}) {
+      const headers = options.headers || {};
+      const token = getCsrfToken();
+      if (token) headers['X-CSRFToken'] = token;
+      return fetch(url, { ...options, headers });
+    }
+  </script>
 
 </body>
 </html>

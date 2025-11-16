@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Insights & Analytics{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
@@ -276,7 +277,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildAIPayload())
         });
-
 
         if (!resp.ok) {
           const text = await resp.text();

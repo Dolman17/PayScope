@@ -1,0 +1,399 @@
+{% extends "base.html" %} 
+
+{% block title %}Pay Rate Map: {{ sector }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+
+  <!-- Header + Back -->
+  <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
+    <h1 class="text-2xl font-bold" style="color: var(--brand);">Pay Rate Map: {{ sector }}</h1>
+    <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip w-full sm:w-auto text-center">← Back to Sectors</a>
+  </div>
+
+  <!-- Filters -->
+  <section class="card mb-5">
+    <form method="GET" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div class="lg:col-span-2">
+        <label for="job_role" class="label">Job Role</label>
+        <select id="job_role" name="job_role" class="input">
+          <option value="">All Job Roles</option>
+          {% for role in job_roles %}
+            <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="min_pay" class="label">Min £</label>
+        <input id="min_pay" type="number" step="0.01" name="min_pay" placeholder="Min £" class="input" value="{{ filters.min_pay }}">
+      </div>
+
+      <div>
+        <label for="max_pay" class="label">Max £</label>
+        <input id="max_pay" type="number" step="0.01" name="max_pay" placeholder="Max £" class="input" value="{{ filters.max_pay }}">
+      </div>
+
+      <div class="flex items-end">
+        <button type="submit" class="btn btn-primary w-full">Filter</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Map + Insights side-by-side -->
+  <section class="card">
+    <div class="p-2 sm:p-3">
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <!-- Map (75% on lg+) -->
+        <div class="lg:col-span-3">
+          <div id="map" class="w-full rounded-lg border border-gray-200" style="height:70vh;"></div>
+
+          <!-- Legend (sits under the map on the left column) -->
+          <div id="rateLegend"
+               class="mt-2 inline-flex flex-wrap items-center gap-2 text-xs bg-white/90 border border-gray-200 rounded-lg px-3 py-2 shadow"
+               style="backdrop-filter: saturate(180%) blur(6px);">
+            <span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span>
+            <!-- filled by JS -->
+          </div>
+        </div>
+
+        <!-- Insight Box (25% on lg+, full width on mobile) -->
+        <div id="insightBox"
+             class="rounded-2xl border border-slate-200 bg-white shadow-xl"
+             style="height:70vh; overflow:auto;">
+          <div class="flex items-center justify-between px-4 pt-3">
+            <h3 class="font-semibold text-slate-800">Map Insights</h3>
+            <button id="insightRefresh"
+                    class="text-white text-xs font-semibold px-2 py-1 rounded-md"
+                    style="background:#0160B1">Refresh</button>
+          </div>
+          <div id="insightBody" class="px-4 pb-4 pt-2 text-sm text-slate-700">
+            <div class="py-2 text-slate-500">Calculating…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- MarkerCluster plugin -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <style>
+    #map, #map .leaflet-container { height: 70vh; min-height: 360px; }
+    .legend-swatch {
+      width: 12px; height: 12px; border-radius: 3px; display: inline-block;
+      border: 1px solid #9ca3af; /* gray-400 */
+      vertical-align: -2px;
+    }
+  </style>
+
+  <script>
+    function onMapReady(fn) {
+      const el = document.getElementById('map');
+      if (el) { fn(el); return; }
+      const tryAgain = () => {
+        const el2 = document.getElementById('map');
+        if (el2) fn(el2); else requestAnimationFrame(tryAgain);
+      };
+      requestAnimationFrame(tryAgain);
+    }
+
+    onMapReady(function () {
+      // ======= Config =======
+      const RLW_UK = 12.00;
+      const RLW_LONDON = 13.15;
+
+      // ======= Map init =======
+      const map = L.map('map', { zoomControl: true });
+      map.setView([54.5, -3], 6);
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      map.whenReady(() => setTimeout(() => map.invalidateSize(true), 0));
+      window.addEventListener('resize', () => map.invalidateSize(true));
+
+      const pointsLayer = L.markerClusterGroup();
+      map.addLayer(pointsLayer);
+
+      // Colour ramp for bins 1..5
+      const binColor = (bin) => ({
+        1: '#bbf7d0', // green-200
+        2: '#fef08a', // yellow-200
+        3: '#facc15', // yellow-400
+        4: '#fdba74', // orange-300
+        5: '#fca5a5', // red-300
+      })[bin] || '#e5e7eb';
+
+      function renderLegend(thresholds) {
+        const el = document.getElementById('rateLegend');
+        if (!el || !Array.isArray(thresholds) || thresholds.length !== 4) {
+          el && (el.innerHTML = '<span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span><span class="text-gray-500">No data visible — pan/zoom to update.</span>');
+          return;
+        }
+        const fmt = (v) => (isFinite(Number(v)) ? `£${Number(v).toFixed(2)}` : '—');
+        const [t1, t2, t3, t4] = thresholds.map(Number);
+        const labels = [
+          `≤ ${fmt(t1)}`,
+          `${fmt(t1)}–${fmt(t2)}`,
+          `${fmt(t2)}–${fmt(t3)}`,
+          `${fmt(t3)}–${fmt(t4)}`,
+          `> ${fmt(t4)}`
+        ];
+        const html = [
+          '<span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span>',
+          ...labels.map((lab, i) => `
+            <span class="inline-flex items-center gap-1 mr-2">
+              <span class="legend-swatch" style="background:${binColor(i+1)}"></span>
+              <span>${lab}</span>
+            </span>
+          `)
+        ].join('');
+        el.innerHTML = html;
+      }
+
+      async function loadPoints() {
+        const b = map.getBounds();
+        const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
+
+        const params = new URLSearchParams(window.location.search);
+        params.set('bbox', bbox);
+        params.set('sector', {{ sector | tojson }});
+
+        const url = `{{ url_for('maps.api_points') }}?` + params.toString();
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const geo = await res.json();
+
+        // Update legend from server thresholds
+        renderLegend(geo.thresholds);
+
+        // (Re)draw markers
+        pointsLayer.clearLayers();
+
+        geo.features.forEach(f => {
+          const [lng, lat] = f.geometry.coordinates;
+          const p = f.properties;
+          const bin = p.rate_bin || 1;
+
+          // Stronger visual: halo + coloured ring around logo
+          const el = document.createElement('div');
+          el.style.position = 'relative';
+          el.style.width = '44px';
+          el.style.height = '44px';
+
+          el.innerHTML = `
+            <!-- soft halo -->
+            <div style="
+              width: 24px; height: 24px; border-radius: 9999px;
+              background:${binColor(bin)}; border:1px solid #6b7280;
+              position:absolute; top:10px; left:10px; z-index: 0;">
+            </div>
+            <!-- logo with coloured ring -->
+            <div style="
+              position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center;">
+              <img src="${p.logo_url}" alt="${p.name}" style="
+                width: 40px; height: 40px; object-fit: contain; background:#fff;
+                border: 2px solid ${binColor(bin)}; border-radius: .5rem;" 
+                onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
+            </div>
+          `;
+
+          const icon = L.divIcon({ className: '', html: el, iconSize: [44, 44], iconAnchor: [22, 44], popupAnchor: [0, -38] });
+
+          const m = L.marker([lat, lng], { icon, data: {
+            provider_name: p.name,
+            hourly_rate: p.rate,
+            region: p.county,
+            service_type: p.role,
+            postcode: p.postcode
+          }});
+
+          const rateText = (p.rate != null) ? `£${Number(p.rate).toFixed(2)}` : '—';
+          const popupHtml = `
+            <div class="text-sm space-y-1 max-w-[260px]">
+              <div class="flex items-center gap-2 mb-2">
+                <img src="${p.logo_url}" alt="${p.name}"
+                     class="w-8 h-8 object-contain rounded border border-gray-200 bg-white"
+                     onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
+                <a href="/company/${p.company_id}" target="_blank"
+                   class="font-semibold hover:underline" style="color: var(--brand);">
+                  ${p.name}
+                </a>
+              </div>
+              <div><strong>Job Role:</strong> ${p.role || '—'}</div>
+              <div><strong>Pay Rate:</strong> ${rateText}</div>
+              <div><strong>Postcode:</strong> ${p.postcode || '—'}</div>
+              <div><strong>County:</strong> ${p.county || '—'}</div>
+              <div><strong>Uploaded:</strong> ${p.imported_month || '—'} ${p.imported_year || ''}</div>
+              <div class="mt-2">
+                <a href="/company/${p.company_id}" target="_blank"
+                   class="inline-block text-xs px-3 py-1 rounded border"
+                   style="background: var(--brand); color: #fff; border-color: transparent;">
+                   View Company Profile →
+                </a>
+              </div>
+            </div>
+          `;
+          m.bindPopup(popupHtml);
+          pointsLayer.addLayer(m);
+        });
+
+        // Refresh insights after redraw
+        updateInsights();
+      }
+
+      // ======= Insights logic (summary) =======
+      const gbp = v => isFinite(v) ? '£' + Number(v).toFixed(2) : '—';
+      const pctStr = v => isFinite(v) ? (v * 100).toFixed(1) + '%' : '—';
+      const median = arr => {
+        if (!arr.length) return NaN;
+        const s = [...arr].sort((a,b)=>a-b);
+        const m = Math.floor(s.length/2);
+        return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+      };
+      const mean = arr => arr.length ? (arr.reduce((a,b)=>a+b,0) / arr.length) : NaN;
+
+      function collectVisibleProviders() {
+        const rows = [];
+        const viewBounds = map.getBounds();
+        pointsLayer.eachLayer(layer => {
+          if (typeof layer.getLatLng === 'function') {
+            const ll = layer.getLatLng();
+            if (ll && viewBounds.contains(ll)) {
+              const props = layer.options && layer.options.data;
+              if (props) rows.push(props);
+            }
+          }
+        });
+        return rows;
+      }
+
+      function computeInsights(rows) {
+        const rates = rows.map(r => Number(r.hourly_rate)).filter(isFinite);
+        const total = rows.length;
+        const avg = mean(rates);
+        const med = median(rates);
+        const min = rates.length ? Math.min(...rates) : NaN;
+        const max = rates.length ? Math.max(...rates) : NaN;
+
+        const rlwFlags = rows.map(r => {
+          const base = Number(r.hourly_rate);
+          if (!isFinite(base)) return null;
+          // Simple London/UK threshold check
+          const region = (r.region || '').toString();
+          const isLondon = ["London","Greater London","City of London"].includes(region);
+          const threshold = isLondon ? RLW_LONDON : RLW_UK;
+          return base >= threshold ? 1 : 0;
+        }).filter(v => v !== null);
+        const rlwPct = rlwFlags.length ? (rlwFlags.reduce((a,b)=>a+b,0) / rlwFlags.length) : NaN;
+
+        const byRegion = {};
+        const byType = {};
+        rows.forEach(r => {
+          if (r.region) byRegion[r.region] = (byRegion[r.region] || 0) + 1;
+          if (r.service_type) byType[r.service_type] = (byType[r.service_type] || 0) + 1;
+        });
+
+        const buckets = [
+          { label: '< £11',      test: v => v < 11 },
+          { label: '£11–£12',    test: v => v >= 11 && v < 12 },
+          { label: '£12–£13',    test: v => v >= 12 && v < 13 },
+          { label: '£13–£14',    test: v => v >= 13 && v < 14 },
+          { label: '≥ £14',      test: v => v >= 14 },
+        ];
+        const hist = buckets.map(b => ({ label: b.label, count: rates.filter(b.test).length }));
+
+        return { total, avg, med, min, max, byRegion, byType, hist, rlwPct };
+      }
+
+      function renderInsightBox(stats) {
+        const el = document.getElementById('insightBody');
+        if (!stats || !el) return;
+        if (!stats.total) {
+          el.innerHTML = `
+            <div class="py-2">No providers currently visible.</div>
+            <div class="text-xs text-slate-500">Pan/zoom or apply filters to see insights.</div>
+          `;
+          return;
+        }
+
+        const topStats = `
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="text-xs text-slate-500">Visible Providers</div>
+              <div class="text-xl font-semibold">${stats.total}</div>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="text-xs text-slate-500">Avg Hourly Rate</div>
+              <div class="text-xl font-semibold">${gbp(stats.avg)}</div>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="text-xs text-slate-500">Median</div>
+              <div class="text-xl font-semibold">${gbp(stats.med)}</div>
+            </div>
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="text-xs text-slate-500">Range</div>
+              <div class="text-xl font-semibold">${gbp(stats.min)} – ${gbp(stats.max)}</div>
+            </div>
+          </div>
+        `;
+
+        const regions = Object.entries(stats.byRegion)
+          .sort((a,b)=>b[1]-a[1]).slice(0,3)
+          .map(([k,v])=>`<span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">${k}: ${v}</span>`)
+          .join(' ');
+
+        const hist = stats.hist.map(h => `
+          <div class="flex items-center justify-between">
+            <span>${h.label}</span>
+            <span class="font-medium">${h.count}</span>
+          </div>
+        `).join('');
+
+        el.innerHTML = `
+          ${topStats}
+          <div class="mt-3 rounded-xl border border-slate-200 p-3">
+            <div class="text-xs mb-1 font-medium text-slate-500">RLW Compliance (est.)</div>
+            <div class="text-lg font-semibold">${pctStr(stats.rlwPct)}</div>
+            <div class="text-[11px] text-slate-400 mt-1">Thresholds: UK £${RLW_UK.toFixed(2)} / London £${RLW_LONDON.toFixed(2)}</div>
+          </div>
+          <div class="mt-3">
+            <div class="text-xs mb-1 font-medium text-slate-500">Top Regions</div>
+            <div class="flex flex-wrap gap-1">${regions || '<span class="text-slate-400 text-xs">—</span>'}</div>
+          </div>
+          <div class="mt-3 rounded-xl border border-slate-200 p-3">
+            <div class="text-xs mb-2 font-medium text-slate-500">Rate Distribution</div>
+            <div class="space-y-1">${hist}</div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-400">Updates when you pan/zoom or apply filters.</div>
+        `;
+      }
+
+      function updateInsights() {
+        const rows = collectVisibleProviders();
+        const stats = computeInsights(rows);
+        renderInsightBox(stats);
+      }
+
+      map.on('moveend', loadPoints);
+      map.on('zoomend', loadPoints);
+      document.getElementById('insightRefresh')?.addEventListener('click', () => { updateInsights(); });
+
+      // Initial fetch
+      loadPoints();
+    });
+  </script>
+{% endblock %}

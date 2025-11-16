@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Pay Data{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto px-2 sm:px-4 py-10">
+
+  <div class="card bg-white rounded-xl p-6 sm:p-8">
+    <h1 class="text-2xl sm:text-3xl font-bold text-center mb-2" style="color: var(--brand);">
+      Upload Pay Rate File
+    </h1>
+    <p class="text-center text-sm text-gray-600 mb-6">
+      Accepted: <span class="font-medium">.xlsx, .xls, .csv</span>. Max ~20&nbsp;MB.
+    </p>
+
+    <form id="uploadForm" method="post" enctype="multipart/form-data" class="space-y-6" novalidate>
+      {% if csrf_token is defined %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
+
+      <div>
+        <label for="file" class="label">Select file</label>
+        <input
+          id="file"
+          type="file"
+          name="file"
+          required
+          accept=".xlsx,.xls,.csv"
+          class="input w-full"
+          aria-describedby="fileHelp fileName"
+        />
+        <p id="fileHelp" class="text-xs text-gray-500 mt-2">
+          File must include columns: <code>company_id</code>, <code>company_name</code>, <code>sector</code>,
+          <code>postcode</code>, <code>job_role</code>, <code>pay_rate</code>.
+        </p>
+        <p id="fileName" class="text-xs text-gray-600 mt-1 hidden" aria-live="polite"></p>
+      </div>
+
+      <label class="flex items-center gap-2 text-sm select-none">
+        <input type="checkbox" name="skip_geocode" class="h-4 w-4 rounded border-gray-300">
+        <span>Skip geocoding on upload (faster). I’ll geocode later.</span>
+      </label>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <!-- Default path: Preview & Validate -->
+        <button name="action" value="preview" class="btn btn-primary w-full">
+          Preview &amp; Validate
+        </button>
+        <!-- Optional direct commit: server will still show preview if errors exist -->
+        <button name="action" value="commit" class="btn btn-secondary w-full" type="submit" title="Imports immediately if no critical errors">
+          Commit Now
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="mt-6 text-center text-sm text-gray-500">
+    <p>Tip: Use the CSV template we provided for quickest results.</p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
+    const allowedExt = ['.xlsx', '.xls', '.csv'];
+
+    const form = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('file');
+    const fileName = document.getElementById('fileName');
+
+    // Show selected filename
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) {
+        fileName.classList.add('hidden');
+        return;
+      }
+      fileName.textContent = `${f.name} • ${(f.size/1024/1024).toFixed(2)} MB`;
+      fileName.classList.remove('hidden');
+    });
+
+    function extOK(name) {
+      const lower = name.toLowerCase();
+      return allowedExt.some(e => lower.endsWith(e));
+    }
+
+    // Light client-side checks; normal form POST will render preview/flash
+    form.addEventListener('submit', function (e) {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) {
+        e.preventDefault();
+        alert('Please choose a file.');
+        return;
+      }
+      if (!extOK(f.name)) {
+        e.preventDefault();
+        alert('Unsupported file type. Please upload .xlsx, .xls, or .csv.');
+        return;
+      }
+      if (f.size > MAX_SIZE) {
+        e.preventDefault();
+        alert('File is larger than 20 MB. Please upload a smaller file.');
+        return;
+      }
+    });
+  })();
+</script>
+{% endblock %}

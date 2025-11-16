@@ -50,3 +50,67 @@ class AIAnalysisLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", backref="ai_logs")
+
+# models_payrate.py (or wherever you keep models)
+from datetime import datetime
+from sqlalchemy import Index, CheckConstraint, UniqueConstraint
+from extensions import db
+
+
+class UploadBatch(db.Model):
+    __tablename__ = "upload_batches"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by = db.Column(db.String(120), nullable=True)  # username/email if available
+    source_filename = db.Column(db.String(255), nullable=True)
+    total_rows = db.Column(db.Integer, default=0, nullable=False)
+    inserted_rows = db.Column(db.Integer, default=0, nullable=False)
+    updated_rows = db.Column(db.Integer, default=0, nullable=False)
+    skipped_rows = db.Column(db.Integer, default=0, nullable=False)
+    errors_json = db.Column(db.Text, nullable=True)  # store aggregated errors per row
+
+class PayRate(db.Model):
+    __tablename__ = "pay_rates"
+    id = db.Column(db.Integer, primary_key=True)
+
+    employer_name = db.Column(db.String(200), nullable=False)
+    organisation = db.Column(db.String(40), nullable=False)          # Competitor | Blue Ribbon | Forevermore
+    role = db.Column(db.String(120), nullable=False)                  # e.g. Care Assistant, Senior Carer, RN
+    contract_type = db.Column(db.String(20), nullable=False)          # employed | bank | agency
+
+    base_rate = db.Column(db.Numeric(10, 2), nullable=False)          # £/hr
+    weekend_rate = db.Column(db.Numeric(10, 2), nullable=True)
+    night_rate = db.Column(db.Numeric(10, 2), nullable=True)
+    bh_rate = db.Column(db.Numeric(10, 2), nullable=True)
+    enhancement_notes = db.Column(db.String(400), nullable=True)
+    mileage_pence = db.Column(db.Integer, nullable=True)
+
+    effective_from = db.Column(db.Date, nullable=False)
+    source_url = db.Column(db.String(400), nullable=True)
+    notes = db.Column(db.String(400), nullable=True)
+
+    region = db.Column(db.String(80), nullable=False)
+    county = db.Column(db.String(80), nullable=True)
+    town_city = db.Column(db.String(120), nullable=True)
+    postcode = db.Column(db.String(12), nullable=False)
+
+    lat = db.Column(db.Float, nullable=True)
+    lon = db.Column(db.Float, nullable=True)
+
+    # linkage & soft delete
+    upload_batch_id = db.Column(db.Integer, db.ForeignKey("upload_batches.id"), nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        # Natural key to prevent duplicates per employer/role/place/date
+        UniqueConstraint(
+            "employer_name", "role", "contract_type", "postcode", "effective_from",
+            name="uq_payrate_employer_role_contract_postcode_date"
+        ),
+        CheckConstraint("base_rate >= 0", name="chk_payrate_base_rate_nonneg"),
+        Index("ix_payrate_org", "organisation"),
+        Index("ix_payrate_role", "role"),
+        Index("ix_payrate_region", "region"),
+        Index("ix_payrate_postcode", "postcode"),
+        Index("ix_payrate_latlon", "lat", "lon"),
+    )
