@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Job Postings - Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Job Postings</h1>
+      <p class="mt-1 text-sm text-gray-600">
+        View and filter job adverts ingested into the Pay Rate Map database.
+      </p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="bg-white shadow-sm rounded-lg p-4 mb-6 border border-gray-100">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+      <div>
+        <label for="source" class="block text-sm font-medium text-gray-700">Source</label>
+        <select id="source" name="source"
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600 text-sm">
+          <option value="">All sources</option>
+          {% for src in sources %}
+          <option value="{{ src }}" {% if src == selected_source %}selected{% endif %}>
+            {{ src }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="company" class="block text-sm font-medium text-gray-700">Company contains</label>
+        <input type="text" id="company" name="company"
+               value="{{ company_filter }}"
+               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600 text-sm"
+               placeholder="e.g. Blue Ribbon">
+      </div>
+
+      <div class="flex items-center space-x-2 mt-4 md:mt-0">
+        <input id="active" name="active" type="checkbox" value="1"
+               class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-600"
+               {% if active_only == "1" %}checked{% endif %}>
+        <label for="active" class="text-sm font-medium text-gray-700">Active only</label>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="submit"
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+          Apply filters
+        </button>
+      </div>
+    </div>
+  </form>
+
+  <!-- Jobs table -->
+  <div class="bg-white shadow-sm border border-gray-100 rounded-lg overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200 text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Title</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Company</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Location</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Pay</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Source</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Posted</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Scraped</th>
+            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+            <th scope="col" class="px-4 py-3 text-right font-semibold text-gray-700">Link</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 bg-white">
+          {% if jobs %}
+            {% for job in jobs %}
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">{{ job.title }}</div>
+                {% if job.postcode %}
+                <div class="text-xs text-gray-500">{{ job.postcode }}</div>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-gray-900">
+                {{ job.company_name or "-" }}
+              </td>
+              <td class="px-4 py-3 text-gray-900">
+                {{ job.location_text or "-" }}
+              </td>
+              <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
+                {% if job.min_rate or job.max_rate %}
+                  {% if job.min_rate and job.max_rate and job.min_rate != job.max_rate %}
+                    £{{ "%.2f"|format(job.min_rate) }} – £{{ "%.2f"|format(job.max_rate) }}
+                  {% else %}
+                    £{{ "%.2f"|format(job.min_rate or job.max_rate) }}
+                  {% endif %}
+                  {% if job.rate_type %}<span class="text-xs text-gray-500">/ {{ job.rate_type }}</span>{% endif %}
+                {% else %}
+                  <span class="text-gray-400">Not specified</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-gray-900">
+                {{ job.source_site }}
+                {% if job.contract_type %}
+                  <div class="text-xs text-gray-500">{{ job.contract_type }}</div>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
+                {% if job.posted_date %}
+                  {{ job.posted_date.strftime("%Y-%m-%d") }}
+                {% else %}
+                  <span class="text-gray-400">Unknown</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
+                {% if job.scraped_at %}
+                  {{ job.scraped_at.strftime("%Y-%m-%d %H:%M") }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="px-4 py-3">
+                {% if job.is_active %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Active
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    Inactive
+                  </span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-right">
+                {% if job.url %}
+                <a href="{{ job.url }}" target="_blank" rel="noopener"
+                   class="inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800">
+                  View
+                  <svg class="ml-1 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none"
+                       viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M13 5h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                {% else %}
+                  <span class="text-xs text-gray-400">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="9" class="px-4 py-8 text-center text-sm text-gray-500">
+                No job postings found for the current filters.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-sm">
+      <div class="text-gray-600">
+        Page {{ pagination.page }} of {{ pagination.pages }}
+      </div>
+      <div class="space-x-2">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('admin.admin_jobs', page=pagination.prev_num, source=selected_source, company=company_filter, active=active_only) }}"
+           class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-100">
+          Previous
+        </a>
+        {% endif %}
+        {% if pagination.has_next %}
+        <a href="{{ url_for('admin.admin_jobs', page=pagination.next_num, source=selected_source, company=company_filter, active=active_only) }}"
+           class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-100">
+          Next
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

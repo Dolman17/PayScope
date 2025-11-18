@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Scrape Jobs{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto py-8">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-8">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Scrape Jobs</h1>
+      <p class="mt-1 text-sm text-gray-600">
+        Run a live job scrape using Adzuna with custom role & location.
+      </p>
+    </div>
+
+    <a href="{{ url_for('admin.admin_jobs') }}"
+       class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm bg-gray-100 text-gray-800 hover:bg-gray-200">
+      ← Back to Jobs
+    </a>
+  </div>
+
+  <!-- Form -->
+  <form method="POST"
+        class="bg-white shadow rounded-lg p-6 space-y-6">
+    
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Role / Keyword</label>
+        <input type="text" name="role" value="{{ role }}"
+               placeholder="e.g. Support Worker"
+               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Location</label>
+        <input type="text" name="location" value="{{ location }}"
+               placeholder="e.g. Birmingham"
+               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-4">
+      <button type="submit"
+              class="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow hover:bg-blue-700">
+        Scrape Jobs
+      </button>
+
+      <a href="{{ url_for('admin.admin_job_scrape') }}"
+         class="px-5 py-2 bg-gray-100 text-gray-800 text-sm font-medium rounded-md shadow hover:bg-gray-200">
+        Clear
+      </a>
+    </div>
+  </form>
+
+  <!-- Messages -->
+  {% if message %}
+    <div class="mt-6 p-4 bg-blue-50 text-blue-800 border border-blue-200 rounded-md">
+      {{ message }}
+    </div>
+  {% endif %}
+
+  {% if message and processed == 0 %}
+    <div class="mt-4 p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md">
+      No records found.
+    </div>
+  {% endif %}
+
+  <!-- Results Table -->
+  {% if processed > 0 %}
+  <div class="mt-10">
+    <h2 class="text-xl font-semibold text-gray-900 mb-4">
+      Results ({{ processed }} jobs)
+    </h2>
+
+    <div class="overflow-x-auto bg-white shadow rounded-lg">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Title</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Company</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Location</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Salary</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Hour Rate</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Source</th>
+          </tr>
+        </thead>
+
+        <tbody class="divide-y divide-gray-200">
+          {% for job in records %}
+          <tr>
+            <td class="px-4 py-3 text-sm text-gray-900">
+              {{ job.title }}
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-700">
+              {{ job.company_name or "—" }}
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-700">
+              {{ job.location_text }}
+              {% if job.postcode %}
+                <div class="text-xs text-gray-500">{{ job.postcode }}</div>
+              {% endif %}
+            </td>
+
+            <td class="px-4 py-3 text-sm text-gray-700">
+              {% if job.raw_json and job.raw_json.get("salary_min") %}
+                £{{ job.raw_json.salary_min|int }} – £{{ job.raw_json.salary_max|int }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="px-4 py-3 text-sm text-gray-700">
+              {% if job.min_rate %}
+                £{{ job.min_rate }}
+                {% if job.max_rate and job.max_rate != job.min_rate %}
+                  – £{{ job.max_rate }}
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="px-4 py-3 text-sm text-gray-700">
+              {{ job.source_site }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

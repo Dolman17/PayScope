@@ -22,13 +22,16 @@ def _ttl_cache(seconds: int = 120):
     """
     def deco(fn):
         store = {}  # dict[(args_tuple, frozenset(kwargs.items()))] = (timestamp, value)
+
         def wrapper(*a, **k):
             key = (a, frozenset(k.items()))
             now = time.time()
             if key not in store or (now - store[key][0]) > seconds:
                 store[key] = (now, fn(*a, **k))
             return store[key][1]
+
         return wrapper
+
     return deco
 
 
@@ -43,6 +46,7 @@ def _compute_filter_options():
             .order_by(col)
             .all()
         ]
+
     return {
         "sectors": col_distinct(JobRecord.sector),
         "roles": col_distinct(JobRecord.job_role),
@@ -51,9 +55,11 @@ def _compute_filter_options():
         "years": col_distinct(JobRecord.imported_year),
     }
 
+
 @_ttl_cache(seconds=120)
 def _cached_filter_options():
     return _compute_filter_options()
+
 
 def get_filter_options(force: bool = False):
     """
@@ -105,6 +111,7 @@ def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Option
 
     # Free text search -> return a callable to apply later (keeps OR logic separate)
     q = (mapping.get("q") or "").strip()
+
     def _extra(qtext: str) -> Callable:
         like = f"%{qtext}%"
         return lambda qry: qry.filter(
@@ -116,6 +123,7 @@ def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Option
                 JobRecord.postcode.ilike(like),
             )
         )
+
     extra: Optional[Callable] = _extra(q) if q else None
 
     return filters, extra
@@ -142,18 +150,35 @@ def logo_url_for(company_id: str) -> str:
 POSTCODES_IO_BULK_URL = "https://api.postcodes.io/postcodes"
 POSTCODES_IO_SINGLE_URL = "https://api.postcodes.io/postcodes/{pc}"
 
+# Hard UK bounding box to prevent overseas mis-geocoding
+UK_BBOX = {
+    "min_lon": -10.5,
+    "max_lon": 1.9,
+    "min_lat": 49.8,
+    "max_lat": 59.0,
+}
+
+
+def inside_uk(lat: float, lon: float) -> bool:
+    return (
+        UK_BBOX["min_lat"] <= lat <= UK_BBOX["max_lat"]
+        and UK_BBOX["min_lon"] <= lon <= UK_BBOX["max_lon"]
+    )
+
+
 def normalize_uk_postcode(pc: str) -> str:
     s = re.sub(r"[^A-Za-z0-9]", "", (pc or "")).upper()
     if len(s) < 5:
         return s
     return s[:-3] + " " + s[-3:]
 
+
 def bulk_geocode_postcodes(postcodes: list[str]) -> dict[str, tuple[float | None, float | None]]:
     results: dict[str, tuple[float | None, float | None]] = {}
     cleaned = [normalize_uk_postcode(p) for p in postcodes if p]
     unique = sorted(set(cleaned))
     for i in range(0, len(unique), 100):
-        chunk = unique[i:i + 100]
+        chunk = unique[i : i + 100]
         try:
             resp = requests.post(POSTCODES_IO_BULK_URL, json={"postcodes": chunk}, timeout=20)
             resp.raise_for_status()
@@ -175,7 +200,16 @@ def bulk_geocode_postcodes(postcodes: list[str]) -> dict[str, tuple[float | None
 def geocode_postcode_cached(postcode: str) -> Tuple[float | None, float | None]:
     return geocode_postcode(postcode)
 
+
 def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
+    """
+    Geocode a UK postcode using postcodes.io only.
+
+    - Normalises the postcode
+    - Calls postcodes.io
+    - Returns (lat, lon) only if the result lies within the UK bounding box
+    - Otherwise returns (None, None)
+    """
     pc = normalize_uk_postcode(postcode)
     if not pc:
         return (None, None)
@@ -185,36 +219,16 @@ def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
         if r.status_code == 200:
             d = (r.json() or {}).get("result")
             if d:
-                return (float(d["latitude"]), float(d["longitude"]))
+                lat = float(d["latitude"])
+                lon = float(d["longitude"])
+                if inside_uk(lat, lon):
+                    return (lat, lon)
+                else:
+                    # Out-of-UK result (should not happen, but be safe)
+                    print(f"postcodes.io returned out-of-UK coords for {pc}: {lat}, {lon}")
+        else:
+            print(f"postcodes.io non-200 ({r.status_code}) for {pc}")
     except Exception as e:
         print(f"postcodes.io error for {pc}: {e}")
 
-    response = None
-    try:
-        for attempt in range(3):
-            try:
-                response = requests.get(
-                    "https://nominatim.openstreetmap.org/search",
-                    params={"format": "json", "q": pc},
-                    headers={
-                        "User-Agent": "PayRateMapUploader (contact: you@example.com)",
-                        "Accept-Language": "en-GB",
-                    },
-                    timeout=15,
-                )
-                response.raise_for_status()
-                data = response.json()
-                if data:
-                    return (float(data[0]["lat"]), float(data[0]["lon"]));
-                break
-            except requests.HTTPError:
-                if response is not None and response.status_code in (429, 502, 503, 504):
-                    import time as _t
-                    _t.sleep(1.0 * (attempt + 1))
-                    continue
-                raise
-    except Exception as e:
-        print(f"Geocoding error for {pc}: {e}")
-
     return (None, None)
-# ---------- Dashboard data helpers ----------

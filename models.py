@@ -114,3 +114,35 @@ class PayRate(db.Model):
         Index("ix_payrate_postcode", "postcode"),
         Index("ix_payrate_latlon", "lat", "lon"),
     )
+
+class JobPosting(db.Model):
+    __tablename__ = "job_postings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    company_name = db.Column(db.String(255), nullable=True)
+    location_text = db.Column(db.String(255), nullable=True)
+    postcode = db.Column(db.String(20), nullable=True)
+
+    min_rate = db.Column(db.Numeric(10, 2), nullable=True)
+    max_rate = db.Column(db.Numeric(10, 2), nullable=True)
+    rate_type = db.Column(db.String(50), nullable=True)      # 'hourly', 'annual', etc.
+    contract_type = db.Column(db.String(50), nullable=True)  # 'full-time', 'part-time', etc.
+
+    source_site = db.Column(db.String(100), nullable=False)  # e.g. 'indeed', 'totaljobs'
+    external_id = db.Column(db.String(255), nullable=True)   # job_id from source
+    url = db.Column(db.Text, nullable=True)
+
+    posted_date = db.Column(db.Date, nullable=True)
+    scraped_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    raw_json = db.Column(db.Text, nullable=True)  # optional debug blob
+
+      # ⬇️ ADD THESE LINES
+    search_role = db.Column(db.String(255), nullable=True)
+    search_location = db.Column(db.String(255), nullable=True)
+
+    __table_args__ = (
+        db.Index("ix_job_postings_source_ext", "source_site", "external_id"),
+    )
