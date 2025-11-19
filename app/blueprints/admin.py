@@ -1,14 +1,23 @@
 # app/blueprints/admin.py
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, jsonify
+
+from datetime import datetime
+
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    abort,
+    jsonify,
+)
 from flask_login import login_required, current_user
 from sqlalchemy import desc, or_, cast, String
-from datetime import datetime
+
 from extensions import db
-from app.scrapers.adzuna import AdzunaScraper
-
-
 from models import User, AIAnalysisLog, JobRecord, JobPosting
 from .utils import (
     commit_or_rollback,
@@ -16,15 +25,22 @@ from .utils import (
     geocode_postcode_cached,
     inside_uk,
 )
+from app.scrapers.adzuna import AdzunaScraper
+from app.importers.job_importer import import_posting_to_record
 
+# Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
 
 
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
 def _require_superuser():
     if not current_user.is_authenticated or not current_user.is_superuser():
         flash("Access denied – superuser only.", "error")
         return False
     return True
+
 
 def upsert_job_record(record, search_role=None, search_location=None) -> JobPosting:
     """
@@ -65,6 +81,7 @@ def upsert_job_record(record, search_role=None, search_location=None) -> JobPost
 
     if record.raw_json is not None:
         import json
+
         try:
             job.raw_json = json.dumps(record.raw_json)
         except TypeError:
@@ -72,15 +89,19 @@ def upsert_job_record(record, search_role=None, search_location=None) -> JobPost
 
     return job
 
-# -----------------------------------------
+
+# -------------------------------------------------------------------
 # JOB SCRAPER PAGE (manual scrape)
-# -----------------------------------------
+# -------------------------------------------------------------------
 @bp.route("/jobs/scrape", methods=["GET", "POST"])
 @login_required
 def admin_job_scrape():
     """
     Admin page to manually trigger job scrapes with custom role + location parameters.
     """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
     role = request.form.get("role") or ""
     location = request.form.get("location") or ""
     message = None
@@ -88,7 +109,6 @@ def admin_job_scrape():
     processed = 0
 
     if request.method == "POST":
-        # Scraper instance using user-selected parameters
         scraper = AdzunaScraper(what=role, where=location)
         try:
             records = scraper.scrape()
@@ -100,9 +120,9 @@ def admin_job_scrape():
                 location=location,
                 message=message,
                 processed=processed,
+                records=[],
             )
 
-        # Save to database
         for rec in records:
             upsert_job_record(rec, search_role=role, search_location=location)
             processed += 1
@@ -116,9 +136,13 @@ def admin_job_scrape():
         location=location,
         message=message,
         processed=processed,
+        records=records,
     )
 
 
+# -------------------------------------------------------------------
+# USER MANAGEMENT
+# -------------------------------------------------------------------
 @bp.route("/users", methods=["GET", "POST"])
 @login_required
 def manage_users():
@@ -191,6 +215,9 @@ def manage_users():
     return render_template("manage_users.html", users=users)
 
 
+# -------------------------------------------------------------------
+# BACKFILL COUNTIES
+# -------------------------------------------------------------------
 @bp.route("/backfill-counties")
 @login_required
 def backfill_counties():
@@ -238,21 +265,18 @@ def backfill_counties():
     return redirect(url_for("upload.upload"))
 
 
+# -------------------------------------------------------------------
+# REGEOCODE JOBS
+# -------------------------------------------------------------------
 @bp.route("/regeocode-jobs")
 @login_required
 def regeocode_jobs():
     """
     Re-geocode JobRecord.postcode values using the UK-only geocoder.
-
-    - Re-runs geocoding for records that:
-        * have missing latitude/longitude, OR
-        * have coordinates outside the UK bounding box.
-    - If a postcode still cannot be resolved inside the UK, lat/lon are cleared.
     """
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    # Clear cached geocoding results so we fetch fresh coordinates
     geocode_postcode_cached.cache_clear()
 
     limit = request.args.get("limit", type=int)
@@ -305,14 +329,15 @@ def regeocode_jobs():
     except Exception:
         flash("Failed to save re-geocoding results.", "error")
 
-    # Back to upload page (same as backfill_counties)
     return redirect(url_for("upload.upload"))
 
 
+# -------------------------------------------------------------------
+# AI LOGS
+# -------------------------------------------------------------------
 @bp.route("/ai-logs", methods=["GET"])
 @login_required
 def ai_logs():
-    # Only admins
     if getattr(current_user, "admin_level", 0) not in (1, 2):
         abort(403)
 
@@ -362,6 +387,10 @@ def ai_logs_get(log_id: int):
         }
     )
 
+
+# -------------------------------------------------------------------
+# DIAGNOSE POSTCODES
+# -------------------------------------------------------------------
 @bp.route("/diagnose-postcodes")
 @login_required
 def diagnose_postcodes():
@@ -382,16 +411,22 @@ def diagnose_postcodes():
         normalized = normalize_uk_postcode(raw)
         lat, lon = geocode_postcode(raw)
 
-        results.append({
-            "raw": raw,
-            "normalized": normalized,
-            "lat": lat,
-            "lon": lon,
-            "valid": lat is not None and lon is not None and inside_uk(lat, lon)
-        })
+        results.append(
+            {
+                "raw": raw,
+                "normalized": normalized,
+                "lat": lat,
+                "lon": lon,
+                "valid": lat is not None and lon is not None and inside_uk(lat, lon),
+            }
+        )
 
     return jsonify(results)
 
+
+# -------------------------------------------------------------------
+# CLEAR JOB RECORDS
+# -------------------------------------------------------------------
 @bp.route("/clear-job-records")
 @login_required
 def clear_job_records():
@@ -402,7 +437,6 @@ def clear_job_records():
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    # Delete all rows in the JobRecord table
     try:
         deleted = JobRecord.query.delete()
         commit_or_rollback()
@@ -411,22 +445,26 @@ def clear_job_records():
         print(f"Error clearing job records: {e}")
         flash("Failed to delete job records.", "error")
 
-    # Send you back to the upload page ready for a clean import
     return redirect(url_for("upload.upload"))
 
+
+# -------------------------------------------------------------------
+# JOB POSTINGS LIST
+# -------------------------------------------------------------------
 @bp.route("/jobs")
-@login_required  # swap for your own admin-only decorator if you have one
+@login_required
 def admin_jobs():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
     page = request.args.get("page", 1, type=int)
     per_page = 50
 
-    # Base query: newest first
     query = JobPosting.query.order_by(JobPosting.scraped_at.desc())
 
-    # Filters
     source = request.args.get("source", type=str)
     company = request.args.get("company", type=str)
-    active_only = request.args.get("active", "1")  # default: show only active
+    active_only = request.args.get("active", "1")
 
     if source:
         query = query.filter(JobPosting.source_site == source)
@@ -440,7 +478,6 @@ def admin_jobs():
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     jobs = pagination.items
 
-    # Distinct list of sources for the filter dropdown
     sources = (
         db.session.query(JobPosting.source_site)
         .distinct()
@@ -458,3 +495,62 @@ def admin_jobs():
         company_filter=company or "",
         active_only=active_only,
     )
+
+
+# -------------------------------------------------------------------
+# IMPORT SINGLE JOB POSTING → JobRecord
+# -------------------------------------------------------------------
+@bp.route("/jobs/import/<int:posting_id>", methods=["POST"])
+@login_required
+def admin_import_job(posting_id):
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    posting = JobPosting.query.get_or_404(posting_id)
+
+    if getattr(posting, "imported", False):
+        flash("This job has already been imported.", "warning")
+        return redirect(url_for("admin.admin_jobs"))
+
+    import_posting_to_record(posting)
+    db.session.commit()
+
+    flash("Job imported successfully into system records.", "success")
+    return redirect(url_for("admin.admin_jobs"))
+
+
+# -------------------------------------------------------------------
+# IMPORT ALL ACTIVE JOB POSTINGS → JobRecord
+# -------------------------------------------------------------------
+@bp.route("/jobs/import-all", methods=["POST"])
+@login_required
+def admin_import_all_jobs():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    postings = JobPosting.query.filter_by(is_active=True).all()
+    count = 0
+
+    for posting in postings:
+        if getattr(posting, "imported", False):
+            continue
+        import_posting_to_record(posting)
+        count += 1
+
+    db.session.commit()
+    flash(f"{count} job postings imported successfully.", "success")
+    return redirect(url_for("admin.admin_jobs"))
+
+
+@bp.route("/admin/jobs/import/<int:posting_id>", methods=["POST"])
+@login_required
+def import_job(posting_id):
+    posting = JobPosting.query.get_or_404(posting_id)
+
+    from app.job_importer import import_posting_to_record
+
+    record = import_posting_to_record(posting)
+    db.session.commit()
+
+    flash("Job imported successfully.", "success")
+    return redirect(url_for("admin.jobs_page"))

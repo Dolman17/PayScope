@@ -15,6 +15,22 @@
   </form>
   {% endif %}
 
+  {% if current_user.is_authenticated and current_user.admin_level in [1, 2] %}
+  <div class="flex justify-end mb-4">
+    <form method="get"
+          action="{{ url_for('admin.regeocode_jobs') }}"
+          class="inline-flex items-center">
+      {# Optional: limit how many records to process in one click #}
+      <input type="hidden" name="limit" value="200">
+      <button type="submit"
+              class="inline-flex items-center px-3 py-2 rounded-md text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-100">
+        🔄 Geocode Records
+      </button>
+    </form>
+  </div>
+{% endif %}
+
+
   <!-- Filters -->
   <section class="card mb-5">
     <form method="GET" action="{{ url_for('records.records') }}" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4">
@@ -124,10 +140,17 @@
           <td class="p-3"><input type="checkbox" name="selected_records" value="{{ record.id }}"></td>
           <td class="p-3">{{ record.company_id }}</td>
           <td class="p-3">
-            <a href="{{ url_for('records.company_profile', company_id=record.company_id) }}"
-               class="hover:underline" style="color: var(--brand);">
-              {{ record.company_name }}
-            </a>
+            {% if record.company_id %}
+  <a href="{{ url_for('records.company_profile', company_id=record.company_id) }}"
+     class="text-brand underline">
+    {{ record.company_name }}
+  </a>
+{% else %}
+  <span class="text-gray-800">
+    {{ record.company_name }}
+  </span>
+{% endif %}
+
           </td>
           <td class="p-3">{{ record.sector }}</td>
           <td class="p-3">{{ record.job_role }}</td>

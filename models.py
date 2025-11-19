@@ -15,13 +15,20 @@ class JobRecord(db.Model):
     postcode = db.Column(db.String(20))
     county = db.Column(db.String(50), index=True)
     pay_rate = db.Column(db.Float)
+
     imported_month = db.Column(db.String(20), index=True)
-    imported_year = db.Column(db.String(10), index=True)  # keep as string to match filters
+    imported_year = db.Column(db.String(10), index=True)
+
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Optional legacy field; safe to keep if you were storing filenames
+    imported_from_posting_id = db.Column(db.Integer)
+    imported_at = db.Column(db.DateTime)
+
+    external_url = db.Column(db.Text)
+
     logo_filename = db.Column(db.String(200))
 
 
@@ -126,23 +133,33 @@ class JobPosting(db.Model):
 
     min_rate = db.Column(db.Numeric(10, 2), nullable=True)
     max_rate = db.Column(db.Numeric(10, 2), nullable=True)
-    rate_type = db.Column(db.String(50), nullable=True)      # 'hourly', 'annual', etc.
-    contract_type = db.Column(db.String(50), nullable=True)  # 'full-time', 'part-time', etc.
+    rate_type = db.Column(db.String(50), nullable=True)      # hourly, annual, etc.
+    contract_type = db.Column(db.String(50), nullable=True)
 
-    source_site = db.Column(db.String(100), nullable=False)  # e.g. 'indeed', 'totaljobs'
-    external_id = db.Column(db.String(255), nullable=True)   # job_id from source
+    source_site = db.Column(db.String(100), nullable=False)
+    external_id = db.Column(db.String(255), nullable=True)
     url = db.Column(db.Text, nullable=True)
 
     posted_date = db.Column(db.Date, nullable=True)
     scraped_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    imported = db.Column(db.Boolean, default=False)
 
-    raw_json = db.Column(db.Text, nullable=True)  # optional debug blob
+    raw_json = db.Column(db.Text, nullable=True)
 
-      # ⬇️ ADD THESE LINES
     search_role = db.Column(db.String(255), nullable=True)
     search_location = db.Column(db.String(255), nullable=True)
 
     __table_args__ = (
         db.Index("ix_job_postings_source_ext", "source_site", "external_id"),
     )
+
+class Company(db.Model):
+    __tablename__ = "companies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), unique=True, index=True)
+    canonical_name = db.Column(db.String(255), index=True)  # normalized form for fuzzy match
+    sector = db.Column(db.String(50), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+

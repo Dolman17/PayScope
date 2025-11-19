@@ -46,7 +46,7 @@
 
       <div class="flex justify-end">
         <button type="submit"
-                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-blue-600 text-white hover:bg-blue-700">
           Apply filters
         </button>
       </div>
@@ -59,17 +59,18 @@
       <table class="min-w-full divide-y divide-gray-200 text-sm">
         <thead class="bg-gray-50">
           <tr>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Title</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Company</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Location</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Pay</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Source</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Posted</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Scraped</th>
-            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-            <th scope="col" class="px-4 py-3 text-right font-semibold text-gray-700">Link</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Title</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Company</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Location</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Pay</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Source</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Posted</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Scraped</th>
+            <th class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+            <th class="px-4 py-3 text-right font-semibold text-gray-700">Actions</th>
           </tr>
         </thead>
+
         <tbody class="divide-y divide-gray-200 bg-white">
           {% if jobs %}
             {% for job in jobs %}
@@ -80,12 +81,15 @@
                 <div class="text-xs text-gray-500">{{ job.postcode }}</div>
                 {% endif %}
               </td>
+
               <td class="px-4 py-3 text-gray-900">
                 {{ job.company_name or "-" }}
               </td>
+
               <td class="px-4 py-3 text-gray-900">
                 {{ job.location_text or "-" }}
               </td>
+
               <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
                 {% if job.min_rate or job.max_rate %}
                   {% if job.min_rate and job.max_rate and job.min_rate != job.max_rate %}
@@ -93,17 +97,21 @@
                   {% else %}
                     £{{ "%.2f"|format(job.min_rate or job.max_rate) }}
                   {% endif %}
-                  {% if job.rate_type %}<span class="text-xs text-gray-500">/ {{ job.rate_type }}</span>{% endif %}
+                  {% if job.rate_type %}
+                    <span class="text-xs text-gray-500">/ {{ job.rate_type }}</span>
+                  {% endif %}
                 {% else %}
                   <span class="text-gray-400">Not specified</span>
                 {% endif %}
               </td>
+
               <td class="px-4 py-3 text-gray-900">
                 {{ job.source_site }}
                 {% if job.contract_type %}
-                  <div class="text-xs text-gray-500">{{ job.contract_type }}</div>
+                <div class="text-xs text-gray-500">{{ job.contract_type }}</div>
                 {% endif %}
               </td>
+
               <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
                 {% if job.posted_date %}
                   {{ job.posted_date.strftime("%Y-%m-%d") }}
@@ -111,6 +119,7 @@
                   <span class="text-gray-400">Unknown</span>
                 {% endif %}
               </td>
+
               <td class="px-4 py-3 text-gray-900 whitespace-nowrap">
                 {% if job.scraped_at %}
                   {{ job.scraped_at.strftime("%Y-%m-%d %H:%M") }}
@@ -118,6 +127,7 @@
                   -
                 {% endif %}
               </td>
+
               <td class="px-4 py-3">
                 {% if job.is_active %}
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -129,29 +139,41 @@
                   </span>
                 {% endif %}
               </td>
-              <td class="px-4 py-3 text-right">
+
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+
+                <!-- VIEW LINK -->
                 {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener"
-                   class="inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800">
-                  View
-                  <svg class="ml-1 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none"
-                       viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M13 5h6m0 0v6m0-6L10 14" />
-                  </svg>
+                   class="inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800 mr-3">
+                  View →
                 </a>
+                {% endif %}
+
+                <!-- IMPORT BUTTON -->
+                {% if job.imported %}
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Imported
+                </span>
                 {% else %}
-                  <span class="text-xs text-gray-400">N/A</span>
+                <form action="{{ url_for('admin.admin_import_job', posting_id=job.id) }}"
+      method="POST" class="inline">
+  <button type="submit"
+          class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+    Import →
+  </button>
+</form>
+
                 {% endif %}
               </td>
             </tr>
             {% endfor %}
           {% else %}
-            <tr>
-              <td colspan="9" class="px-4 py-8 text-center text-sm text-gray-500">
-                No job postings found for the current filters.
-              </td>
-            </tr>
+          <tr>
+            <td colspan="9" class="px-4 py-8 text-center text-sm text-gray-500">
+              No job postings found for the current filters.
+            </td>
+          </tr>
           {% endif %}
         </tbody>
       </table>
