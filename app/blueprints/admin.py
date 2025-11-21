@@ -13,9 +13,12 @@ from flask import (
     flash,
     abort,
     jsonify,
+    current_app,
 )
+
 from flask_login import login_required, current_user
-from sqlalchemy import desc, or_, cast, String
+from sqlalchemy import desc, or_, cast, String, text, inspect
+
 
 from extensions import db
 from models import User, AIAnalysisLog, JobRecord, JobPosting
@@ -554,3 +557,61 @@ def import_job(posting_id):
 
     flash("Job imported successfully.", "success")
     return redirect(url_for("admin.jobs_page"))
+
+@bp.route("/db-health", methods=["GET"])
+@login_required
+def db_health():
+    """
+    Simple DB health + table list page.
+
+    - Superuser only
+    - Pings the DB with SELECT 1
+    - Lists all tables in the current database
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+    masked_uri = uri
+
+    # Mask credentials so we can see where we're connected
+    if "@" in uri:
+        # e.g. postgresql+pg8000://user:pass@host:port/db -> ***@host:port/db
+        try:
+            _, suffix = uri.split("@", 1)
+            masked_uri = f"***@{suffix}"
+        except ValueError:
+            masked_uri = uri
+
+    ping_ok = False
+    ping_error = None
+    tables = []
+    tables_error = None
+    backend = None
+
+    # 1) Basic ping
+    try:
+        db.session.execute(text("SELECT 1"))
+        ping_ok = True
+    except Exception as e:
+        ping_error = repr(e)
+
+    # 2) List tables if ping succeeded
+    if ping_ok:
+        try:
+            inspector = inspect(db.engine)
+            tables = sorted(inspector.get_table_names())
+            backend = db.engine.name  # e.g. "postgresql"
+        except Exception as e:
+            tables_error = repr(e)
+
+    return render_template(
+        "admin/db_health.html",
+        db_uri_masked=masked_uri,
+        ping_ok=ping_ok,
+        ping_error=ping_error,
+        backend=backend,
+        tables=tables,
+        tables_error=tables_error,
+    )
+

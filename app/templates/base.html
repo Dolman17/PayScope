@@ -31,7 +31,7 @@
     html, body { height: 100%; }
     body { font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 
-    .btn{ 
+    .btn{
       display:inline-flex; align-items:center; justify-content:center;
       padding: 0.55rem 0.9rem; border-radius: 0.75rem; font-weight:600;
       line-height:1; transition: all .15s ease; border:1px solid transparent;
@@ -54,7 +54,6 @@
     .input:focus{
       border-color: var(--brand); box-shadow: 0 0 0 4px var(--ring);
     }
-
     .label{ display:block; font-weight:600; color: var(--ink-2); margin-bottom:.35rem; }
 
     .nav-chip{
@@ -72,7 +71,6 @@
 
     .app-header{ position: sticky; top:0; z-index:40; background: #ffffffcc; backdrop-filter: saturate(180%) blur(6px); }
   </style>
-
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
 </head>
 
@@ -91,7 +89,6 @@
 
       <nav class="flex items-center gap-2 text-sm">
         {% if current_user.is_authenticated %}
-
           <span class="text-gray-600 hidden md:inline">Hi, <strong>{{ current_user.username }}</strong></span>
 
           <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
@@ -102,13 +99,10 @@
           {% if current_user.admin_level in [1, 2] %}
             <a href="{{ url_for('dashboard.dashboard') }}" class="nav-chip">Dashboard</a>
             <a href="{{ url_for('dashboard.insights') }}" class="nav-chip">Insights</a>
+            <a href="{{ url_for('admin.admin_jobs') }}" class="nav-chip">Jobs</a>
+            <a href="{{ url_for('admin.admin_job_scrape') }}" class="nav-chip">Job Scrape</a>
             <a href="{{ url_for('admin.ai_logs') }}" class="nav-chip">AI Logs</a>
-
-            <!-- NEW: JOB POSTINGS -->
-            <a href="{{ url_for('admin.admin_jobs') }}" class="nav-chip">Job Postings</a>
-
-            <!-- NEW: SCRAPE JOBS -->
-            <a href="{{ url_for('admin.admin_job_scrape') }}" class="nav-chip">Scrape Jobs</a>
+            <a href="{{ url_for('admin.db_health') }}" class="nav-chip">DB Health</a>
           {% endif %}
 
           {% if current_user.admin_level == 1 %}
@@ -116,7 +110,6 @@
           {% endif %}
 
           <a href="{{ url_for('auth.logout') }}" class="text-gray-500 hover:underline ml-1">Logout</a>
-
         {% else %}
           <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
         {% endif %}
@@ -149,7 +142,7 @@
   <footer class="bg-white text-center text-sm text-gray-500 py-5 border-t">
     <div class="max-w-7xl mx-auto px-4">
       <div class="card p-4">
-        <p>&copy; {{ current_year }} Pay Rate Map • Built for clarity in workforce data</p>
+        <p>&copy; {{ current_year }} Pay Rate Map • Built for clarity in care workforce data</p>
       </div>
     </div>
   </footer>

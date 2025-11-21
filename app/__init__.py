@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from flask import Flask, render_template
 from flask_login import LoginManager, login_required
+from sqlalchemy import exc as sa_exc
 
 from extensions import db, migrate
 from models import User  # must be importable after db is defined
@@ -18,20 +19,18 @@ login_manager.login_view = "auth.login"
 
 def create_app():
     app = Flask(__name__)
+
+    # ---------------------------------------------------------
+    # Load config (Postgres from Railway or SQLite fallback)
+    # ---------------------------------------------------------
     project_root = os.path.abspath(os.path.join(app.root_path, os.pardir))
     app.config.from_pyfile(os.path.join(project_root, "config.py"))
 
-    # If SECRET_KEY not set in config.py, fall back to env var / default
-    if not app.config.get("SECRET_KEY"):
-        app.config["SECRET_KEY"] = os.getenv(
-            "SECRET_KEY",
-            "dev-secret-change-me",
-        )
+    # SECRET KEY (required for sessions)
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
 
     # Sensible defaults
-    app.config.setdefault(
-        "UPLOAD_FOLDER", os.path.join(app.root_path, "uploads")
-    )
+    app.config.setdefault("UPLOAD_FOLDER", os.path.join(app.root_path, "uploads"))
     app.config.setdefault("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)  # 20 MB
     app.config.setdefault("ALLOWED_EXTENSIONS", {".xlsx", ".xls", ".csv"})
 
@@ -39,16 +38,12 @@ def create_app():
     if app.config.get("UPLOAD_FOLDER"):
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-    # Init extensions
+    # ---------------------------------------------------------
+    # Initialise extensions
+    # ---------------------------------------------------------
     db.init_app(app)
     migrate.init_app(app, db)
 
-    # 🔑 Ensure all tables exist (for fresh Postgres on Railway)
-    # This replaces the need for `flask db upgrade` in pre-deploy for now.
-    with app.app_context():
-        db.create_all()
-
-    # Login manager
     login_manager.init_app(app)
 
     @login_manager.user_loader
@@ -62,7 +57,22 @@ def create_app():
     def inject_now():
         return {"current_year": datetime.now(timezone.utc).year}
 
+    # ---------------------------------------------------------
+    # MULTI-WORKER SAFE create_all()
+    # ---------------------------------------------------------
+    with app.app_context():
+        try:
+            db.create_all()
+        except sa_exc.ProgrammingError as e:
+            # Happens when multiple workers try creating the same tables
+            app.logger.warning(f"db.create_all() warning (safe to ignore): {e}")
+        except Exception as e:
+            app.logger.error(f"db.create_all() failed: {e}")
+            raise
+
+    # ---------------------------------------------------------
     # Register blueprints
+    # ---------------------------------------------------------
     from .blueprints.auth import bp as auth_bp
     from .blueprints.admin import bp as admin_bp
     from .blueprints.records import bp as records_bp
@@ -77,7 +87,9 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(upload_bp)
 
+    # ---------------------------------------------------------
     # Home route
+    # ---------------------------------------------------------
     @app.route("/")
     @login_required
     def home():

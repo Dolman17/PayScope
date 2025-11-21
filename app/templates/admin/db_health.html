@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Database Health - Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-6">
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold text-gray-900">Database Health</h1>
+    <p class="mt-1 text-sm text-gray-600">
+      Quick overview of the current database connection and tables.
+    </p>
+  </div>
+
+  <!-- Connection card -->
+  <div class="bg-white shadow-sm border border-gray-200 rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">Connection status</h2>
+        <p class="text-xs text-gray-500 mt-1">
+          Using SQLAlchemy engine to connect to your configured database.
+        </p>
+      </div>
+
+      {% if ping_ok %}
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+          <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+          Connected
+        </span>
+      {% else %}
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+          <span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+          Connection error
+        </span>
+      {% endif %}
+    </div>
+
+    <dl class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div>
+        <dt class="font-medium text-gray-700">Backend</dt>
+        <dd class="mt-1 text-gray-900">
+          {% if backend %}
+            {{ backend }}
+          {% else %}
+            <span class="text-gray-400">Unknown</span>
+          {% endif %}
+        </dd>
+      </div>
+
+      <div class="md:col-span-1">
+        <dt class="font-medium text-gray-700">Database URI</dt>
+        <dd class="mt-1">
+          <code class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+            {{ db_uri_masked or "Not set" }}
+          </code>
+        </dd>
+      </div>
+    </dl>
+
+    {% if not ping_ok and ping_error %}
+      <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+        <div class="font-semibold mb-1">Error details</div>
+        <pre class="whitespace-pre-wrap break-all">{{ ping_error }}</pre>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Tables card -->
+  <div class="bg-white shadow-sm border border-gray-200 rounded-xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">Tables</h2>
+        <p class="text-xs text-gray-500 mt-1">
+          All tables detected in the current database.
+        </p>
+      </div>
+      {% if tables %}
+        <span class="text-xs text-gray-500">
+          {{ tables|length }} table{{ tables|length != 1 and 's' or '' }}
+        </span>
+      {% endif %}
+    </div>
+
+    {% if tables_error %}
+      <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+        <div class="font-semibold mb-1">Failed to list tables</div>
+        <pre class="whitespace-pre-wrap break-all">{{ tables_error }}</pre>
+      </div>
+    {% else %}
+      {% if tables %}
+        <ul class="divide-y divide-gray-100 rounded-md border border-gray-100 overflow-hidden text-sm">
+          {% for name in tables %}
+          <li class="px-4 py-2 flex items-center justify-between">
+            <span class="font-mono text-gray-800 text-xs sm:text-sm">{{ name }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-gray-500">
+          {% if ping_ok %}
+            No tables found in this database.
+          {% else %}
+            Unable to read table list because the connection failed.
+          {% endif %}
+        </p>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
