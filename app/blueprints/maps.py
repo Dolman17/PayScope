@@ -6,7 +6,7 @@ from flask_login import login_required
 from sqlalchemy import or_
 from extensions import db
 from models import JobRecord
-from .utils import logo_url_for
+from .utils import logo_url_for, company_has_logo   # <-- NEW IMPORT
 
 bp = Blueprint("maps", __name__)
 
@@ -22,6 +22,7 @@ def map_sector_select():
         .all()
     ]
     return render_template("map_select.html", sectors=sectors)
+
 
 @bp.route("/map/<sector>")
 @login_required
@@ -52,25 +53,34 @@ def sector_map(sector: str):
         },
     )
 
+
 def _apply_map_filters(q, sector: str, args):
     q = q.filter(JobRecord.sector == sector)
     jr = (args.get("job_role") or "").strip()
     if jr:
         q = q.filter(JobRecord.job_role == jr)
+
     min_pay = args.get("min_pay", type=float)
     max_pay = args.get("max_pay", type=float)
     if min_pay is not None:
         q = q.filter(JobRecord.pay_rate >= float(min_pay))
     if max_pay is not None:
         q = q.filter(JobRecord.pay_rate <= float(max_pay))
+
     # Optional free text for map via ?q=
     txt = (args.get("q") or "").strip()
     if txt:
         like = f"%{txt}%"
-        q = q.filter(or_(JobRecord.company_name.ilike(like),
-                         JobRecord.job_role.ilike(like),
-                         JobRecord.postcode.ilike(like)))
+        q = q.filter(
+            or_(
+                JobRecord.company_name.ilike(like),
+                JobRecord.job_role.ilike(like),
+                JobRecord.postcode.ilike(like),
+            )
+        )
+
     return q
+
 
 def _compute_bins(rates):
     """Return thresholds [t1,t2,t3,t4] for 5 bins (quintiles)."""
@@ -78,10 +88,13 @@ def _compute_bins(rates):
     if not rs:
         return [0, 0, 0, 0]
     rs.sort()
+
     def pct(p):
-        i = max(0, min(len(rs)-1, int(round(p*(len(rs)-1)))))
+        i = max(0, min(len(rs) - 1, int(round(p * (len(rs) - 1)))))
         return rs[i]
+
     return [pct(0.2), pct(0.4), pct(0.6), pct(0.8)]
+
 
 @bp.route("/api/points")
 @login_required
@@ -100,13 +113,16 @@ def api_points():
     except ValueError:
         return jsonify({"error": "bbox values must be numbers"}), 400
 
-    q = db.session.query(JobRecord).filter(
-        JobRecord.latitude.isnot(None),
-        JobRecord.longitude.isnot(None),
-        JobRecord.longitude >= min_lon,
-        JobRecord.longitude <= max_lon,
-        JobRecord.latitude >= min_lat,
-        JobRecord.latitude <= max_lat,
+    q = (
+        db.session.query(JobRecord)
+        .filter(
+            JobRecord.latitude.isnot(None),
+            JobRecord.longitude.isnot(None),
+            JobRecord.longitude >= min_lon,
+            JobRecord.longitude <= max_lon,
+            JobRecord.latitude >= min_lat,
+            JobRecord.latitude <= max_lat,
+        )
     )
     q = _apply_map_filters(q, sector, request.args)
 
@@ -119,31 +135,47 @@ def api_points():
             return 1
         r = float(rate)
         t1, t2, t3, t4 = thresholds
-        if r <= t1: return 1
-        if r <= t2: return 2
-        if r <= t3: return 3
-        if r <= t4: return 4
+        if r <= t1:
+            return 1
+        if r <= t2:
+            return 2
+        if r <= t3:
+            return 3
+        if r <= t4:
+            return 4
         return 5
 
     features = []
     for rec in q.limit(5000):
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [rec.longitude, rec.latitude]},
-            "properties": {
-                "id": rec.id,
-                "company_id": rec.company_id,
-                "name": rec.company_name,
-                "role": rec.job_role,
-                "sector": rec.sector,
-                "county": rec.county,
-                "postcode": rec.postcode,
-                "rate": float(rec.pay_rate) if rec.pay_rate is not None else None,
-                "rate_bin": bin_for(rec.pay_rate),
-                "logo_url": logo_url_for(rec.company_id or "placeholder"),
-                "imported_month": rec.imported_month,
-                "imported_year": rec.imported_year,
-            },
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [rec.longitude, rec.latitude],
+                },
+                "properties": {
+                    "id": rec.id,
+                    "company_id": rec.company_id,
+                    "name": rec.company_name,
+                    "role": rec.job_role,
+                    "sector": rec.sector,
+                    "county": rec.county,
+                    "postcode": rec.postcode,
+                    "rate": float(rec.pay_rate) if rec.pay_rate is not None else None,
+                    "rate_bin": bin_for(rec.pay_rate),
+                    "logo_url": logo_url_for(rec.company_id or "placeholder"),
+                    "has_logo": company_has_logo(rec.company_id),   # <-- NEW
+                    "imported_month": rec.imported_month,
+                    "imported_year": rec.imported_year,
+                },
+            }
+        )
 
-    return jsonify({"type": "FeatureCollection", "features": features, "thresholds": thresholds})
+    return jsonify(
+        {
+            "type": "FeatureCollection",
+            "features": features,
+            "thresholds": thresholds,
+        }
+    )

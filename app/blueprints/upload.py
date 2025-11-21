@@ -19,6 +19,7 @@ from .utils import (
     normalize_uk_postcode,
     bulk_geocode_postcodes,
     geocode_postcode_cached,
+    snap_to_nearest_postcode,  # NEW: infer postcode from lat/lon
 )
 
 bp = Blueprint("upload", __name__)
@@ -31,6 +32,7 @@ REQUIRED_COLS = {"company_id", "company_name", "sector", "postcode", "job_role",
 
 ALLOWED_EXTS = {".csv", ".xlsx", ".xls"}  # keep CSV + Excel
 
+
 def _as_decimal(v):
     if v is None or (isinstance(v, str) and v.strip() == ""):
         return None
@@ -38,6 +40,16 @@ def _as_decimal(v):
         return Decimal(str(v))
     except (InvalidOperation, ValueError, TypeError):
         return "INVALID_DECIMAL"
+
+
+def _as_float(v):
+    if v is None or (isinstance(v, str) and str(v).strip() == ""):
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
 
 def _load_dataframe(filepath: str, ext: str) -> pd.DataFrame:
     if ext == ".csv":
@@ -53,11 +65,15 @@ def _load_dataframe(filepath: str, ext: str) -> pd.DataFrame:
     df.columns = [str(c).strip().lower() for c in df.columns]
     return df
 
+
 def _validate_row(row: dict, rownum: int):
     """
-    Returns dict: { rownum, data, errors[], warnings[] }
+    Returns dict: { rownum, data, errors[], warnings[], postcode_norm, lat, lon }
+
     - Critical errors block commit.
     - Warnings are informational (e.g., odd postcode shape).
+    - NEW: If postcode is missing but latitude & longitude are provided,
+      we allow the row and infer postcode from coords later.
     """
     errors, warnings = [], []
 
@@ -83,12 +99,24 @@ def _validate_row(row: dict, rownum: int):
         if pay_rate_val < 0:
             errors.append("pay_rate must be >= 0")
 
+    # Optional coordinates (can be used to infer postcode)
+    lat_from_row = _as_float(row.get("latitude"))
+    lon_from_row = _as_float(row.get("longitude"))
+
     # Postcode normalisation + light validation
     postcode_raw = str(row.get("postcode", "") or "")
     postcode = normalize_uk_postcode(postcode_raw)
+
     if not postcode:
-        errors.append("postcode is required")
+        # No postcode string
+        if lat_from_row is None or lon_from_row is None:
+            # No coords either -> still a hard error
+            errors.append("postcode is required (or provide latitude and longitude to infer it)")
+        else:
+            # We'll infer postcode later from coords
+            warnings.append("postcode missing; will be inferred from latitude/longitude")
     else:
+        # Postcode present; warn on odd formats
         if not UK_POSTCODE_RE.match(postcode):
             warnings.append("postcode format looks unusual")
 
@@ -101,7 +129,10 @@ def _validate_row(row: dict, rownum: int):
         "errors": errors,
         "warnings": warnings,
         "postcode_norm": postcode,
+        "lat": lat_from_row,
+        "lon": lon_from_row,
     }
+
 
 def _geocode_postcodes_for_df(df: pd.DataFrame, skip_geocode: bool) -> dict[str, tuple[float | None, float | None]]:
     if skip_geocode or "postcode" not in df.columns:
@@ -111,6 +142,7 @@ def _geocode_postcodes_for_df(df: pd.DataFrame, skip_geocode: bool) -> dict[str,
     pc_to_latlon = bulk_geocode_postcodes(postcodes)
     # Fallbacks filled ad-hoc later during commit
     return pc_to_latlon
+
 
 # --- Route -------------------------------------------------------------------
 
@@ -142,7 +174,7 @@ def upload():
     try:
         df = _load_dataframe(filepath, ext)
 
-        # Check required columns
+        # Check required columns (still require a postcode column, but values may be blank)
         missing = [c for c in REQUIRED_COLS if c not in df.columns]
         if missing:
             flash(f"Missing columns: {', '.join(missing)}", "error")
@@ -183,15 +215,30 @@ def upload():
         for row_result in preview:
             row = row_result["data"]
             postcode = row_result["postcode_norm"]
+            lat = row_result.get("lat")
+            lon = row_result.get("lon")
 
-            # Geocode selection
-            if skip_geocode or not postcode:
-                lat, lon = (None, None)
+            # Geocode / snapping logic
+            if skip_geocode:
+                # Respect "skip_geocode": don't call postcodes.io at all.
+                # Use any lat/lon in the file as-is; postcode stays as-normalised
+                pass
             else:
-                lat, lon = pc_to_latlon.get(postcode, (None, None))
-                if lat is None or lon is None:
-                    # Fallback to cached single lookup
-                    lat, lon = geocode_postcode_cached(postcode)
+                if postcode:
+                    # Normal case: postcode present -> use bulk result, then single lookup fallback
+                    lat, lon = pc_to_latlon.get(postcode, (None, None))
+                    if lat is None or lon is None:
+                        lat, lon = geocode_postcode_cached(postcode)
+                else:
+                    # No postcode but we do have coordinates -> infer nearest postcode
+                    if lat is not None and lon is not None:
+                        inferred_pc, snapped_lat, snapped_lon = snap_to_nearest_postcode(lat, lon)
+                        if inferred_pc:
+                            postcode = inferred_pc
+                        lat, lon = snapped_lat, snapped_lon
+                    else:
+                        # Shouldn't happen due to validation, but be safe
+                        lat, lon = (None, None)
 
             rec = JobRecord(
                 company_id=str(row.get("company_id", "") or ""),

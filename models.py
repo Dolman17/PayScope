@@ -45,7 +45,6 @@ class User(UserMixin, db.Model):
         return self.admin_level == 1
 
 
-
 class AIAnalysisLog(db.Model):
     __tablename__ = "ai_analysis_log"
 
@@ -57,6 +56,7 @@ class AIAnalysisLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", backref="ai_logs")
+
 
 # models_payrate.py (or wherever you keep models)
 from datetime import datetime
@@ -75,6 +75,7 @@ class UploadBatch(db.Model):
     updated_rows = db.Column(db.Integer, default=0, nullable=False)
     skipped_rows = db.Column(db.Integer, default=0, nullable=False)
     errors_json = db.Column(db.Text, nullable=True)  # store aggregated errors per row
+
 
 class PayRate(db.Model):
     __tablename__ = "pay_rates"
@@ -122,6 +123,7 @@ class PayRate(db.Model):
         Index("ix_payrate_latlon", "lat", "lon"),
     )
 
+
 class JobPosting(db.Model):
     __tablename__ = "job_postings"
 
@@ -154,6 +156,7 @@ class JobPosting(db.Model):
         db.Index("ix_job_postings_source_ext", "source_site", "external_id"),
     )
 
+
 class Company(db.Model):
     __tablename__ = "companies"
 
@@ -162,4 +165,3 @@ class Company(db.Model):
     canonical_name = db.Column(db.String(255), index=True)  # normalized form for fuzzy match
     sector = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-

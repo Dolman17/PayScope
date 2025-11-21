@@ -1,6 +1,7 @@
 # app/blueprints/admin.py
 from __future__ import annotations
 
+import os
 
 from datetime import datetime
 
@@ -15,19 +16,19 @@ from flask import (
     jsonify,
     current_app,
 )
-
 from flask_login import login_required, current_user
-from sqlalchemy import desc, or_, cast, String, text, inspect
-
+from sqlalchemy import desc, or_, cast, String, text, inspect, func
 
 from extensions import db
-from models import User, AIAnalysisLog, JobRecord, JobPosting
+from models import User, AIAnalysisLog, JobRecord, JobPosting, Company
 from .utils import (
     commit_or_rollback,
-    geocode_postcode,
+    normalize_uk_postcode,
+    bulk_geocode_postcodes,
     geocode_postcode_cached,
-    inside_uk,
+    snap_to_nearest_postcode,
 )
+
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
 
@@ -268,6 +269,227 @@ def backfill_counties():
     return redirect(url_for("upload.upload"))
 
 
+
+
+@bp.route("/companies", methods=["GET", "POST"])
+@login_required
+def admin_companies():
+    """
+    Admin view for:
+      - Viewing grouped companies (by JobRecord.company_id)
+      - Merging multiple company_ids into a target
+      - Editing Company name/canonical_name/sector
+      - Uploading logos for a given company_id
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    from app.blueprints.utils import _slugify  # reuse same slug logic for mapping
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        # ----- MERGE company_ids -----
+        if action == "merge":
+            target_slug = (request.form.get("target_company_id") or "").strip()
+            source_raw = (request.form.get("source_company_ids") or "").strip()
+            source_slugs = [
+                s.strip()
+                for s in source_raw.replace("\n", ",").split(",")
+                if s.strip()
+            ]
+
+            # Remove self-merge and duplicates
+            source_slugs = [s for s in source_slugs if s != target_slug]
+            source_slugs = list(dict.fromkeys(source_slugs))
+
+            if not target_slug or not source_slugs:
+                flash("Please provide a target company ID and at least one source ID.", "error")
+            else:
+                total_moved = 0
+                for s in source_slugs:
+                    moved = (
+                        JobRecord.query
+                        .filter(JobRecord.company_id == s)
+                        .update({JobRecord.company_id: target_slug})
+                    )
+                    total_moved += moved
+                try:
+                    commit_or_rollback()
+                    flash(
+                        f"Merged {len(source_slugs)} company IDs into '{target_slug}' "
+                        f"({total_moved} job records updated).",
+                        "success",
+                    )
+                except Exception as e:
+                    print("Merge companies error:", e)
+                    flash("Failed to merge companies.", "error")
+
+            return redirect(url_for("admin.admin_companies"))
+
+        # ----- UPDATE a Company row -----
+        elif action == "update_company":
+            company_db_id = request.form.get("company_db_id", type=int)
+            if not company_db_id:
+                flash("Missing company ID.", "error")
+                return redirect(url_for("admin.admin_companies"))
+
+            company = Company.query.get(company_db_id)
+            if not company:
+                flash("Company not found.", "error")
+                return redirect(url_for("admin.admin_companies"))
+
+            company.name = (request.form.get("name") or "").strip()
+            company.canonical_name = (request.form.get("canonical_name") or "").strip()
+            company.sector = (request.form.get("sector") or "").strip() or None
+
+            try:
+                commit_or_rollback()
+                flash("Company updated.", "success")
+            except Exception as e:
+                print("Update company error:", e)
+                flash("Failed to update company.", "error")
+
+            return redirect(url_for("admin.admin_companies"))
+
+        # ----- UPLOAD logo for company_id -----
+        elif action == "upload_logo":
+            slug = (request.form.get("company_id") or "").strip()
+            logo_file = request.files.get("logo_file")
+
+            if not slug or not logo_file or not logo_file.filename:
+                flash("Missing company ID or logo file.", "error")
+                return redirect(url_for("admin.admin_companies"))
+
+            logos_folder = os.path.join(current_app.root_path, "static", "logos")
+            os.makedirs(logos_folder, exist_ok=True)
+            filename = f"{slug}.png"
+            path = os.path.join(logos_folder, filename)
+            try:
+                logo_file.save(path)
+                flash(f"Logo uploaded for '{slug}'.", "success")
+            except Exception as e:
+                print("Logo upload error:", e)
+                flash("Failed to upload logo.", "error")
+
+            return redirect(url_for("admin.admin_companies"))
+
+    # ----- GET: build view model -----
+    # Aggregate JobRecords by company_id
+    company_groups = (
+        db.session.query(
+            JobRecord.company_id,
+            func.count(JobRecord.id).label("job_count"),
+            func.min(JobRecord.company_name).label("sample_name"),
+        )
+        .group_by(JobRecord.company_id)
+        .order_by(func.count(JobRecord.id).desc())
+        .all()
+    )
+
+    all_companies = Company.query.order_by(Company.canonical_name, Company.name).all()
+
+    # Build mapping: slug (as used in JobRecord.company_id) -> Company row (best guess)
+    slug_to_company = {}
+    for c in all_companies:
+        slug = _slugify(c.canonical_name or c.name or "")
+        # First one wins; if multiple map to same slug, we keep the first for now
+        slug_to_company.setdefault(slug, c)
+
+    rows = []
+    for row in company_groups:
+        slug = (row.company_id or "").strip() or "unknown"
+        rows.append(
+            {
+                "company_id": slug,
+                "job_count": row.job_count,
+                "sample_name": row.sample_name,
+                "company": slug_to_company.get(slug),
+            }
+        )
+
+    return render_template(
+        "admin/companies.html",
+        rows=rows,
+        companies=all_companies,
+    )
+
+@bp.route("/companies/regenerate-ids")
+@login_required
+def regenerate_company_ids():
+    """
+    Rebuild JobRecord.company_id values from the current Company canonical names.
+
+    Use this AFTER:
+      - You have cleaned up Company.name / Company.canonical_name via the UI
+      - You want JobRecords to be aligned to those canonical values
+
+    Logic:
+      - For each Company: compute slug from (canonical_name or name)
+      - For each JobRecord with a company_name:
+          - Clean the raw name
+          - If it matches a Company.canonical_name, use that Company's slug
+          - Otherwise, fall back to slugified cleaned name
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    from app.blueprints.utils import _clean_company_name, _slugify
+
+    companies = Company.query.all()
+    jobs = JobRecord.query.all()
+
+    # Build map: canonical_name -> slug
+    canonical_to_slug: dict[str, str] = {}
+    for c in companies:
+        raw_canon = (c.canonical_name or "").strip()
+        if not raw_canon:
+            raw_canon = _clean_company_name(c.name or "")
+        cleaned_canon = _clean_company_name(raw_canon)
+        if not cleaned_canon:
+            continue
+        slug = _slugify(cleaned_canon)
+        canonical_to_slug[cleaned_canon] = slug
+
+    updated = 0
+    skipped = 0
+
+    for job in jobs:
+        raw_name = (job.company_name or "").strip()
+        if not raw_name:
+            skipped += 1
+            continue
+
+        cleaned = _clean_company_name(raw_name)
+        if not cleaned:
+            skipped += 1
+            continue
+
+        target_slug = canonical_to_slug.get(cleaned)
+        if not target_slug:
+            # Fallback: derive slug directly from cleaned name
+            target_slug = _slugify(cleaned)
+
+        if job.company_id == target_slug:
+            skipped += 1
+            continue
+
+        job.company_id = target_slug
+        updated += 1
+
+    try:
+        commit_or_rollback()
+        flash(
+            f"Regenerated company IDs from canonical names — updated {updated}, skipped {skipped}.",
+            "success",
+        )
+    except Exception as e:
+        print("Regenerate company IDs error:", e)
+        flash("Failed to regenerate company IDs.", "error")
+
+    return redirect(url_for("admin.admin_companies"))
+
+
 # -------------------------------------------------------------------
 # REGEOCODE JOBS
 # -------------------------------------------------------------------
@@ -276,10 +498,13 @@ def backfill_counties():
 def regeocode_jobs():
     """
     Re-geocode JobRecord.postcode values using the UK-only geocoder.
+    Also, if postcode-based lookup fails but we already have coordinates,
+    snap to the nearest postcode based on latitude/longitude.
     """
     if not _require_superuser():
         return redirect(url_for("home"))
 
+    # Clear postcode cache so we get fresh results
     geocode_postcode_cached.cache_clear()
 
     limit = request.args.get("limit", type=int)
@@ -292,35 +517,34 @@ def regeocode_jobs():
     cleared = 0
 
     for job in jobs:
-        if not job.postcode:
-            continue
-
         lat = job.latitude
         lon = job.longitude
 
-        needs_update = (
-            lat is None
-            or lon is None
-            or not inside_uk(float(lat), float(lon))
-        )
+        # 1) Try standard postcode geocode if we have a postcode
+        if job.postcode:
+            new_lat, new_lon = geocode_postcode_cached(job.postcode)
+            if new_lat is not None and new_lon is not None:
+                job.latitude = new_lat
+                job.longitude = new_lon
+                updated += 1
+                continue
 
-        if not needs_update:
-            continue
+        # 2) If postcode geocoding failed (or no postcode) but we already
+        #    have coordinates, snap them to the nearest postcode
+        if lat is not None and lon is not None:
+            inferred_pc, snapped_lat, snapped_lon = snap_to_nearest_postcode(lat, lon)
+            if inferred_pc and snapped_lat is not None and snapped_lon is not None:
+                if not job.postcode:
+                    job.postcode = inferred_pc
+                job.latitude = snapped_lat
+                job.longitude = snapped_lon
+                updated += 1
+                continue
 
-        new_lat, new_lon = geocode_postcode(job.postcode)
-
-        if (
-            new_lat is not None
-            and new_lon is not None
-            and inside_uk(float(new_lat), float(new_lon))
-        ):
-            job.latitude = new_lat
-            job.longitude = new_lon
-            updated += 1
-        else:
-            job.latitude = None
-            job.longitude = None
-            cleared += 1
+        # 3) If we get here, we couldn't geocode this record at all
+        job.latitude = None
+        job.longitude = None
+        cleared += 1
 
     try:
         commit_or_rollback()
@@ -558,6 +782,10 @@ def import_job(posting_id):
     flash("Job imported successfully.", "success")
     return redirect(url_for("admin.jobs_page"))
 
+
+# -------------------------------------------------------------------
+# DB HEALTH
+# -------------------------------------------------------------------
 @bp.route("/db-health", methods=["GET"])
 @login_required
 def db_health():
@@ -614,4 +842,46 @@ def db_health():
         tables=tables,
         tables_error=tables_error,
     )
+
+@bp.route("/backfill-company-ids")
+@login_required
+def backfill_company_ids():
+    """
+    Backfill all JobRecord.company_id values using canonical Company table.
+    Uses the same logic as importer (normalised name).
+    Safe to run multiple times.
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    from app.blueprints.utils import get_or_create_company_id
+
+    jobs = JobRecord.query.all()
+    updated = 0
+    skipped = 0
+
+    for job in jobs:
+        raw_name = (job.company_name or "").strip()
+
+        if not raw_name:
+            skipped += 1
+            continue
+
+        # Already has a company_id? Leave it alone.
+        if job.company_id and job.company_id.strip():
+            skipped += 1
+            continue
+
+        new_id = get_or_create_company_id(raw_name)
+        job.company_id = new_id
+        updated += 1
+
+    try:
+        commit_or_rollback()
+        flash(f"Backfill complete — updated {updated}, skipped {skipped}.", "success")
+    except Exception as e:
+        flash("Failed to backfill company IDs.", "error")
+        print("Backfill error:", e)
+
+    return redirect(url_for("admin.admin_companies"))
 

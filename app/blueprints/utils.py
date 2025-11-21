@@ -11,7 +11,7 @@ import requests
 from flask import url_for, current_app
 from sqlalchemy import or_
 from extensions import db
-from models import JobRecord
+from models import JobRecord, Company  # Company now used for canonical mapping
 
 
 # ---------- Small TTL cache (local, no external imports) ----------
@@ -145,10 +145,113 @@ def logo_url_for(company_id: str) -> str:
         return url_for("static", filename=f"logos/{company_id}.png")
     return url_for("static", filename="logos/placeholder.png")
 
+def company_has_logo(company_id: str | None) -> bool:
+    """
+    Return True if there is a custom logo PNG for this company_id
+    under static/logos/<company_id>.png, False otherwise.
+    """
+    if not company_id:
+        return False
+    fs_path = os.path.join(
+        current_app.root_path,
+        "static",
+        "logos",
+        f"{company_id}.png",
+    )
+    return os.path.exists(fs_path)
+
+
+
+# ---------- Company ID / canonical name helpers ----------
+COMPANY_STOPWORDS = [
+    r"\blimited\b",
+    r"\bltd\b",
+    r"\bgroup\b",
+    r"\bcare\b",
+    r"\bhealthcare\b",
+    r"\bservices\b",
+    r"\bservice\b",
+    r"\bplc\b",
+    r"\bholdings\b",
+]
+
+
+def _clean_company_name(name: str) -> str:
+    """
+    Normalise a company name into a canonical form for grouping.
+
+    Examples:
+      "Blue Ribbon Healthcare Ltd"  -> "blue ribbon"
+      "BLUE RIBBON HEALTH CARE"     -> "blue ribbon"
+      "Blue Ribbon Group Services"  -> "blue ribbon"
+    """
+    if not name:
+        return ""
+
+    s = name.lower()
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+
+    for pattern in COMPANY_STOPWORDS:
+        s = re.sub(pattern, " ", s, flags=re.IGNORECASE)
+
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _slugify(text: str, max_len: int = 50) -> str:
+    """
+    Simple slug generator for company_id based on canonical name.
+    """
+    if not text:
+        return "unknown"
+
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    if not slug:
+        slug = "unknown"
+    if len(slug) > max_len:
+        slug = slug[:max_len]
+    return slug
+
+
+def get_or_create_company_id(raw_name: str | None) -> str:
+    """
+    Given a raw company name from scraping, return a stable company_id string
+    that groups similar names together.
+
+    - Uses a canonical cleaned version of the name
+    - Reuses or creates a row in the Company table with that canonical_name
+    - Returns a slug (string) that you store in JobRecord.company_id
+    """
+    raw = (raw_name or "").strip()
+    if not raw:
+        return "unknown"
+
+    canonical = _clean_company_name(raw)
+    if not canonical:
+        canonical = raw.lower().strip()
+
+    # Try to reuse an existing Company row with the same canonical_name
+    company = Company.query.filter_by(canonical_name=canonical).first()
+
+    if not company:
+        company = Company(name=raw, canonical_name=canonical)
+        db.session.add(company)
+        try:
+            db.session.commit()
+        except Exception as e:
+            # Don't break import just because company insert failed
+            db.session.rollback()
+            print(f"⚠️ Failed to insert Company for '{raw}': {e}")
+
+    # Derive a stable slug from canonical_name
+    return _slugify(canonical)
+
 
 # ---------- UK geocoding ----------
 POSTCODES_IO_BULK_URL = "https://api.postcodes.io/postcodes"
 POSTCODES_IO_SINGLE_URL = "https://api.postcodes.io/postcodes/{pc}"
+POSTCODES_IO_REVERSE_URL = "https://api.postcodes.io/postcodes"  # lat/lon params
+
 
 # Hard UK bounding box to prevent overseas mis-geocoding
 UK_BBOX = {
@@ -196,6 +299,7 @@ def bulk_geocode_postcodes(postcodes: list[str]) -> dict[str, tuple[float | None
                 results.setdefault(q, (None, None))
     return results
 
+
 @lru_cache(maxsize=5000)
 def geocode_postcode_cached(postcode: str) -> Tuple[float | None, float | None]:
     return geocode_postcode(postcode)
@@ -232,3 +336,73 @@ def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
         print(f"postcodes.io error for {pc}: {e}")
 
     return (None, None)
+
+
+# ---------- Nearest-postcode helpers from coordinates ----------
+def lookup_nearest_postcode(
+    lat: float,
+    lon: float,
+) -> tuple[str | None, float | None, float | None]:
+    """
+    Given a lat/lon (typically from Nominatim or other geocoder),
+    look up the nearest UK postcode using postcodes.io reverse geocoding.
+
+    Returns:
+        (postcode | None, postcode_lat | None, postcode_lon | None)
+    """
+    if lat is None or lon is None:
+        return (None, None, None)
+
+    try:
+        resp = requests.get(
+            POSTCODES_IO_REVERSE_URL,
+            params={
+                "lat": lat,
+                "lon": lon,
+                "limit": 1,
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            print(f"postcodes.io reverse non-200 ({resp.status_code}) for {lat}, {lon}")
+            return (None, None, None)
+
+        data = resp.json() or {}
+        results = data.get("result") or []
+        if not results:
+            return (None, None, None)
+
+        best = results[0]
+        raw_pc = (best.get("postcode") or "").strip()
+        pc = normalize_uk_postcode(raw_pc) if raw_pc else None
+        pc_lat = best.get("latitude")
+        pc_lon = best.get("longitude")
+
+        # Safety: make sure the postcode coordinates are in the UK box
+        if pc_lat is not None and pc_lon is not None and not inside_uk(pc_lat, pc_lon):
+            print(f"postcodes.io reverse returned out-of-UK coords for {pc}: {pc_lat}, {pc_lon}")
+            return (None, None, None)
+
+        return (pc, pc_lat, pc_lon)
+    except Exception as e:
+        print(f"postcodes.io reverse error for {lat}, {lon}: {e}")
+        return (None, None, None)
+
+
+def snap_to_nearest_postcode(
+    lat: float,
+    lon: float,
+) -> tuple[str | None, float | None, float | None]:
+    """
+    Convenience wrapper:
+
+    - Look up nearest postcode for the given lat/lon
+    - If found (and valid), return (postcode, snapped_lat, snapped_lon)
+    - If not, keep the original lat/lon and return (None, lat, lon)
+    """
+    pc, pc_lat, pc_lon = lookup_nearest_postcode(lat, lon)
+    if pc and pc_lat is not None and pc_lon is not None:
+        return (pc, pc_lat, pc_lon)
+
+    # Fallback: no postcode, but keep original coordinates
+    return (None, lat, lon)

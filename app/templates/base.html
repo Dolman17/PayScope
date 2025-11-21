@@ -103,7 +103,10 @@
             <a href="{{ url_for('admin.admin_job_scrape') }}" class="nav-chip">Job Scrape</a>
             <a href="{{ url_for('admin.ai_logs') }}" class="nav-chip">AI Logs</a>
             <a href="{{ url_for('admin.db_health') }}" class="nav-chip">DB Health</a>
+            <a href="{{ url_for('admin.admin_companies') }}" class="nav-chip">Companies</a> {# <-- NEW #}
           {% endif %}
+
+
 
           {% if current_user.admin_level == 1 %}
             <a href="{{ url_for('admin.manage_users') }}" class="nav-chip">User Management</a>
