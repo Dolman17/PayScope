@@ -104,7 +104,16 @@
 
             <td class="px-4 py-3 text-sm text-gray-700">
               {% if job.raw_json and job.raw_json.get("salary_min") %}
-                £{{ job.raw_json.salary_min|int }} – £{{ job.raw_json.salary_max|int }}
+                {% set smin = job.raw_json.get('salary_min') %}
+                {% set smax = job.raw_json.get('salary_max') %}
+
+                {% if smin or smax %}
+                  {% if smin %}£{{ smin|int }}{% endif %}
+                  –
+                  {% if smax %}£{{ smax|int }}{% endif %}
+                {% else %}
+                  <span class="text-gray-500">Not provided</span>
+                {% endif %}
               {% else %}
                 —
               {% endif %}
