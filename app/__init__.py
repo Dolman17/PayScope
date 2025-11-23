@@ -79,6 +79,8 @@ def create_app():
     from .blueprints.maps import bp as maps_bp
     from .blueprints.dashboard import bp as dashboard_bp
     from .blueprints.upload import bp as upload_bp
+    from app.blueprints.company import bp as company_bp
+
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")

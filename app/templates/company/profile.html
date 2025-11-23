@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Company: {{ display_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <!-- Header -->
+  <section class="card p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div class="flex items-center gap-4">
+      <img src="{{ logo_url }}"
+           alt="{{ display_name }}"
+           class="w-14 h-14 object-contain rounded-lg border border-gray-200 bg-white"
+           onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
+      <div>
+        <h1 class="text-xl font-bold" style="color:var(--brand);">
+          {{ display_name }}
+        </h1>
+        <div class="text-xs text-gray-500">
+          Company ID: <code class="text-[11px] bg-gray-100 px-1 rounded">{{ company_id }}</code>
+        </div>
+        {% if company and company.canonical_name %}
+          <div class="text-xs text-gray-500 mt-1">
+            Canonical name: <span class="font-semibold">{{ company.canonical_name }}</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex flex-col items-start md:items-end gap-2 text-xs">
+      {% if has_logo %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+          Custom logo in use
+        </span>
+      {% else %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-300">
+          Placeholder logo (no custom logo yet)
+        </span>
+      {% endif %}
+      <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip mt-1">
+        ← Back to Map Sectors
+      </a>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="card p-5">
+    <h2 class="text-base font-semibold mb-3 text-gray-800">Pay Overview</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="rounded-xl border border-slate-200 p-3">
+        <div class="text-xs text-slate-500">Records</div>
+        <div class="text-xl font-semibold">{{ jobs|length }}</div>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-3">
+        <div class="text-xs text-slate-500">Average Rate</div>
+        <div class="text-xl font-semibold">
+          {% if avg_rate is not none %}£{{ "%.2f"|format(avg_rate) }}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-3">
+        <div class="text-xs text-slate-500">Median Rate</div>
+        <div class="text-xl font-semibold">
+          {% if med_rate is not none %}£{{ "%.2f"|format(med_rate) }}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="rounded-xl border border-slate-200 p-3">
+        <div class="text-xs text-slate-500">Range</div>
+        <div class="text-xl font-semibold">
+          {% if min_rate is not none and max_rate is not none %}
+            £{{ "%.2f"|format(min_rate) }} – £{{ "%.2f"|format(max_rate) }}
+          {% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div>
+        <div class="text-xs font-semibold text-gray-500 mb-1">Roles</div>
+        {% if roles %}
+          <div class="flex flex-wrap gap-1">
+            {% for r in roles %}
+              <span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">
+                {{ r }}
+              </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-xs text-gray-400">No roles found.</div>
+        {% endif %}
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-gray-500 mb-1">Counties</div>
+        {% if counties %}
+          <div class="flex flex-wrap gap-1">
+            {% for c in counties %}
+              <span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">
+                {{ c }}
+              </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-xs text-gray-400">No counties found.</div>
+        {% endif %}
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-gray-500 mb-1">Years</div>
+        {% if years %}
+          <div class="flex flex-wrap gap-1">
+            {% for y in years %}
+              <span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">
+                {{ y }}
+              </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-xs text-gray-400">No years found.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <div class="text-xs font-semibold text-gray-500 mb-1">Rate distribution</div>
+      <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
+        {% for b in hist %}
+          <div class="rounded-lg border border-slate-200 p-2 flex flex-col">
+            <span class="text-gray-600">{{ b.label }}</span>
+            <span class="text-base font-semibold mt-1">{{ b.count }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Job records table -->
+  <section class="card p-5">
+    <h2 class="text-base font-semibold mb-3 text-gray-800">Job Records</h2>
+    {% if jobs %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-xs md:text-sm">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">Role</th>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">Sector</th>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">Rate</th>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">Postcode</th>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">County</th>
+              <th class="px-3 py-2 text-left font-semibold text-gray-600">Imported</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for j in jobs %}
+              <tr class="hover:bg-gray-50">
+                <td class="px-3 py-2">{{ j.job_role or '—' }}</td>
+                <td class="px-3 py-2">{{ j.sector or '—' }}</td>
+                <td class="px-3 py-2">
+                  {% if j.pay_rate is not none %}
+                    £{{ "%.2f"|format(j.pay_rate) }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-3 py-2">{{ j.postcode or '—' }}</td>
+                <td class="px-3 py-2">{{ j.county or '—' }}</td>
+                <td class="px-3 py-2 text-xs text-gray-500">
+                  {{ j.imported_month or '—' }} {{ j.imported_year or '' }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-sm text-gray-500">No job records found for this company.</div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
