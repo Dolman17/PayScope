@@ -222,17 +222,20 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
 
         print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
 
-        log = CronRunLog(
-            started_at=now,
-            trigger=trigger,
-            triggered_by=triggered_by,
-            status="running",
-        )
-        # Set day_label *after* construction to avoid kwargs issues
-        log.day_label = label
+        # Make sure label is short enough for VARCHAR(20)
+safe_label = str(label)[:20] if label is not None else None
 
-        db.session.add(log)
-        db.session.commit()
+log = CronRunLog(
+    started_at=now,
+    trigger=trigger,
+    triggered_by=triggered_by,
+    status="running",
+)
+log.day_label = safe_label
+
+db.session.add(log)
+db.session.commit()
+
  
 
         try:
