@@ -921,20 +921,35 @@ def cron_runs():
 @bp.route("/cron-runs/run-now", methods=["POST"])
 @login_required
 def cron_run_now():
-    """
-    Manually trigger the scheduled jobs from the UI.
-    This calls the same function the Railway Cron hits.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    from app.cron_runner import run_scheduled_jobs
+    # Import from the top-level cron_runner.py
+    from cron_runner import run_scheduled_jobs
 
+    # Run, log, etc.
+    started_at = datetime.utcnow()
     try:
-        run_scheduled_jobs()
-        flash("Scheduled jobs executed successfully.", "success")
+        result = run_scheduled_jobs()
+        status = "success"
+        message = result or "OK"
     except Exception as e:
-        current_app.logger.exception("Error running scheduled jobs manually")
-        flash(f"Error running scheduled jobs: {e}", "error")
+        status = "error"
+        message = repr(e)
+    finished_at = datetime.utcnow()
 
+    from models import CronRunLog  # wherever we defined it
+
+    log_row = CronRunLog(
+        job_name="manual_run_all",
+        status=status,
+        message=message,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    db.session.add(log_row)
+    commit_or_rollback()
+
+    flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
+
