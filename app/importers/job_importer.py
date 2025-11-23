@@ -43,9 +43,7 @@ def _derive_pay_rate(posting: JobPosting):
 
 
 def _extract_county(location_text: str) -> str | None:
-    """
-    Extract county from location_text using simple comma/dash splitting.
-    """
+    """Extract county from location_text using simple comma/dash splitting."""
     if not location_text:
         return None
 
@@ -60,11 +58,7 @@ def _extract_county(location_text: str) -> str | None:
 
 def _coords_from_raw_json(raw_json: str | None) -> tuple[float | None, float | None]:
     """
-    Try to extract latitude/longitude from the job posting raw JSON.
-
-    For Adzuna, we store:
-      - "_latitude", "_longitude" in raw_json
-      - plus original "latitude"/"longitude" if present
+    Extract latitude/longitude from posting.raw_json.
     """
     if not raw_json:
         return (None, None)
@@ -93,26 +87,24 @@ def _coords_from_raw_json(raw_json: str | None) -> tuple[float | None, float | N
 
 def import_posting_to_record(posting: JobPosting) -> JobRecord:
     """
-    Create a new JobRecord from a JobPosting.
-    Maps all real JobRecord fields.
-
-    - Derives hourly pay rate
-    - Extracts county from location text
-    - Normalises postcode
-    - Pulls lat/lon from raw_json where available
-    - If postcode missing but coords exist, snaps to nearest postcode
-    - Assigns a stable company_id based on grouped company name
+    Safely import a JobPosting into a JobRecord.
+    Handles null dates, postcode normalisation, coords, company mapping.
     """
 
+    # Pay rate
     pay_rate = _derive_pay_rate(posting)
+
+    # County
     county = _extract_county(posting.location_text)
 
-    imported_month = posting.scraped_at.strftime("%B")
-    imported_year = posting.scraped_at.strftime("%Y")
+    # FIXED: scraped_at may be None (cron creates JobPosting before commit)
+    scraped = posting.scraped_at or datetime.utcnow()
+    imported_month = scraped.strftime("%B")
+    imported_year = scraped.strftime("%Y")
 
-    # Postcode and coordinates
-    raw_pc = posting.postcode or ""
-    postcode = normalize_uk_postcode(raw_pc)
+    # Postcode + coordinates
+    postcode_raw = posting.postcode or ""
+    postcode = normalize_uk_postcode(postcode_raw)
 
     lat, lon = _coords_from_raw_json(posting.raw_json)
 
@@ -123,13 +115,14 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
             lat = snapped_lat
             lon = snapped_lon
 
-    # Stable grouped company_id from company_name
+    # Company
     company_id = get_or_create_company_id(posting.company_name)
 
+    # Build JobRecord
     record = JobRecord(
         company_id=company_id,
         company_name=posting.company_name,
-        sector=posting.search_role,      # still using search_role as sector for now
+        sector=posting.search_role,
         job_role=posting.title,
         postcode=postcode,
         county=county,
