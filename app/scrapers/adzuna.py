@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional
 
 import requests
@@ -74,7 +74,11 @@ class AdzunaScraper(BaseScraper):
     # -------------------------------------------------------------------------
     # Parsing helpers
     # -------------------------------------------------------------------------
-    def _parse_posted_date(self, created_str: Optional[str]) -> Optional[datetime.date]:
+    def _parse_posted_date(self, created_str: Optional[str]) -> Optional[date]:
+        """
+        Parse Adzuna 'created' string to a date, if possible.
+        Returns None on failure.
+        """
         if not created_str:
             return None
 
@@ -91,13 +95,17 @@ class AdzunaScraper(BaseScraper):
             except ValueError:
                 pass
 
-        # Fallback: YYYY-MM-DD
+        # Fallback: first 10 chars as YYYY-MM-DD if that works
         try:
             return datetime.strptime(created_str[:10], "%Y-%m-%d").date()
         except Exception:
             return None
 
-    def _extract_postcode(self, location_display_name: Optional[str], description: Optional[str]) -> Optional[str]:
+    def _extract_postcode(
+        self,
+        location_display_name: Optional[str],
+        description: Optional[str],
+    ) -> Optional[str]:
         """
         Best-effort UK postcode extraction from location display or description.
         """
@@ -157,9 +165,26 @@ class AdzunaScraper(BaseScraper):
 
         rate_type = "hourly"
 
-        # -------- Meta ----------
-        created_str = item.get("created")
-        posted_date = self._parse_posted_date(created_str)
+        # -------- Meta: posted date ----------
+        created_raw = item.get("created")
+        posted_date: Optional[date] = None
+
+        # Adzuna sometimes returns ISO strings, sometimes epoch-like numbers
+        if isinstance(created_raw, (int, float)):
+            try:
+                # Heuristic: if huge, assume ms; otherwise seconds
+                ts = created_raw / 1000.0 if created_raw > 10**12 else float(created_raw)
+                posted_date = datetime.utcfromtimestamp(ts).date()
+            except Exception:
+                posted_date = None
+        elif isinstance(created_raw, str):
+            posted_date = self._parse_posted_date(created_raw)
+        else:
+            posted_date = None
+
+        # Hard guarantee: downstream never sees None for posted_date
+        if posted_date is None:
+            posted_date = datetime.utcnow().date()
 
         external_id = str(item.get("id") or "") or None
         url = item.get("redirect_url") or None
