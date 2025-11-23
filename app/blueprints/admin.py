@@ -19,7 +19,14 @@ from flask_login import login_required, current_user
 from sqlalchemy import desc, or_, cast, String, text, inspect, func
 
 from extensions import db
-from models import User, AIAnalysisLog, JobRecord, JobPosting, Company, CronRunLog
+from models import (
+    User,
+    AIAnalysisLog,
+    JobRecord,
+    JobPosting,
+    Company,
+    CronRunLog,   # <-- NEW: cron log model
+)
 from .utils import (
     commit_or_rollback,
     normalize_uk_postcode,
@@ -33,167 +40,6 @@ from app.importers.job_importer import import_posting_to_record
 
 # Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
-
-
-# -------------------------------------------------------------------
-# Day-of-week scrape config (shared by cron + "Run Now")
-# -------------------------------------------------------------------
-
-BASE_LOCATIONS = [
-    "United Kingdom",
-    "London",
-    "Birmingham",
-    "Manchester",
-    "Leeds",
-    "Glasgow",
-    "Bristol",
-]
-
-DAY_CONFIG = {
-    0: {  # Monday – Health & Social Care
-        "label": "Health & Social Care",
-        "roles": [
-            "support worker",
-            "care assistant",
-            "senior care assistant",
-            "healthcare assistant",
-            "mental health support worker",
-            "registered manager",
-            "domiciliary care worker",
-        ],
-        "locations": BASE_LOCATIONS,
-    },
-    1: {  # Tuesday – IT & Tech
-        "label": "IT & Technology",
-        "roles": [
-            "software developer",
-            "software engineer",
-            "it support",
-            "service desk analyst",
-            "data analyst",
-            "devops engineer",
-            "systems administrator",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Manchester",
-            "Leeds",
-            "Birmingham",
-            "Cambridge",
-        ],
-    },
-    2: {  # Wednesday – Finance & Accounting
-        "label": "Finance & Accounting",
-        "roles": [
-            "accounts assistant",
-            "assistant accountant",
-            "management accountant",
-            "finance manager",
-            "payroll clerk",
-            "credit controller",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-            "Leeds",
-            "Manchester",
-            "Edinburgh",
-        ],
-    },
-    3: {  # Thursday – Engineering & Construction
-        "label": "Engineering & Construction",
-        "roles": [
-            "mechanical engineer",
-            "electrical engineer",
-            "maintenance engineer",
-            "civil engineer",
-            "project engineer",
-            "site manager",
-            "quantity surveyor",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-            "Manchester",
-            "Leeds",
-            "Newcastle upon Tyne",
-        ],
-    },
-    4: {  # Friday – Office / HR / Admin
-        "label": "Office, HR & Admin",
-        "roles": [
-            "hr advisor",
-            "hr officer",
-            "hr manager",
-            "talent acquisition",
-            "recruitment consultant",
-            "office administrator",
-            "personal assistant",
-            "receptionist",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Manchester",
-            "Birmingham",
-            "Leeds",
-            "Nottingham",
-        ],
-    },
-    5: {  # Saturday – Logistics, Warehouse & Driving
-        "label": "Logistics, Warehouse & Driving",
-        "roles": [
-            "warehouse operative",
-            "forklift driver",
-            "delivery driver",
-            "hgv driver",
-            "courier",
-            "logistics coordinator",
-        ],
-        "locations": [
-            "United Kingdom",
-            "Birmingham",
-            "Manchester",
-            "Leeds",
-            "Liverpool",
-            "Milton Keynes",
-        ],
-    },
-    6: {  # Sunday – Retail, Sales & Hospitality
-        "label": "Retail, Sales & Hospitality",
-        "roles": [
-            "retail assistant",
-            "store manager",
-            "sales executive",
-            "business development manager",
-            "customer service advisor",
-            "chef",
-            "kitchen assistant",
-            "bar staff",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Manchester",
-            "Birmingham",
-            "Leeds",
-            "Glasgow",
-        ],
-    },
-}
-
-
-def _get_today_scrape_config():
-    """Return the config dict for today's scrape (UTC weekday)."""
-    weekday = datetime.utcnow().weekday()  # 0=Mon .. 6=Sun
-    cfg = DAY_CONFIG.get(weekday)
-    if cfg:
-        return cfg
-    # Fallback to Monday config if something is weird
-    return DAY_CONFIG[0]
 
 
 # -------------------------------------------------------------------
@@ -429,6 +275,9 @@ def backfill_counties():
     return redirect(url_for("upload.upload"))
 
 
+# -------------------------------------------------------------------
+# COMPANIES ADMIN
+# -------------------------------------------------------------------
 @bp.route("/companies", methods=["GET", "POST"])
 @login_required
 def admin_companies():
@@ -582,13 +431,6 @@ def regenerate_company_ids():
     Use this AFTER:
       - You have cleaned up Company.name / Company.canonical_name via the UI
       - You want JobRecords to be aligned to those canonical values
-
-    Logic:
-      - For each Company: compute slug from (canonical_name or name)
-      - For each JobRecord with a company_name:
-          - Clean the raw name
-          - If it matches a Company.canonical_name, use that Company's slug
-          - Otherwise, fall back to slugified cleaned name
     """
     if not _require_superuser():
         return redirect(url_for("home"))
@@ -933,9 +775,9 @@ def admin_import_all_jobs():
 def import_job(posting_id):
     posting = JobPosting.query.get_or_404(posting_id)
 
-    from app.job_importer import import_posting_to_record as _import_posting_to_record
+    from app.job_importer import import_posting_to_record
 
-    record = _import_posting_to_record(posting)
+    record = import_posting_to_record(posting)
     db.session.commit()
 
     flash("Job imported successfully.", "success")
@@ -1003,6 +845,9 @@ def db_health():
     )
 
 
+# -------------------------------------------------------------------
+# BACKFILL COMPANY IDS
+# -------------------------------------------------------------------
 @bp.route("/backfill-company-ids")
 @login_required
 def backfill_company_ids():
@@ -1047,113 +892,49 @@ def backfill_company_ids():
 
 
 # -------------------------------------------------------------------
-# CRON RUN HISTORY + "Run Scrape Now"
+# CRON RUN HISTORY + RUN NOW
 # -------------------------------------------------------------------
-
 @bp.route("/cron-runs")
 @login_required
-def admin_cron_runs():
+def cron_runs():
     """
-    View history of scheduled/triggered Adzuna scrapes.
+    Show history of cron runs (from cron_run_logs table).
     """
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    page = max(int(request.args.get("page", 1) or 1), 1)
-    per_page = min(max(int(request.args.get("per_page", 20) or 20), 5), 100)
+    page = request.args.get("page", 1, type=int)
+    per_page = min(max(request.args.get("per_page", 25, type=int), 5), 100)
 
-    query = CronRunLog.query.order_by(desc(CronRunLog.started_at))
+    query = CronRunLog.query.order_by(CronRunLog.started_at.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    logs = pagination.items
+    runs = pagination.items
 
     return render_template(
         "admin/cron_runs.html",
-        logs=logs,
+        runs=runs,
         pagination=pagination,
         per_page=per_page,
     )
 
 
-@bp.route("/cron/run-scrape-now", methods=["POST"])
+@bp.route("/cron-runs/run-now", methods=["POST"])
 @login_required
-def admin_run_scrape_now():
+def cron_run_now():
     """
-    Manually trigger the Adzuna day-of-week scrape from the UI.
-    Uses the same DAY_CONFIG as cron (roles + locations).
-    Logs the run to CronRunLog.
+    Manually trigger the scheduled jobs from the UI.
+    This calls the same function the Railway Cron hits.
     """
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    cfg = _get_today_scrape_config()
-    label = cfg.get("label", "Adzuna Scrape")
-    roles = cfg.get("roles", [])
-    locations = cfg.get("locations", [])
-
-    started_at = datetime.utcnow()
-    log = CronRunLog(
-        job_name=f"adzuna_scrape:{label}",
-        started_at=started_at,
-        status="running",
-        triggered_by=(current_user.username if current_user.is_authenticated else "manual"),
-    )
-    db.session.add(log)
-    db.session.flush()  # get log.id
-
-    total_results = 0
-    total_records_created = 0
-    error_message = None
+    from app.cron_runner import run_scheduled_jobs
 
     try:
-        for role in roles:
-            for loc in locations:
-                scraper = AdzunaScraper(
-                    what=role,
-                    where=loc,
-                    max_pages=2,
-                    results_per_page=40,
-                )
-                try:
-                    results = scraper.scrape()
-                except Exception as exc:
-                    # Log and continue to next combo
-                    print(f"[CRON RUN NOW] Error scraping {role} @ {loc}: {exc}")
-                    continue
+        run_scheduled_jobs()
+        flash("Scheduled jobs executed successfully.", "success")
+    except Exception as e:
+        current_app.logger.exception("Error running scheduled jobs manually")
+        flash(f"Error running scheduled jobs: {e}", "error")
 
-                total_results += len(results)
-                for rec in results:
-                    job_posting = upsert_job_record(rec, search_role=role, search_location=loc)
-                    # Import to JobRecord if not already imported
-                    if not getattr(job_posting, "imported", False):
-                        import_posting_to_record(job_posting)
-                        total_records_created += 1
-
-        commit_or_rollback()
-        status = "success"
-        msg = f"Scrape OK — {total_results} postings, {total_records_created} JobRecords created."
-    except Exception as exc:
-        # Roll back DB and record the error
-        db.session.rollback()
-        status = "error"
-        msg = f"Scrape failed: {exc!r}"
-        error_message = msg
-        print("[CRON RUN NOW] Fatal error:", exc)
-
-    # Update log row
-    try:
-        log.status = status
-        log.finished_at = datetime.utcnow()
-        log.rows_scraped = total_results
-        log.records_created = total_records_created
-        log.message = msg
-        commit_or_rollback()
-    except Exception as exc:
-        db.session.rollback()
-        print("[CRON RUN NOW] Failed to save CronRunLog:", exc)
-
-    if status == "success":
-        flash(msg, "success")
-    else:
-        flash(msg, "error")
-
-    return redirect(url_for("admin.admin_cron_runs"))
+    return redirect(url_for("admin.cron_runs"))
