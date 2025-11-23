@@ -212,56 +212,56 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
     """
     app = create_app()
 
-    with app.app_context():
-        now = datetime.utcnow()
-        weekday = now.weekday()
-        day_cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
-        label = day_cfg["label"]
-        roles = day_cfg["roles"]
-        locations = day_cfg["locations"]
+ with app.app_context():
+    now = datetime.utcnow()
+    weekday = now.weekday()
+    day_cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
+    label = day_cfg["label"]
+    roles = day_cfg["roles"]
+    locations = day_cfg["locations"]
 
-        print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
+    print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
 
-        # Make sure label is short enough for VARCHAR(20)
-safe_label = str(label)[:20] if label is not None else None
+    # Make sure label fits VARCHAR(20)
+    safe_label = str(label)[:20] if label is not None else None
 
-log = CronRunLog(
-    started_at=now,
-    trigger=trigger,
-    triggered_by=triggered_by,
-    status="running",
-)
-log.day_label = safe_label
+    # Create CronRunLog row
+    log = CronRunLog(
+        started_at=now,
+        trigger=trigger,
+        triggered_by=triggered_by,
+        status="running",
+        day_label=safe_label,
+    )
+    db.session.add(log)
+    db.session.commit()
 
-db.session.add(log)
-db.session.commit()
+    try:
+        result = _run_for_config(label, roles, locations)
 
- 
+        log.finished_at = datetime.utcnow()
+        log.status = "success" if not result["errors"] else "partial"
+        log.scraped_postings = result["scraped_postings"]
+        log.created_records = result["created_records"]
+        log.message = "\n".join(result["errors"]) if result["errors"] else None
 
-        try:
-            result = _run_for_config(label, roles, locations)
-            log.finished_at = datetime.utcnow()
-            log.status = "success" if not result["errors"] else "partial"
-            log.scraped_postings = result["scraped_postings"]
-            log.created_records = result["created_records"]
-            log.error_messages = "\n".join(result["errors"]) if result["errors"] else None
-            db.session.commit()
+        db.session.commit()
 
-            print(
-                f"✅ Cron complete: {result['scraped_postings']} postings, "
-                f"{result['created_records']} JobRecords, "
-                f"errors={len(result['errors'])}"
-            )
-            return result
+        print(
+            f"✅ Cron complete: {result['scraped_postings']} postings, "
+            f"{result['created_records']} JobRecords, "
+            f"errors={len(result['errors'])}"
+        )
+        return result
 
-        except Exception as e:  # noqa: BLE001
-            log.finished_at = datetime.utcnow()
-            log.status = "error"
-            log.error_messages = f"{e!r}"
-            db.session.commit()
-            print("💥 Cron failed:", e)
-            raise
-
+    except Exception as e:  # noqa: BLE001
+        log.finished_at = datetime.utcnow()
+        log.status = "error"
+        log.message = f"{e!r}"
+        db.session.commit()
+        print("💥 Cron failed:", e)
+        raise
+   
 
 # -------------------------------------------------------------------
 # CLI entrypoint for Railway schedule
