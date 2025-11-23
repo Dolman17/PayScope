@@ -165,3 +165,17 @@ class Company(db.Model):
     canonical_name = db.Column(db.String(255), index=True)  # normalized form for fuzzy match
     sector = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class CronRunLog(db.Model):
+    __tablename__ = "cron_run_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_name = db.Column(db.String(100), nullable=False)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="running")  # running/success/error
+    message = db.Column(db.Text, nullable=True)
+    rows_scraped = db.Column(db.Integer, nullable=True)
+    records_created = db.Column(db.Integer, nullable=True)
+    triggered_by = db.Column(db.String(150), nullable=True)
