@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from app import create_app
 from app.scrapers.adzuna import AdzunaScraper
-from app.job_importer import import_posting_to_record
+from app.importers.job_importer import import_posting_to_record 
 from app.blueprints.admin import upsert_job_record  # reuse existing logic
 from app.blueprints.utils import geocode_postcode_cached, snap_to_nearest_postcode
 
