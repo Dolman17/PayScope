@@ -179,3 +179,4 @@ class CronRunLog(db.Model):
     rows_scraped = db.Column(db.Integer, nullable=True)
     records_created = db.Column(db.Integer, nullable=True)
     triggered_by = db.Column(db.String(150), nullable=True)
+    trigger = db.Column(db.String(50), nullable=True)  # <-- ADD THIS
