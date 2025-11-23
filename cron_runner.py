@@ -140,8 +140,8 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
     Run Adzuna scrapes for the given roles/locations.
     Returns a dict with counts and any error messages.
     """
-    scraped_postings = 0
-    created_records = 0
+    rows_scraped = 0
+    records_created = 0
     errors: list[str] = []
 
     for role in roles:
@@ -156,7 +156,6 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                 results = scraper.scrape()
 
                 for rec in results:
-                    # Store a JobPosting row
                     posting = JobPosting(
                         title=rec.title,
                         company_name=rec.company_name,
@@ -175,12 +174,11 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                         search_location=loc,
                     )
                     db.session.add(posting)
-                    scraped_postings += 1
+                    rows_scraped += 1
 
-                    # Convert to JobRecord
                     job_record = import_posting_to_record(posting)
                     db.session.add(job_record)
-                    created_records += 1
+                    records_created += 1
 
                 db.session.commit()
             except Exception as e:  # noqa: BLE001
@@ -190,8 +188,8 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                 errors.append(msg)
 
     return {
-        "scraped_postings": scraped_postings,
-        "created_records": created_records,
+        "rows_scraped": rows_scraped,
+        "records_created": records_created,
         "errors": errors,
     }
 
@@ -212,56 +210,66 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
     """
     app = create_app()
 
- with app.app_context():
-    now = datetime.utcnow()
-    weekday = now.weekday()
-    day_cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
-    label = day_cfg["label"]
-    roles = day_cfg["roles"]
-    locations = day_cfg["locations"]
+    with app.app_context():
+        now = datetime.utcnow()
+        weekday = date.today().weekday()
+        day_cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
+        label = day_cfg["label"]
+        roles = day_cfg["roles"]
+        locations = day_cfg["locations"]
 
-    print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
+        print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
 
-    # Make sure label fits VARCHAR(20)
-    safe_label = str(label)[:20] if label is not None else None
+        # Make sure label fits VARCHAR(20)
+        safe_label = str(label)[:20] if label is not None else None
 
-    # Create CronRunLog row
-    log = CronRunLog(
-        started_at=now,
-        trigger=trigger,
-        triggered_by=triggered_by,
-        status="running",
-        day_label=safe_label,
-    )
-    db.session.add(log)
-    db.session.commit()
-
-    try:
-        result = _run_for_config(label, roles, locations)
-
-        log.finished_at = datetime.utcnow()
-        log.status = "success" if not result["errors"] else "partial"
-        log.scraped_postings = result["scraped_postings"]
-        log.created_records = result["created_records"]
-        log.message = "\n".join(result["errors"]) if result["errors"] else None
-
-        db.session.commit()
-
-        print(
-            f"✅ Cron complete: {result['scraped_postings']} postings, "
-            f"{result['created_records']} JobRecords, "
-            f"errors={len(result['errors'])}"
+        # Create CronRunLog row
+        log = CronRunLog(
+            job_name="adzuna_daily_scrape",
+            started_at=now,
+            status="running",
+            trigger=trigger,
+            triggered_by=triggered_by,
+            day_label=safe_label,
         )
-        return result
-
-    except Exception as e:  # noqa: BLE001
-        log.finished_at = datetime.utcnow()
-        log.status = "error"
-        log.message = f"{e!r}"
+        db.session.add(log)
         db.session.commit()
-        print("💥 Cron failed:", e)
-        raise
-   
+
+        try:
+            result = _run_for_config(label, roles, locations)
+
+            log.finished_at = datetime.utcnow()
+            log.rows_scraped = result["rows_scraped"]
+            log.records_created = result["records_created"]
+
+            if result["errors"]:
+                log.status = "partial"
+                log.message = "\n".join(result["errors"])
+            else:
+                log.status = "success"
+                log.message = None
+
+            db.session.commit()
+
+            print(
+                f"✅ Cron complete: {result['rows_scraped']} postings, "
+                f"{result['records_created']} JobRecords, "
+                f"errors={len(result['errors'])}"
+            )
+            # Include log_id in case the caller wants to link back
+            result_with_log = dict(result)
+            result_with_log["log_id"] = log.id
+            result_with_log["day_label"] = safe_label
+            return result_with_log
+
+        except Exception as e:  # noqa: BLE001
+            log.finished_at = datetime.utcnow()
+            log.status = "error"
+            log.message = f"{e!r}"
+            db.session.commit()
+            print("💥 Cron failed:", e)
+            raise
+
 
 # -------------------------------------------------------------------
 # CLI entrypoint for Railway schedule
