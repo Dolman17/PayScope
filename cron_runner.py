@@ -135,13 +135,31 @@ DAY_CONFIG = {
 # -------------------------------------------------------------------
 # Core scrape logic
 # -------------------------------------------------------------------
+def _find_existing_posting(source_site: str, external_id: str | None, url: str | None):
+    """
+    Look up an existing JobPosting for dedup:
+    - Prefer (source_site, external_id)
+    - Fall back to (source_site, url) if no external_id
+    """
+    q = None
+    if external_id:
+        q = JobPosting.query.filter_by(source_site=source_site, external_id=external_id)
+    elif url:
+        q = JobPosting.query.filter_by(source_site=source_site, url=url)
+
+    return q.first() if q is not None else None
+
+
 def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
     """
     Run Adzuna scrapes for the given roles/locations.
     Returns a dict with counts and any error messages.
     """
-    rows_scraped = 0
-    records_created = 0
+    rows_scraped = 0              # total items returned from Adzuna
+    records_created = 0           # JobRecord rows created
+    postings_created = 0          # new JobPosting rows
+    postings_updated = 0          # existing JobPosting rows updated
+
     errors: list[str] = []
 
     for role in roles:
@@ -156,26 +174,58 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                 results = scraper.scrape()
 
                 for rec in results:
-                    posting = JobPosting(
-                        title=rec.title,
-                        company_name=rec.company_name,
-                        location_text=rec.location_text,
-                        postcode=rec.postcode,
-                        min_rate=rec.min_rate,
-                        max_rate=rec.max_rate,
-                        rate_type=rec.rate_type,
-                        contract_type=rec.contract_type,
+                    rows_scraped += 1
+
+                    existing = _find_existing_posting(
                         source_site=rec.source_site,
                         external_id=rec.external_id,
                         url=rec.url,
-                        posted_date=rec.posted_date,
-                        raw_json=json.dumps(rec.raw_json or {}),
-                        search_role=role,
-                        search_location=loc,
                     )
-                    db.session.add(posting)
-                    rows_scraped += 1
 
+                    now = datetime.utcnow()
+
+                    if existing:
+                        # Update existing posting with fresh data
+                        posting = existing
+                        posting.title = rec.title
+                        posting.company_name = rec.company_name
+                        posting.location_text = rec.location_text
+                        posting.postcode = rec.postcode
+                        posting.min_rate = rec.min_rate
+                        posting.max_rate = rec.max_rate
+                        posting.rate_type = rec.rate_type
+                        posting.contract_type = rec.contract_type
+                        posting.url = rec.url
+                        posting.posted_date = rec.posted_date
+                        posting.raw_json = json.dumps(rec.raw_json or {})
+                        posting.search_role = role
+                        posting.search_location = loc
+                        posting.scraped_at = now  # treat as "last seen"
+                        posting.is_active = True
+                        postings_updated += 1
+                    else:
+                        # Create new posting
+                        posting = JobPosting(
+                            title=rec.title,
+                            company_name=rec.company_name,
+                            location_text=rec.location_text,
+                            postcode=rec.postcode,
+                            min_rate=rec.min_rate,
+                            max_rate=rec.max_rate,
+                            rate_type=rec.rate_type,
+                            contract_type=rec.contract_type,
+                            source_site=rec.source_site,
+                            external_id=rec.external_id,
+                            url=rec.url,
+                            posted_date=rec.posted_date,
+                            raw_json=json.dumps(rec.raw_json or {}),
+                            search_role=role,
+                            search_location=loc,
+                        )
+                        db.session.add(posting)
+                        postings_created += 1
+
+                    # Always import into JobRecord for time-series history
                     job_record = import_posting_to_record(posting)
                     db.session.add(job_record)
                     records_created += 1
@@ -190,6 +240,8 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
     return {
         "rows_scraped": rows_scraped,
         "records_created": records_created,
+        "postings_created": postings_created,
+        "postings_updated": postings_updated,
         "errors": errors,
     }
 
@@ -254,6 +306,8 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
             print(
                 f"✅ Cron complete: {result['rows_scraped']} postings, "
                 f"{result['records_created']} JobRecords, "
+                f"{result['postings_created']} new, "
+                f"{result['postings_updated']} updated, "
                 f"errors={len(result['errors'])}"
             )
             # Include log_id in case the caller wants to link back

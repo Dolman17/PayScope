@@ -10,6 +10,43 @@
     <p class="text-sm text-gray-500 mt-1">High-level overview with sector, county, and role filters.</p>
   </div>
 
+  <!-- Scrape Activity (Cron / Adzuna) -->
+  <section class="mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card p-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Jobs scraped today</h3>
+        <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
+          {{ today_jobs_total or 0 }}
+        </p>
+        <p class="mt-1 text-xs text-gray-400">From scheduled Adzuna cron runs</p>
+      </div>
+
+      <div class="card p-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Errors today</h3>
+        <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (today_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
+          {{ today_error_runs or 0 }}
+        </p>
+        <p class="mt-1 text-xs text-gray-400">Cron runs with non-success status</p>
+      </div>
+
+      <div class="card p-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Jobs (last 7 days)</h3>
+        <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
+          {{ week_jobs_total or 0 }}
+        </p>
+        <p class="mt-1 text-xs text-gray-400">Total rows scraped into JobPosting</p>
+      </div>
+
+      <div class="card p-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Errorful runs (7 days)</h3>
+        <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (week_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
+          {{ week_error_runs or 0 }}
+        </p>
+        <p class="mt-1 text-xs text-gray-400">Cron runs not marked as success</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Filters -->
   <section class="card mb-8">
     <form method="GET" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -35,10 +72,10 @@
 
       <div>
         <label for="role" class="label">Job Role</label>
-        <select id="role" name="role" class="input">
+        <select id="role" name="job_role" class="input">
           <option value="">All Job Roles</option>
           {% for role in available_roles %}
-            <option value="{{ role }}" {% if request.args.get('role') == role %}selected{% endif %}>{{ role }}</option>
+            <option value="{{ role }}" {% if request.args.get('job_role') == role %}selected{% endif %}>{{ role }}</option>
           {% endfor %}
         </select>
       </div>

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import time
+import random
 from datetime import datetime, date
 from typing import List, Optional
 
@@ -54,9 +56,17 @@ class AdzunaScraper(BaseScraper):
             )
 
     # -------------------------------------------------------------------------
-    # HTTP helpers
+    # HTTP helpers with backoff
     # -------------------------------------------------------------------------
     def _fetch_page(self, page: int) -> dict:
+        """
+        Fetch a page from Adzuna with simple exponential backoff.
+
+        Retries on:
+          - HTTP 429 (rate limit)
+          - HTTP 5xx
+          - network errors
+        """
         url = f"{ADZUNA_BASE_URL}/{self.country}/search/{page}"
         params = {
             "app_id": self.app_id,
@@ -67,9 +77,42 @@ class AdzunaScraper(BaseScraper):
             "content-type": "application/json",
         }
 
-        resp = requests.get(url, params=params, timeout=20)
-        resp.raise_for_status()
-        return resp.json()
+        max_retries = 5
+        attempt = 0
+
+        while True:
+            try:
+                resp = requests.get(url, params=params, timeout=20)
+            except requests.RequestException as exc:
+                attempt += 1
+                if attempt > max_retries:
+                    raise RuntimeError(
+                        f"AdzunaScraper: request failed after {max_retries} retries: {exc}"
+                    )
+                sleep_for = (2 ** (attempt - 1)) + random.random()
+                print(f"[Adzuna] network error, retry {attempt}/{max_retries} in {sleep_for:.1f}s")
+                time.sleep(sleep_for)
+                continue
+
+            # Rate limit or temporary server errors
+            if resp.status_code == 429 or 500 <= resp.status_code < 600:
+                attempt += 1
+                if attempt > max_retries:
+                    raise RuntimeError(
+                        f"AdzunaScraper: HTTP {resp.status_code} after {max_retries} retries "
+                        f"body={resp.text[:300]!r}"
+                    )
+                sleep_for = (2 ** (attempt - 1)) + random.random()
+                print(f"[Adzuna] HTTP {resp.status_code}, retry {attempt}/{max_retries} in {sleep_for:.1f}s")
+                time.sleep(sleep_for)
+                continue
+
+            # Other non-OK responses – raise immediately
+            resp.raise_for_status()
+
+            # Tiny delay between successful calls to avoid hammering the API
+            time.sleep(0.25)
+            return resp.json()
 
     # -------------------------------------------------------------------------
     # Parsing helpers
