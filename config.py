@@ -1,24 +1,33 @@
 import os
 
-# ---- Secret key for sessions / login ----
-# In production, set SECRET_KEY as an environment variable on Railway.
-SECRET_KEY = os.getenv("SECRET_KEY", "b9e3f4d2a8c74f019d5b0c6e2f38a1c44e7d9f5a30b812e9c4d53afa9120e7b3")  # <- change in prod
+# ---------------------------------------------------------
+# SECRET KEY
+# ---------------------------------------------------------
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "b9e3f4d2a8c74f019d5b0c6e2f38a1c44e7d9f5a30b812e9c4d53afa9120e7b3"
+)
 
-# Railway / cloud database URL (Postgres)
-DATABASE_URL = os.getenv("DATABASE_URL")
+# ---------------------------------------------------------
+# DATABASE CONFIG
+# ---------------------------------------------------------
+raw_db_url = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
-    # Railway often provides `postgres://` which SQLAlchemy dislikes
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if raw_db_url:
+    db_url = raw_db_url
 
-    # Use pg8000 in production (no libpq / psycopg2 system deps)
-    if DATABASE_URL.startswith("postgresql://"):
-        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+pg8000://", 1)
+    # Railway sometimes uses postgres:// which SQLAlchemy rejects
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    # Use pg8000 to avoid needing psycopg2 system packages
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+pg8000://", 1)
+
+    SQLALCHEMY_DATABASE_URI = db_url
 else:
-    # Local fallback – keep using your existing SQLite path
+    # Local fallback only if user *intentionally* has no env var
+    print("⚠ WARNING: DATABASE_URL not set — using SQLite fallback app.db")
     SQLALCHEMY_DATABASE_URI = "sqlite:///app.db"
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False

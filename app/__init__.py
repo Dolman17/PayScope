@@ -4,14 +4,14 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+load_dotenv()  # Load .env before anything else
+
 from flask import Flask, render_template
 from flask_login import LoginManager, login_required
-from sqlalchemy import exc as sa_exc
 
 from extensions import db, migrate
-from models import User  # must be importable after db is defined
+from models import User  # Must be importable after db is defined
 
-load_dotenv()
 
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
@@ -43,7 +43,6 @@ def create_app():
     # ---------------------------------------------------------
     db.init_app(app)
     migrate.init_app(app, db)
-
     login_manager.init_app(app)
 
     @login_manager.user_loader
@@ -58,17 +57,11 @@ def create_app():
         return {"current_year": datetime.now(timezone.utc).year}
 
     # ---------------------------------------------------------
-    # MULTI-WORKER SAFE create_all()
+    # IMPORTANT: Removed create_all() for Postgres + Alembic
     # ---------------------------------------------------------
-    with app.app_context():
-        try:
-            db.create_all()
-        except sa_exc.ProgrammingError as e:
-            # Happens when multiple workers try creating the same tables
-            app.logger.warning(f"db.create_all() warning (safe to ignore): {e}")
-        except Exception as e:
-            app.logger.error(f"db.create_all() failed: {e}")
-            raise
+    # Alembic handles all schema creation.
+    # db.create_all() should not be used in a production app with migrations.
+    # ---------------------------------------------------------
 
     # ---------------------------------------------------------
     # Register blueprints
@@ -79,8 +72,6 @@ def create_app():
     from .blueprints.maps import bp as maps_bp
     from .blueprints.dashboard import bp as dashboard_bp
     from .blueprints.upload import bp as upload_bp
-    from app.blueprints.company import bp as company_bp
-
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")

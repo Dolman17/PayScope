@@ -226,11 +226,14 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
             started_at=now,
             trigger=trigger,
             triggered_by=triggered_by,
-            day_label=label,
             status="running",
         )
+        # Set day_label *after* construction to avoid kwargs issues
+        log.day_label = label
+
         db.session.add(log)
         db.session.commit()
+ 
 
         try:
             result = _run_for_config(label, roles, locations)
