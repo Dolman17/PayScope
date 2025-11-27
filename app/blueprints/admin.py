@@ -784,7 +784,7 @@ def import_job(posting_id):
     return redirect(url_for("admin.jobs_page"))
 
 
-@app.route("/admin/tools")
+@bp.route("/tools")
 @login_required
 @superuser_required
 def admin_tools():
