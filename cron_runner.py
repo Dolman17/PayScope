@@ -1,5 +1,5 @@
 # cron_runner.py
-from __future__ annotations
+from __future__ import annotations
 
 import json
 from datetime import datetime, date
@@ -123,7 +123,7 @@ DAY_CONFIG = {
             "Manchester",
         ],
     },
-    6: {  # Sunday – Light Nursing / Care (+ weekly canonicaliser)
+    6: {  # Sunday – Light Nursing / Care
         "label": "Weekend Nursing & Care",
         "roles": [
             "nurse",
@@ -259,7 +259,7 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
 
 
 # -------------------------------------------------------------------
-# AI-driven weekly job-role canonicaliser
+# AI-driven job-role canonicaliser
 # -------------------------------------------------------------------
 def _canonicalise_job_roles_with_ai(
     trigger: str = "scheduled",
@@ -268,7 +268,7 @@ def _canonicalise_job_roles_with_ai(
     max_roles: int = 200,
 ) -> dict:
     """
-    Once a week:
+    Once a week (or on demand):
       - Find distinct (sector, job_role) where job_role_group is empty
       - Ask OpenAI for a canonical group label per role
       - Write back JobRecord.job_role_group
@@ -419,7 +419,10 @@ def _canonicalise_job_roles_with_ai(
         log.finished_at = datetime.utcnow()
         log.status = "success"
         log.records_created = updated  # reuse this field to store "rows updated"
-        log.message = f"Canonicalised job roles. Updated rows={updated}, examined={summary['examined']}."
+        log.message = (
+            f"Canonicalised job roles. Updated rows={updated}, "
+            f"examined={summary['examined']}."
+        )
         db.session.commit()
 
         summary["updated"] = updated
@@ -484,7 +487,6 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
             log.records_created = result["records_created"]
 
             if result["errors"]:
-
                 log.status = "partial"
                 log.message = "\n".join(result["errors"])
             else:
@@ -506,9 +508,7 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
             result_with_log["log_id"] = log.id
             result_with_log["day_label"] = safe_label
 
-            # ------------------------------------------------------------------
-            # Weekly job-role canonicaliser (run on Sunday = 6)
-            # ------------------------------------------------------------------
+            # Weekly job-role canonicaliser (e.g. run on Sunday = 6)
             if weekday == 6:
                 try:
                     print("🧹 Weekly job-role canonicaliser: starting…")
