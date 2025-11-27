@@ -70,6 +70,31 @@ def get_filter_options(force: bool = False):
     return _compute_filter_options() if force else _cached_filter_options()
 
 
+# ============================================================
+# NEW: Sector-specific job role list (fixes deployment import)
+# ============================================================
+def build_role_groups_for_sector(sector: str | None) -> list[str]:
+    """
+    Return distinct job roles filtered to a specific sector.
+    This is intentionally simple:
+      - No AI grouping
+      - No fuzzy logic
+      - Just "all roles that appear for this sector"
+    """
+    q = db.session.query(JobRecord.job_role).filter(JobRecord.job_role.isnot(None))
+
+    if sector:
+        q = q.filter(JobRecord.sector == sector)
+
+    roles = {
+        (row[0] or "").strip()
+        for row in q.distinct().all()
+        if (row[0] or "").strip()
+    }
+
+    return sorted(roles)
+
+
 # ---------- Filter builder ----------
 def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Optional[Callable]]:
     """
@@ -145,6 +170,7 @@ def logo_url_for(company_id: str) -> str:
         return url_for("static", filename=f"logos/{company_id}.png")
     return url_for("static", filename="logos/placeholder.png")
 
+
 def company_has_logo(company_id: str | None) -> bool:
     """
     Return True if there is a custom logo PNG for this company_id
@@ -159,7 +185,6 @@ def company_has_logo(company_id: str | None) -> bool:
         f"{company_id}.png",
     )
     return os.path.exists(fs_path)
-
 
 
 # ---------- Company ID / canonical name helpers ----------
@@ -179,11 +204,6 @@ COMPANY_STOPWORDS = [
 def _clean_company_name(name: str) -> str:
     """
     Normalise a company name into a canonical form for grouping.
-
-    Examples:
-      "Blue Ribbon Healthcare Ltd"  -> "blue ribbon"
-      "BLUE RIBBON HEALTH CARE"     -> "blue ribbon"
-      "Blue Ribbon Group Services"  -> "blue ribbon"
     """
     if not name:
         return ""
@@ -199,12 +219,8 @@ def _clean_company_name(name: str) -> str:
 
 
 def _slugify(text: str, max_len: int = 50) -> str:
-    """
-    Simple slug generator for company_id based on canonical name.
-    """
     if not text:
         return "unknown"
-
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     if not slug:
         slug = "unknown"
@@ -214,14 +230,6 @@ def _slugify(text: str, max_len: int = 50) -> str:
 
 
 def get_or_create_company_id(raw_name: str | None) -> str:
-    """
-    Given a raw company name from scraping, return a stable company_id string
-    that groups similar names together.
-
-    - Uses a canonical cleaned version of the name
-    - Reuses or creates a row in the Company table with that canonical_name
-    - Returns a slug (string) that you store in JobRecord.company_id
-    """
     raw = (raw_name or "").strip()
     if not raw:
         return "unknown"
@@ -230,7 +238,6 @@ def get_or_create_company_id(raw_name: str | None) -> str:
     if not canonical:
         canonical = raw.lower().strip()
 
-    # Try to reuse an existing Company row with the same canonical_name
     company = Company.query.filter_by(canonical_name=canonical).first()
 
     if not company:
@@ -239,11 +246,9 @@ def get_or_create_company_id(raw_name: str | None) -> str:
         try:
             db.session.commit()
         except Exception as e:
-            # Don't break import just because company insert failed
             db.session.rollback()
             print(f"⚠️ Failed to insert Company for '{raw}': {e}")
 
-    # Derive a stable slug from canonical_name
     return _slugify(canonical)
 
 
@@ -252,8 +257,6 @@ POSTCODES_IO_BULK_URL = "https://api.postcodes.io/postcodes"
 POSTCODES_IO_SINGLE_URL = "https://api.postcodes.io/postcodes/{pc}"
 POSTCODES_IO_REVERSE_URL = "https://api.postcodes.io/postcodes"  # lat/lon params
 
-
-# Hard UK bounding box to prevent overseas mis-geocoding
 UK_BBOX = {
     "min_lon": -10.5,
     "max_lon": 1.9,
@@ -306,14 +309,6 @@ def geocode_postcode_cached(postcode: str) -> Tuple[float | None, float | None]:
 
 
 def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
-    """
-    Geocode a UK postcode using postcodes.io only.
-
-    - Normalises the postcode
-    - Calls postcodes.io
-    - Returns (lat, lon) only if the result lies within the UK bounding box
-    - Otherwise returns (None, None)
-    """
     pc = normalize_uk_postcode(postcode)
     if not pc:
         return (None, None)
@@ -328,7 +323,6 @@ def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
                 if inside_uk(lat, lon):
                     return (lat, lon)
                 else:
-                    # Out-of-UK result (should not happen, but be safe)
                     print(f"postcodes.io returned out-of-UK coords for {pc}: {lat}, {lon}")
         else:
             print(f"postcodes.io non-200 ({r.status_code}) for {pc}")
@@ -338,29 +332,14 @@ def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
     return (None, None)
 
 
-# ---------- Nearest-postcode helpers from coordinates ----------
-def lookup_nearest_postcode(
-    lat: float,
-    lon: float,
-) -> tuple[str | None, float | None, float | None]:
-    """
-    Given a lat/lon (typically from Nominatim or other geocoder),
-    look up the nearest UK postcode using postcodes.io reverse geocoding.
-
-    Returns:
-        (postcode | None, postcode_lat | None, postcode_lon | None)
-    """
+def lookup_nearest_postcode(lat: float, lon: float) -> tuple[str | None, float | None, float | None]:
     if lat is None or lon is None:
         return (None, None, None)
 
     try:
         resp = requests.get(
             POSTCODES_IO_REVERSE_URL,
-            params={
-                "lat": lat,
-                "lon": lon,
-                "limit": 1,
-            },
+            params={"lat": lat, "lon": lon, "limit": 1},
             timeout=10,
         )
         if resp.status_code != 200:
@@ -378,7 +357,6 @@ def lookup_nearest_postcode(
         pc_lat = best.get("latitude")
         pc_lon = best.get("longitude")
 
-        # Safety: make sure the postcode coordinates are in the UK box
         if pc_lat is not None and pc_lon is not None and not inside_uk(pc_lat, pc_lon):
             print(f"postcodes.io reverse returned out-of-UK coords for {pc}: {pc_lat}, {pc_lon}")
             return (None, None, None)
@@ -389,20 +367,8 @@ def lookup_nearest_postcode(
         return (None, None, None)
 
 
-def snap_to_nearest_postcode(
-    lat: float,
-    lon: float,
-) -> tuple[str | None, float | None, float | None]:
-    """
-    Convenience wrapper:
-
-    - Look up nearest postcode for the given lat/lon
-    - If found (and valid), return (postcode, snapped_lat, snapped_lon)
-    - If not, keep the original lat/lon and return (None, lat, lon)
-    """
+def snap_to_nearest_postcode(lat: float, lon: float) -> tuple[str | None, float | None, float | None]:
     pc, pc_lat, pc_lon = lookup_nearest_postcode(lat, lon)
     if pc and pc_lat is not None and pc_lon is not None:
         return (pc, pc_lat, pc_lon)
-
-    # Fallback: no postcode, but keep original coordinates
     return (None, lat, lon)
