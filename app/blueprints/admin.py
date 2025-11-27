@@ -784,6 +784,15 @@ def import_job(posting_id):
     return redirect(url_for("admin.jobs_page"))
 
 
+@app.route("/admin/tools")
+@login_required
+@superuser_required
+def admin_tools():
+    return render_template("admin/admin_tools.html")
+
+
+
+
 # -------------------------------------------------------------------
 # DB HEALTH
 # -------------------------------------------------------------------

@@ -1,96 +1,253 @@
 # backfill_sectors.py
+from __future__ import annotations
+
+from typing import Optional
+
 from app import create_app
 from extensions import db
 from models import JobPosting, JobRecord
-from app.importers.job_importer import classify_sector
 
-BATCH_COMMIT = 500  # commit every N updated rows
 
+# ---------- Sector classifier ----------
+
+def classify_sector(title: Optional[str]) -> str:
+    """
+    Map a raw job title into a high-level sector bucket.
+    This DOES NOT touch the original title in the DB; it only returns a label.
+    """
+    if not title:
+        return "Other"
+
+    t = title.lower()
+
+    # Social care / residential / support
+    care_keywords = [
+        "support worker",
+        "care assistant",
+        "care worker",
+        "healthcare assistant",
+        "health care assistant",
+        "senior care assistant",
+        "senior support worker",
+        "residential support",
+        "children's residential",
+        "childrens residential",
+        "learning disability",
+        "learning disabilities",
+        "supported living",
+        "care home",
+        "domiciliary",
+        "home care",
+    ]
+    if any(k in t for k in care_keywords):
+        return "Social Care"
+
+    # Nursing / clinical
+    nursing_keywords = [
+        "nurse",
+        "rgn",
+        "rscn",
+        "rmn",
+        "rgn/rmn",
+        "clinical lead",
+        "registered nurse",
+        "staff nurse",
+    ]
+    if any(k in t for k in nursing_keywords):
+        return "Nursing & Clinical"
+
+    # HR / Recruitment / People
+    hr_keywords = [
+        "hr ",
+        " human resources",
+        "people partner",
+        "talent acquisition",
+        "recruitment consultant",
+        "recruitment manager",
+        "resourcing",
+    ]
+    if any(k in t for k in hr_keywords):
+        return "HR & Recruitment"
+
+    # Finance / accounting / payroll
+    fin_keywords = [
+        "accountant",
+        "accounts assistant",
+        "finance assistant",
+        "finance manager",
+        "financial analyst",
+        "bookkeeper",
+        "payroll",
+        "credit control",
+    ]
+    if any(k in t for k in fin_keywords):
+        return "Finance & Accounting"
+
+    # IT / digital / data
+    it_keywords = [
+        "software developer",
+        "software engineer",
+        "developer",
+        "engineer",
+        "data analyst",
+        "business analyst",
+        "bi analyst",
+        "it support",
+        "service desk",
+        "devops",
+        "systems administrator",
+        "infrastructure",
+    ]
+    if any(k in t for k in it_keywords):
+        return "IT & Digital"
+
+    # Admin / office / PA
+    admin_keywords = [
+        "administrator",
+        "receptionist",
+        "office manager",
+        "office administrator",
+        "secretary",
+        "pa to",
+        "personal assistant",
+        "team admin",
+    ]
+    if any(k in t for k in admin_keywords):
+        return "Admin & Office"
+
+    # Operations / leadership / management (generic)
+    ops_keywords = [
+        "operations manager",
+        "operations director",
+        "service manager",
+        "registered manager",
+        "home manager",
+        "deputy manager",
+        "team leader",
+        "coordinator",
+        "co-ordinator",
+        "supervisor",
+        "head of",
+        "director",
+        "managing director",
+        "regional manager",
+    ]
+    if any(k in t for k in ops_keywords):
+        return "Leadership & Operations"
+
+    # Customer service / contact centre
+    cs_keywords = [
+        "customer service",
+        "call centre",
+        "contact centre",
+        "customer advisor",
+        "customer adviser",
+    ]
+    if any(k in t for k in cs_keywords):
+        return "Customer Service"
+
+    # Sales / marketing
+    sales_keywords = [
+        "sales ",
+        "sales executive",
+        "business development",
+        "bdm",
+        "account manager",
+        "marketing",
+        "brand manager",
+    ]
+    if any(k in t for k in sales_keywords):
+        return "Sales & Marketing"
+
+    # Education / training
+    edu_keywords = [
+        "teacher",
+        "teaching assistant",
+        "learning support assistant",
+        "trainer",
+        "training officer",
+        "lecturer",
+        "tutor",
+    ]
+    if any(k in t for k in edu_keywords):
+        return "Education & Training"
+
+    # Legal
+    legal_keywords = [
+        "solicitor",
+        "paralegal",
+        "legal assistant",
+        "legal secretary",
+    ]
+    if any(k in t for k in legal_keywords):
+        return "Legal"
+
+    return "Other"
+
+
+# ---------- Backfill helpers (no yield_per, single commit) ----------
 
 def backfill_postings():
-    postings = JobPosting.query.all()
+    print("=== Backfilling JobPosting.sector ===")
+    postings = JobPosting.query.order_by(JobPosting.id).all()
     total = len(postings)
     print(f"[Postings] Total rows: {total}")
-    if total == 0:
-        return
+
+    # Samples
+    for p in postings[:5]:
+        print(f"[Postings] Sample: id={p.id}, title={p.title!r}, sector={p.sector!r}")
 
     updated = 0
-    batch_updates = 0
-
-    for i, posting in enumerate(postings, start=1):
-        if not posting.sector:
-            posting.sector = classify_sector(posting.title, posting.search_role)
+    for idx, posting in enumerate(postings, start=1):
+        title = posting.title or posting.search_role or ""
+        new_sector = classify_sector(title)
+        if posting.sector != new_sector:
+            posting.sector = new_sector
             updated += 1
-            batch_updates += 1
 
-        if i <= 5:
-            print(f"[Postings] Sample {i}: id={posting.id}, title={posting.title[:60]!r}")
+        if idx % 500 == 0:
+            print(f"[Postings] {idx}/{total} processed... (updated so far={updated})")
 
-        if i % 1000 == 0:
-            print(f"[Postings] {i}/{total} processed...")
-
-        # Commit every BATCH_COMMIT updated rows
-        if batch_updates >= BATCH_COMMIT:
-            print(f"[Postings] Committing batch (total updated so far={updated})...")
-            db.session.commit()
-            batch_updates = 0
-
-    # Final commit for any remaining updates
-    if batch_updates > 0:
-        print(f"[Postings] Final commit for remaining {batch_updates} updates...")
-        db.session.commit()
-
+    print("[Postings] Committing updates...")
+    db.session.commit()
     print(f"[Postings] DONE: {total} processed, {updated} updated.")
 
 
-def backfill_records():
-    records = JobRecord.query.all()
+def backfill_job_records():
+    print("=== Backfilling JobRecord.sector ===")
+    records = JobRecord.query.order_by(JobRecord.id).all()
     total = len(records)
     print(f"[JobRecord] Total rows: {total}")
-    if total == 0:
-        return
+
+    for r in records[:5]:
+        print(f"[JobRecord] Sample: id={r.id}, job_role={r.job_role!r}, sector={r.sector!r}")
 
     updated = 0
-    batch_updates = 0
-
-    for i, record in enumerate(records, start=1):
-        # If sector is missing or still equal to the raw job_role, recompute
-        if not record.sector or record.sector == record.job_role:
-            record.sector = classify_sector(record.job_role, None)
+    for idx, rec in enumerate(records, start=1):
+        # Prefer the original job_role; fall back to existing sector text if needed
+        title = rec.job_role or rec.sector or ""
+        new_sector = classify_sector(title)
+        if rec.sector != new_sector:
+            rec.sector = new_sector
             updated += 1
-            batch_updates += 1
 
-        if i <= 5:
-            print(f"[JobRecord] Sample {i}: id={record.id}, job_role={record.job_role[:60]!r}")
+        if idx % 500 == 0:
+            print(f"[JobRecord] {idx}/{total} processed... (updated so far={updated})")
 
-        if i % 1000 == 0:
-            print(f"[JobRecord] {i}/{total} processed...")
-
-        if batch_updates >= BATCH_COMMIT:
-            print(f"[JobRecord] Committing batch (total updated so far={updated})...")
-            db.session.commit()
-            batch_updates = 0
-
-    if batch_updates > 0:
-        print(f"[JobRecord] Final commit for remaining {batch_updates} updates...")
-        db.session.commit()
-
+    print("[JobRecord] Committing updates...")
+    db.session.commit()
     print(f"[JobRecord] DONE: {total} processed, {updated} updated.")
 
+
+# ---------- Entry point ----------
 
 def main():
     app = create_app()
     with app.app_context():
-        print("Starting sector backfill...")
-
-        try:
-            backfill_postings()
-            backfill_records()
-            print("All done.")
-        except Exception as exc:
-            db.session.rollback()
-            print("💥 Backfill failed, transaction rolled back.")
-            print(repr(exc))
+        print("Starting sector backfill (safe for titles; only sector field is updated)...")
+        backfill_postings()
+        backfill_job_records()
+        print("All done.")
 
 
 if __name__ == "__main__":

@@ -96,22 +96,9 @@
           <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
           <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
 
-        {% if current_user.admin_level in [1, 2] %}
-          <a href="{{ url_for('dashboard.dashboard') }}" class="nav-chip">Dashboard</a>
-          <a href="{{ url_for('dashboard.insights') }}" class="nav-chip">Insights</a>
-          <a href="{{ url_for('admin.admin_jobs') }}" class="nav-chip">Jobs</a>
-          <a href="{{ url_for('admin.admin_job_scrape') }}" class="nav-chip">Job Scrape</a>
-          <a href="{{ url_for('admin.ai_logs') }}" class="nav-chip">AI Logs</a>
-          <a href="{{ url_for('admin.cron_runs') }}" class="nav-chip">Cron Runs</a>
-          <a href="{{ url_for('admin.db_health') }}" class="nav-chip">DB Health</a>
-          <a href="{{ url_for('admin.admin_companies') }}" class="nav-chip">Companies</a>
-        {% endif %}
-
-
-
-
+          {# Superuser-only Admin Tools hub #}
           {% if current_user.admin_level == 1 %}
-            <a href="{{ url_for('admin.manage_users') }}" class="nav-chip">User Management</a>
+            <a href="{{ url_for('admin.admin_tools') }}" class="nav-chip">Admin Tools</a>
           {% endif %}
 
           <a href="{{ url_for('auth.logout') }}" class="text-gray-500 hover:underline ml-1">Logout</a>

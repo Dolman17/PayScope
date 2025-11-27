@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Admin Tools • Pay Rate Map{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold mb-6" style="color: var(--brand);">
+    Admin Tools
+  </h1>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+    <a href="{{ url_for('dashboard.dashboard') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Dashboard</h2>
+      <p class="text-gray-600 text-sm">Overview of activity, charts, and KPIs.</p>
+    </a>
+
+    <a href="{{ url_for('dashboard.insights') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Insights</h2>
+      <p class="text-gray-600 text-sm">AI-powered analysis and workforce insights.</p>
+    </a>
+
+    <a href="{{ url_for('admin.admin_jobs') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Jobs</h2>
+      <p class="text-gray-600 text-sm">Manage imported job postings.</p>
+    </a>
+
+    <a href="{{ url_for('admin.admin_job_scrape') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Job Scrape</h2>
+      <p class="text-gray-600 text-sm">Run scrapers and review scrape logs.</p>
+    </a>
+
+    <a href="{{ url_for('admin.ai_logs') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">AI Logs</h2>
+      <p class="text-gray-600 text-sm">Review all AI-generated activity.</p>
+    </a>
+
+    <a href="{{ url_for('admin.cron_runs') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Cron Runs</h2>
+      <p class="text-gray-600 text-sm">Scheduled job history and manual triggers.</p>
+    </a>
+
+    <a href="{{ url_for('admin.db_health') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">DB Health</h2>
+      <p class="text-gray-600 text-sm">Database status, checks, and integrity info.</p>
+    </a>
+
+    <a href="{{ url_for('admin.admin_companies') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">Companies</h2>
+      <p class="text-gray-600 text-sm">Manage competitor company metadata.</p>
+    </a>
+
+    <a href="{{ url_for('admin.manage_users') }}" class="card p-5 hover:shadow-md transition">
+      <h2 class="text-lg font-semibold mb-1">User Management</h2>
+      <p class="text-gray-600 text-sm">Add, edit, or disable users.</p>
+    </a>
+
+  </div>
+</div>
+{% endblock %}
