@@ -259,22 +259,25 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
 
 
 # -------------------------------------------------------------------
-# AI-driven job-role canonicaliser
+# AI-driven job-role canonicaliser (chunked)
 # -------------------------------------------------------------------
 def _canonicalise_job_roles_with_ai(
     trigger: str = "scheduled",
     triggered_by: str | None = None,
     day_label: str | None = None,
     max_roles: int = 200,
+    chunk_size: int = 25,
 ) -> dict:
     """
-    Once a week (or on demand):
-      - Find distinct (sector, job_role) where job_role_group is empty
-      - Ask OpenAI for a canonical group label per role
-      - Write back JobRecord.job_role_group
-      - Log a CronRunLog row
+    Canonicalise job titles in small AI batches.
 
-    This function assumes it is called inside app.app_context().
+    - Fetch up to `max_roles` distinct (sector, job_role) needing grouping.
+    - Split into chunks of `chunk_size` items.
+    - For each chunk, call OpenAI with a compact JSON payload.
+    - Apply canonical labels to JobRecord.job_role_group.
+    - Log everything in CronRunLog.
+
+    Assumes it is called inside app.app_context().
     """
 
     now = datetime.utcnow()
@@ -330,113 +333,129 @@ def _canonicalise_job_roles_with_ai(
             db.session.commit()
             return summary
 
-        # Prepare payload for AI
-        role_items = []
-        for sector, raw in rows:
-            raw_title = (raw or "").strip()
-            if not raw_title:
-                summary["skipped"] += 1
-                continue
-            role_items.append({"sector": sector or "Unknown", "title": raw_title})
-
-        if not role_items:
-            log.status = "success"
-            log.message = "All candidate roles were empty after cleaning."
-            db.session.commit()
-            return summary
-
-        # Build a compact instruction
-        prompt_roles = "\n".join(
-            f"- [{i}] sector='{item['sector']}', title='{item['title']}'"
-            for i, item in enumerate(role_items, start=1)
-        )
+        # Helper to chunk the work
+        def chunked(seq, n):
+            for i in range(0, len(seq), n):
+                yield seq[i: i + n]
 
         system_msg = (
             "You are cleaning job titles for an analytics tool. "
-            "Your job is to assign a short, human-readable canonical group name "
-            "to each raw job title, per sector. Similar roles should share the "
-            "same group label (e.g. 'Care Assistant (Nights)' and 'HCA - Days' "
-            "might both become 'Care & Support Worker'). "
-            "Keep labels concise (max ~40 characters)."
+            "For each input item (sector + raw title), you assign a short, "
+            "human-readable canonical group name. Similar roles should share "
+            "the same group label. Keep labels concise (max ~40 characters). "
+            "Respond ONLY with valid JSON, no commentary."
         )
 
-        user_msg = (
-            "We have the following job titles that need grouping. "
-            "For each item, return a JSON object where:\n"
-            '- each key is the exact string \"sector|||title\" (use the values as given), and\n'
-            "- each value is your canonical group label.\n\n"
-            "Items:\n"
-            f"{prompt_roles}\n\n"
-            "Respond with JSON only, no explanation."
-        )
+        total_updated = 0
+        total_skipped = 0
 
-                # Call OpenAI with a hard timeout so we don't hang the worker
-        try:
-            resp = _openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": user_msg},
-                ],
-                temperature=0.1,
-                timeout=20,  # seconds – keeps well under gunicorn's worker timeout
-            )
-            content = resp.choices[0].message.content.strip()
-        except Exception as e:
-            msg = f"OpenAI call failed during job-role canonicaliser: {e!r}"
-            log.status = "error"
-            log.message = msg
-            db.session.commit()
-            summary["error"] = msg
-            return summary
+        # Process in chunks to keep prompts and responses small
+        for chunk_index, chunk_rows in enumerate(chunked(rows, chunk_size), start=1):
+            # Build JSON payload for this chunk
+            role_items = []
+            for sector, raw in chunk_rows:
+                raw_title = (raw or "").strip()
+                if not raw_title:
+                    total_skipped += 1
+                    continue
+                role_items.append({
+                    "sector": sector or "Unknown",
+                    "title": raw_title,
+                })
 
-        try:
-            mapping = json.loads(content)
-        except Exception as e:
-            msg = f"Failed to parse AI JSON: {e!r} | content={content[:500]}"
-            log.status = "error"
-            log.message = msg
-            db.session.commit()
-            summary["error"] = msg
-            return summary
-
-
-        updated = 0
-
-        # Apply mapping back to JobRecord
-        for sector, raw in rows:
-            raw_title = (raw or "").strip()
-            if not raw_title:
-                continue
-            key = f"{sector or 'Unknown'}|||{raw_title}"
-            canonical = (mapping.get(key) or "").strip()
-            if not canonical:
-                summary["skipped"] += 1
+            if not role_items:
                 continue
 
-            # Update all JobRecords matching this (sector, job_role)
-            q = JobRecord.query.filter(
-                JobRecord.job_role == raw_title,
-                JobRecord.sector == sector,
-            )
-            count = q.update(
-                {"job_role_group": canonical},
-                synchronize_session=False,
-            )
-            updated += count
+            payload = json.dumps(role_items, ensure_ascii=False)
 
-        db.session.commit()
+            user_msg = (
+                "You are given a JSON array of job roles. "
+                "Each item has keys: 'sector' and 'title'.\n\n"
+                "Return a JSON object where:\n"
+                '- each key is exactly \"sector|||title\" using the given values, and\n'
+                "- each value is your canonical group label (short, human-readable).\n\n"
+                "Input JSON:\n"
+                f"{payload}\n\n"
+                "Output JSON only, no explanation."
+            )
 
+            # Call OpenAI with a hard timeout so we don't hang the worker
+            try:
+                resp = _openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    temperature=0.1,
+                    timeout=20,  # seconds – keep under gunicorn worker timeout
+                    max_tokens=1500,
+                )
+                content = resp.choices[0].message.content.strip()
+            except Exception as e:
+                msg = (
+                    f"OpenAI call failed during job-role canonicaliser "
+                    f"(chunk {chunk_index}): {e!r}"
+                )
+                log.status = "error"
+                log.message = msg
+                db.session.commit()
+                summary["error"] = msg
+                summary["updated"] = total_updated
+                summary["skipped"] = total_skipped
+                return summary
+
+            try:
+                mapping = json.loads(content)
+            except Exception as e:
+                msg = (
+                    f"Failed to parse AI JSON for chunk {chunk_index}: {e!r} "
+                    f"| content={content[:500]}"
+                )
+                log.status = "error"
+                log.message = msg
+                db.session.commit()
+                summary["error"] = msg
+                summary["updated"] = total_updated
+                summary["skipped"] = total_skipped
+                return summary
+
+            # Apply mapping back to JobRecord for this chunk
+            for sector, raw in chunk_rows:
+                raw_title = (raw or "").strip()
+                if not raw_title:
+                    continue
+                key = f"{sector or 'Unknown'}|||{raw_title}"
+                canonical = (mapping.get(key) or "").strip()
+                if not canonical:
+                    total_skipped += 1
+                    continue
+
+                q = JobRecord.query.filter(
+                    JobRecord.job_role == raw_title,
+                    JobRecord.sector == sector,
+                )
+                count = q.update(
+                    {"job_role_group": canonical},
+                    synchronize_session=False,
+                )
+                total_updated += count
+
+            # Commit after each chunk so progress is saved
+            db.session.commit()
+
+        # All chunks processed (or gracefully aborted earlier)
         log.finished_at = datetime.utcnow()
         log.status = "success"
-        log.records_created = updated  # reuse this field to store "rows updated"
+        log.records_created = total_updated  # reuse field for "rows updated"
         log.message = (
-            f"Canonicalised job roles. Updated rows={updated}, "
-            f"examined={summary['examined']}."
+            f"Canonicalised job roles. Updated rows={total_updated}, "
+            f"examined={summary['examined']}, skipped={total_skipped}."
         )
         db.session.commit()
 
-        summary["updated"] = updated
+        summary["updated"] = total_updated
+        summary["skipped"] = total_skipped
         return summary
 
     except Exception as e:  # noqa: BLE001
