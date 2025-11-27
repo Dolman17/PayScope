@@ -4,6 +4,7 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required
 from sqlalchemy import or_
+
 from extensions import db
 from models import JobRecord
 from .utils import (
@@ -33,19 +34,27 @@ def map_sector_select():
 @bp.route("/map/<sector>")
 @login_required
 def sector_map(sector: str):
-    # Keep existing query params for UI controls; data now loaded via API
+    """
+    Sector-specific map view.
+
+    - Sector is taken from the URL segment.
+    - Filters (job_role/min_pay/max_pay) are optional GET params.
+    - job_roles in the dropdown are limited to roles that actually exist
+      for this sector.
+    """
+
     job_role = request.args.get("job_role") or ""
     min_pay = request.args.get("min_pay", type=float)
     max_pay = request.args.get("max_pay", type=float)
 
-    # NEW: grouped roles, only for this sector
-    role_groups = build_role_groups_for_sector(sector)
+    # 👉 Get distinct roles for THIS sector only, as simple non-empty strings
+    job_roles = build_role_groups_for_sector(sector)
 
     return render_template(
         "map.html",
         sector=sector,
         records=[],  # markers will be loaded via API
-        job_roles=role_groups,
+        job_roles=job_roles,
         filters={
             "job_role": job_role or "",
             "min_pay": min_pay or "",
@@ -55,19 +64,24 @@ def sector_map(sector: str):
 
 
 def _apply_map_filters(q, sector: str, args):
-    # Always constrain to sector
+    """
+    Apply sector + filters to the base JobRecord query.
+
+    - Always constraints to sector.
+    - job_role filter uses get_raw_roles_for_group so we can later group
+      multiple raw titles under one UI label without changing this code.
+    """
+    # Always lock to sector
     q = q.filter(JobRecord.sector == sector)
 
-    # Job role now comes in as a grouped key; expand to underlying raw titles
-    jr = (args.get("job_role") or "").strip()
-    if jr:
-        raw_roles = get_raw_roles_for_group(sector, jr)
+    # Job role group from query string
+    group_label = (args.get("job_role") or "").strip()
+    if group_label:
+        raw_roles = get_raw_roles_for_group(group_label, sector)
         if raw_roles:
             q = q.filter(JobRecord.job_role.in_(raw_roles))
-        else:
-            # Backwards-compat: if no group found, fall back to direct equality
-            q = q.filter(JobRecord.job_role == jr)
 
+    # Pay range
     min_pay = args.get("min_pay", type=float)
     max_pay = args.get("max_pay", type=float)
     if min_pay is not None:
