@@ -62,13 +62,25 @@
       </div>
 
       <div>
-        <label class="label" for="min_pay">Min Pay</label>
-        <input id="min_pay" type="number" name="min_pay" value="{{ filters.min_pay or '' }}" class="input" placeholder="Min Pay">
+        <label class="label" for="rate_min">Min Pay</label>
+        <input id="rate_min"
+               type="number"
+               step="0.01"
+               name="rate_min"
+               value="{{ filters.rate_min or '' }}"
+               class="input"
+               placeholder="Min Pay">
       </div>
 
       <div>
-        <label class="label" for="max_pay">Max Pay</label>
-        <input id="max_pay" type="number" name="max_pay" value="{{ filters.max_pay or '' }}" class="input" placeholder="Max Pay">
+        <label class="label" for="rate_max">Max Pay</label>
+        <input id="rate_max"
+               type="number"
+               step="0.01"
+               name="rate_max"
+               value="{{ filters.rate_max or '' }}"
+               class="input"
+               placeholder="Max Pay">
       </div>
 
       <div class="sm:col-span-2 lg:col-span-6 flex items-end">
@@ -213,6 +225,7 @@
     // Records already reflect the current filters for this page
     const records = {{ records|tojson }};
     const currentFilters = {{ filters|tojson }};
+    const stats = {{ stats|tojson }};
     const aiEndpoint = "/insights/ai-analyze";
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

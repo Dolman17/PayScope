@@ -18,7 +18,10 @@ bp = Blueprint("dashboard", __name__)
 
 
 def _fresh_filter_options():
-    # Avoid TTL cache; query distincts directly so selects always populate
+    """
+    Avoid TTL cache; query distincts directly so selects always populate
+    on the dashboard filters.
+    """
     def col_distinct(col):
         return [
             v[0]
@@ -48,11 +51,12 @@ def dashboard():
       - total_companies, by_sector, by_county
       - scrape stats from CronRunLog (today + last 7 days)
     """
-    # Filters for JobRecord
+    # NOTE: dashboard.html uses name="role" for the job role filter.
+    # We map that into "job_role" for build_filters_from_request.
     filters_map = {
         "q": request.args.get("q"),
         "sector": request.args.get("sector"),
-        "job_role": request.args.get("job_role"),
+        "job_role": request.args.get("role"),  # <-- form field "role"
         "county": request.args.get("county"),
         "month": request.args.get("month"),
         "year": request.args.get("year"),
@@ -133,7 +137,7 @@ def dashboard():
         (county or "Unknown", int(count or 0)) for county, count in by_county_rows
     ]
 
-    # Recent uploads by month/year (optional small widget if you want it later)
+    # Recent uploads by month/year (optional widget)
     recent_uploads = (
         db.session.query(
             sq.c.imported_year,
@@ -231,7 +235,8 @@ def insights():
     filters_map = {
         "q": request.args.get("q"),
         "sector": request.args.get("sector"),
-        "job_role": request.args.get("job_role"),
+        # Accept both ?job_role= and ?role= just in case
+        "job_role": request.args.get("job_role") or request.args.get("role"),
         "county": request.args.get("county"),
         "month": request.args.get("month"),
         "year": request.args.get("year"),
@@ -294,21 +299,54 @@ def insights():
     )
     top_roles = [{"role": r or "—", "count": n} for r, n in top_roles_rows]
 
+    # Sector breakdown (count + avg pay per sector)
+    sector_rows = (
+        db.session.query(
+            sq.c.sector,
+            func.count(sq.c.id),
+            func.avg(sq.c.pay_rate),
+        )
+        .group_by(sq.c.sector)
+        .order_by(func.count(sq.c.id).desc())
+        .all()
+    )
+    sector_stats = [
+        {
+            "sector": s or "Unknown",
+            "count": int(n or 0),
+            "avg_rate": float(a or 0.0) if a is not None else 0.0,
+        }
+        for (s, n, a) in sector_rows
+    ]
+
     # Distribution bands
     def _band_count(lower, upper, include_lower=True, include_upper=False):
         q = db.session.query(func.count(sq.c.id))
         if lower is not None:
-            q = q.filter(sq.c.pay_rate >= lower if include_lower else sq.c.pay_rate > lower)
+            q = q.filter(
+                sq.c.pay_rate >= lower if include_lower else sq.c.pay_rate > lower
+            )
         if upper is not None:
-            q = q.filter(sq.c.pay_rate <= upper if include_upper else sq.c.pay_rate < upper)
+            q = q.filter(
+                sq.c.pay_rate <= upper if include_upper else sq.c.pay_rate < upper
+            )
         return q.scalar() or 0
 
     dist = [
-        {"label": "< £11",   "count": _band_count(None, 11, include_upper=False)},
-        {"label": "£11–£12", "count": _band_count(11, 12, include_lower=True, include_upper=False)},
-        {"label": "£12–£13", "count": _band_count(12, 13, include_lower=True, include_upper=False)},
-        {"label": "£13–£14", "count": _band_count(13, 14, include_lower=True, include_upper=False)},
-        {"label": "≥ £14",   "count": _band_count(14, None, include_lower=True)},
+        {"label": "< £11", "count": _band_count(None, 11, include_upper=False)},
+        {
+            "label": "£11–£12",
+            "count": _band_count(11, 12, include_lower=True, include_upper=False),
+        },
+        {
+            "label": "£12–£13",
+            "count": _band_count(12, 13, include_lower=True, include_upper=False),
+        },
+        {
+            "label": "£13–£14",
+            "count": _band_count(13, 14, include_lower=True, include_upper=False),
+        },
+        {"label": "≥ £14", "count": _band_count(14, None, include_lower=True)},
     ]
 
     stats = {
@@ -318,6 +356,7 @@ def insights():
         "max_rate": max_rate,
         "top_counties": top_counties,
         "top_roles": top_roles,
+        "sector_stats": sector_stats,  # safe extra for insights.html
         "distribution": dist,
     }
 
@@ -326,6 +365,7 @@ def insights():
         db.session.query(
             sq.c.id,
             sq.c.company_name,
+            sq.c.sector,
             sq.c.job_role,
             sq.c.county,
             sq.c.pay_rate,
@@ -344,11 +384,12 @@ def insights():
         {
             "id": r[0],
             "company_name": r[1],
-            "job_role": r[2],
-            "county": r[3],
-            "pay_rate": float(r[4]) if r[4] is not None else None,
-            "imported_month": r[5],
-            "imported_year": r[6],
+            "sector": r[2],
+            "job_role": r[3],
+            "county": r[4],
+            "pay_rate": float(r[5]) if r[5] is not None else None,
+            "imported_month": r[6],
+            "imported_year": r[7],
         }
         for r in rows_for_client
     ]
