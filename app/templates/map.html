@@ -17,13 +17,16 @@
       <div class="lg:col-span-2">
         <label for="job_role" class="label">Job Role</label>
         <select id="job_role" name="job_role" class="input">
-          <option value="">All Job Roles</option>
-          {% for group in job_roles %}
-            <option value="{{ group.key }}" {% if filters.job_role == group.key %}selected{% endif %}>
-              {{ group.label }}
-            </option>
-          {% endfor %}
-        </select>
+  <option value="">All Job Roles</option>
+  {% for role in job_roles %}
+    {% set label = (role | string).strip() %}
+    <option value="{{ label }}"
+            {% if filters.job_role == label %}selected{% endif %}>
+      {{ label or "[Unknown role]" }}
+    </option>
+  {% endfor %}
+</select>
+
       </div>
 
       <div>

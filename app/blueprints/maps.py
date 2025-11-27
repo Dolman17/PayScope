@@ -47,8 +47,18 @@ def sector_map(sector: str):
     min_pay = request.args.get("min_pay", type=float)
     max_pay = request.args.get("max_pay", type=float)
 
-    # 👉 Get distinct roles for THIS sector only, as simple non-empty strings
-    job_roles = build_role_groups_for_sector(sector)
+    # Get distinct roles for THIS sector only
+    raw_roles = build_role_groups_for_sector(sector)
+
+    # Force everything to a clean, non-empty string
+    job_roles = []
+    for r in raw_roles:
+        s = str(r).strip()
+        if s:
+            job_roles.append(s)
+
+    # Optional: debug to logs so you can see what's coming through
+    print(f"[DEBUG] job_roles for sector '{sector}': {job_roles[:20]}")
 
     return render_template(
         "map.html",
@@ -61,6 +71,7 @@ def sector_map(sector: str):
             "max_pay": max_pay or "",
         },
     )
+
 
 
 def _apply_map_filters(q, sector: str, args):
