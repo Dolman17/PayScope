@@ -6,9 +6,15 @@ from flask_login import login_required
 from sqlalchemy import or_
 from extensions import db
 from models import JobRecord
-from .utils import logo_url_for, company_has_logo   # <-- NEW IMPORT
+from .utils import (
+    logo_url_for,
+    company_has_logo,
+    build_role_groups_for_sector,
+    get_raw_roles_for_group,
+)
 
 bp = Blueprint("maps", __name__)
+
 
 @bp.route("/map")
 @login_required
@@ -32,20 +38,14 @@ def sector_map(sector: str):
     min_pay = request.args.get("min_pay", type=float)
     max_pay = request.args.get("max_pay", type=float)
 
-    job_roles = [
-        r[0]
-        for r in db.session.query(JobRecord.job_role)
-        .filter(JobRecord.job_role.isnot(None))
-        .distinct()
-        .order_by(JobRecord.job_role)
-        .all()
-    ]
+    # NEW: grouped roles, only for this sector
+    role_groups = build_role_groups_for_sector(sector)
 
     return render_template(
         "map.html",
         sector=sector,
         records=[],  # markers will be loaded via API
-        job_roles=job_roles,
+        job_roles=role_groups,
         filters={
             "job_role": job_role or "",
             "min_pay": min_pay or "",
@@ -55,10 +55,18 @@ def sector_map(sector: str):
 
 
 def _apply_map_filters(q, sector: str, args):
+    # Always constrain to sector
     q = q.filter(JobRecord.sector == sector)
+
+    # Job role now comes in as a grouped key; expand to underlying raw titles
     jr = (args.get("job_role") or "").strip()
     if jr:
-        q = q.filter(JobRecord.job_role == jr)
+        raw_roles = get_raw_roles_for_group(sector, jr)
+        if raw_roles:
+            q = q.filter(JobRecord.job_role.in_(raw_roles))
+        else:
+            # Backwards-compat: if no group found, fall back to direct equality
+            q = q.filter(JobRecord.job_role == jr)
 
     min_pay = args.get("min_pay", type=float)
     max_pay = args.get("max_pay", type=float)
@@ -165,7 +173,7 @@ def api_points():
                     "rate": float(rec.pay_rate) if rec.pay_rate is not None else None,
                     "rate_bin": bin_for(rec.pay_rate),
                     "logo_url": logo_url_for(rec.company_id or "placeholder"),
-                    "has_logo": company_has_logo(rec.company_id),   # <-- NEW
+                    "has_logo": company_has_logo(rec.company_id),
                     "imported_month": rec.imported_month,
                     "imported_year": rec.imported_year,
                 },

@@ -18,8 +18,10 @@
         <label for="job_role" class="label">Job Role</label>
         <select id="job_role" name="job_role" class="input">
           <option value="">All Job Roles</option>
-          {% for role in job_roles %}
-            <option value="{{ role }}" {% if filters.job_role == role %}selected{% endif %}>{{ role }}</option>
+          {% for group in job_roles %}
+            <option value="{{ group.key }}" {% if filters.job_role == group.key %}selected{% endif %}>
+              {{ group.label }}
+            </option>
           {% endfor %}
         </select>
       </div>
@@ -50,7 +52,7 @@
 
           <!-- Legend (sits under the map on the left column) -->
           <div id="rateLegend"
-               class="mt-2 inline-flex flex-wrap items-center gap-2 text-xs bg-white/90 border border-gray-200 rounded-lg px-3 py-2 shadow"
+               class="mt-2 inline-flex flex-wrap items-center gap-2 text-xs bg-white/90 border border-gray-200 rounded-lg px-3 py-2.shadow"
                style="backdrop-filter: saturate(180%) blur(6px);">
             <span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span>
             <!-- filled by JS -->
@@ -350,32 +352,32 @@
 
         const topStats = `
           <div class="grid grid-cols-2 gap-3">
-            <div class="rounded-xl border border-slate-200 p-3">
+            <div class="rounded-xl.border.border-slate-200.p-3">
               <div class="text-xs text-slate-500">Visible Providers</div>
-              <div class="text-xl font-semibold">${stats.total}</div>
+              <div class="text-xl.font-semibold">${stats.total}</div>
             </div>
-            <div class="rounded-xl border border-slate-200 p-3">
+            <div class="rounded-xl.border.border-slate-200.p-3">
               <div class="text-xs text-slate-500">Avg Hourly Rate</div>
-              <div class="text-xl font-semibold">${gbp(stats.avg)}</div>
+              <div class="text-xl.font-semibold">${gbp(stats.avg)}</div>
             </div>
-            <div class="rounded-xl border border-slate-200 p-3">
+            <div class="rounded-xl.border.border-slate-200.p-3">
               <div class="text-xs text-slate-500">Median</div>
-              <div class="text-xl font-semibold">${gbp(stats.med)}</div>
+              <div class="text-xl.font-semibold">${gbp(stats.med)}</div>
             </div>
-            <div class="rounded-xl border border-slate-200 p-3">
+            <div class="rounded-xl.border.border-slate-200.p-3">
               <div class="text-xs text-slate-500">Range</div>
-              <div class="text-xl font-semibold">${gbp(stats.min)} – ${gbp(stats.max)}</div>
+              <div class="text-xl.font-semibold">${gbp(stats.min)} – ${gbp(stats.max)}</div>
             </div>
           </div>
         `;
 
         const regions = Object.entries(stats.byRegion)
           .sort((a,b)=>b[1]-a[1]).slice(0,3)
-          .map(([k,v])=>`<span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">${k}: ${v}</span>`)
+          .map(([k,v])=>`<span class="inline-flex.items-center.rounded-full.border.border-slate-200.px-2.py-0.5.text-xs">${k}: ${v}</span>`)
           .join(' ');
 
         const hist = stats.hist.map(h => `
-          <div class="flex items-center justify-between">
+          <div class="flex.items-center.justify-between">
             <span>${h.label}</span>
             <span class="font-medium">${h.count}</span>
           </div>
@@ -383,20 +385,20 @@
 
         const elHtml = `
           ${topStats}
-          <div class="mt-3 rounded-xl border border-slate-200 p-3">
-            <div class="text-xs mb-1 font-medium text-slate-500">RLW Compliance (est.)</div>
-            <div class="text-lg font-semibold">${pctStr(stats.rlwPct)}</div>
-            <div class="text-[11px] text-slate-400 mt-1">Thresholds: UK £${RLW_UK.toFixed(2)} / London £${RLW_LONDON.toFixed(2)}</div>
+          <div class="mt-3.rounded-xl.border.border-slate-200.p-3">
+            <div class="text-xs.mb-1.font-medium.text-slate-500">RLW Compliance (est.)</div>
+            <div class="text-lg.font-semibold">${pctStr(stats.rlwPct)}</div>
+            <div class="text-[11px].text-slate-400.mt-1">Thresholds: UK £${RLW_UK.toFixed(2)} / London £${RLW_LONDON.toFixed(2)}</div>
           </div>
           <div class="mt-3">
-            <div class="text-xs mb-1 font-medium text-slate-500">Top Regions</div>
-            <div class="flex flex-wrap gap-1">${regions || '<span class="text-slate-400 text-xs">—</span>'}</div>
+            <div class="text-xs.mb-1.font-medium.text-slate-500">Top Regions</div>
+            <div class="flex.flex-wrap.gap-1">${regions || '<span class="text-slate-400.text-xs">—</span>'}</div>
           </div>
-          <div class="mt-3 rounded-xl border border-slate-200 p-3">
-            <div class="text-xs mb-2 font-medium text-slate-500">Rate Distribution</div>
+          <div class="mt-3.rounded-xl.border.border-slate-200.p-3">
+            <div class="text-xs.mb-2.font-medium.text-slate-500">Rate Distribution</div>
             <div class="space-y-1">${hist}</div>
           </div>
-          <div class="mt-2 text-[11px] text-slate-400">Updates when you pan/zoom or apply filters.</div>
+          <div class="mt-2.text-[11px].text-slate-400">Updates when you pan/zoom or apply filters.</div>
         `;
         el.innerHTML = elHtml;
       }
