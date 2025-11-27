@@ -343,7 +343,7 @@ def _canonicalise_job_roles_with_ai(
             "For each input item (sector + raw title), you assign a short, "
             "human-readable canonical group name. Similar roles should share "
             "the same group label. Keep labels concise (max ~40 characters). "
-            "Respond ONLY with valid JSON, no commentary."
+            "Respond ONLY with valid JSON, no commentary or markdown fences."
         )
 
         total_updated = 0
@@ -376,7 +376,7 @@ def _canonicalise_job_roles_with_ai(
                 "- each value is your canonical group label (short, human-readable).\n\n"
                 "Input JSON:\n"
                 f"{payload}\n\n"
-                "Output JSON only, no explanation."
+                "Output JSON only, no explanation, no markdown fences."
             )
 
             # Call OpenAI with a hard timeout so we don't hang the worker
@@ -405,12 +405,25 @@ def _canonicalise_job_roles_with_ai(
                 summary["skipped"] = total_skipped
                 return summary
 
+            # ---- NEW: strip ```json / ``` fences defensively ----
+            cleaned = content.strip()
+            if cleaned.startswith("```"):
+                # Drop first fence line (``` or ```json)
+                first_newline = cleaned.find("\n")
+                if first_newline != -1:
+                    cleaned = cleaned[first_newline + 1 :]
+                else:
+                    cleaned = cleaned.lstrip("`")
+                # Drop trailing ``` if present
+                if "```" in cleaned:
+                    cleaned = cleaned.rsplit("```", 1)[0].strip()
+
             try:
-                mapping = json.loads(content)
+                mapping = json.loads(cleaned)
             except Exception as e:
                 msg = (
                     f"Failed to parse AI JSON for chunk {chunk_index}: {e!r} "
-                    f"| content={content[:500]}"
+                    f"| content={cleaned[:500]}"
                 )
                 log.status = "error"
                 log.message = msg
