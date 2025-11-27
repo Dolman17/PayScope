@@ -639,7 +639,7 @@ def run_job_role_canonicaliser_now():
     result = run_job_role_canonicaliser(
         trigger="admin",
         triggered_by=current_user.username,
-        max_roles=500,
+        max_roles=100,
     )
     flash(
         f"Job role canonicaliser updated {result.get('updated', 0)} rows "

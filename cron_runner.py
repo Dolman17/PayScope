@@ -370,16 +370,26 @@ def _canonicalise_job_roles_with_ai(
             "Respond with JSON only, no explanation."
         )
 
-        resp = _openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.1,
-        )
+                # Call OpenAI with a hard timeout so we don't hang the worker
+        try:
+            resp = _openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+                temperature=0.1,
+                timeout=20,  # seconds – keeps well under gunicorn's worker timeout
+            )
+            content = resp.choices[0].message.content.strip()
+        except Exception as e:
+            msg = f"OpenAI call failed during job-role canonicaliser: {e!r}"
+            log.status = "error"
+            log.message = msg
+            db.session.commit()
+            summary["error"] = msg
+            return summary
 
-        content = resp.choices[0].message.content.strip()
         try:
             mapping = json.loads(content)
         except Exception as e:
@@ -389,6 +399,7 @@ def _canonicalise_job_roles_with_ai(
             db.session.commit()
             summary["error"] = msg
             return summary
+
 
         updated = 0
 
