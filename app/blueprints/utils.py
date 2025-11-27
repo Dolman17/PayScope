@@ -75,18 +75,58 @@ def get_filter_options(force: bool = False):
 # ============================================================
 def build_role_groups_for_sector(sector: str | None) -> list[str]:
     """
-    Return a sorted list of distinct job_role values, optionally filtered
-    to a specific sector.
+    Return a sorted list of group labels for job roles in a sector.
 
-    For now this is deliberately simple:
-      - No AI
-      - No fuzzy grouping
-      - Just "roles that actually exist for this sector"
+    Logic:
+      - Use job_role_group if set
+      - Fall back to job_role when group is NULL / empty
+      - Limit to the given sector (if provided)
     """
+    q = db.session.query(
+        JobRecord.job_role_group,
+        JobRecord.job_role,
+    ).filter(JobRecord.job_role.isnot(None))
+
+    if sector:
+        q = q.filter(JobRecord.sector == sector)
+
+    groups: set[str] = set()
+
+    for grp, raw in q.distinct().all():
+        # grp = canonical (e.g. "Care & Support Worker")
+        # raw = original job_role (e.g. "Care Assistant (Nights)")
+        label = (grp or raw or "").strip()
+        if label:
+            groups.add(label)
+
+    return sorted(groups)
+
+
+def get_raw_roles_for_group(group_label: str, sector: str | None = None) -> list[str]:
+    """
+    Given a group label (what user selected in dropdown), return the list
+    of raw job_role values that belong to that group for filtering.
+
+    Matching rules:
+      - Records where job_role_group == group_label
+      - PLUS records where job_role == group_label (backwards compat)
+      - Optionally limited to sector
+    """
+    label = (group_label or "").strip()
+    if not label:
+        return []
+
     q = db.session.query(JobRecord.job_role).filter(JobRecord.job_role.isnot(None))
 
     if sector:
         q = q.filter(JobRecord.sector == sector)
+
+    q = q.filter(
+        or_(
+            JobRecord.job_role_group == label,
+            JobRecord.job_role == label,
+        )
+    )
 
     roles = {
         (row[0] or "").strip()
@@ -95,26 +135,6 @@ def build_role_groups_for_sector(sector: str | None) -> list[str]:
     }
 
     return sorted(roles)
-
-
-def get_raw_roles_for_group(group_label: str, sector: str | None = None) -> list[str]:
-    """
-    Given a group label (what you show in the UI), return the list of raw
-    job_role values that belong in that group.
-
-    CURRENT BEHAVIOUR (safe default):
-      - Identity mapping: each group is just a single raw job_role
-      - So filtering by group == filtering by that exact job_role.
-
-    This keeps existing behaviour while giving us a single place to add
-    smarter logic later (e.g. mapping multiple messy titles into one group).
-    """
-    label = (group_label or "").strip()
-    if not label:
-        return []
-
-    # Simple identity mapping for now
-    return [label]
 
 
 # ---------- Filter builder ----------

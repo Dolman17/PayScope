@@ -12,6 +12,8 @@ class JobRecord(db.Model):
     company_name = db.Column(db.String(100))
     sector = db.Column(db.String(50), index=True)
     job_role = db.Column(db.String(100), index=True)
+    # NEW: canonical / grouped job role (e.g. "Care & Support Worker")
+    job_role_group = db.Column(db.String(120), index=True)  # <--- NEW
     postcode = db.Column(db.String(20))
     county = db.Column(db.String(50), index=True)
     pay_rate = db.Column(db.Float)
@@ -123,6 +125,7 @@ class PayRate(db.Model):
         Index("ix_payrate_latlon", "lat", "lon"),
     )
 
+
 class JobPosting(db.Model):
     __tablename__ = "job_postings"
 
@@ -184,9 +187,5 @@ class CronRunLog(db.Model):
     triggered_by = db.Column(db.String(150), nullable=True)
     trigger = db.Column(db.String(50), nullable=True)  # <-- ADD THIS
     day_label = db.Column(db.String(20))
-
-
-
-
 
 
