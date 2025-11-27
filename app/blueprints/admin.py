@@ -17,6 +17,9 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from sqlalchemy import desc, or_, cast, String, text, inspect, func
+from functools import wraps
+from flask import abort
+from flask_login import current_user
 
 from extensions import db
 from models import (
@@ -40,6 +43,15 @@ from app.importers.job_importer import import_posting_to_record
 
 # Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
+
+def superuser_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Only allow admin_level 1
+        if not current_user.is_authenticated or current_user.admin_level != 1:
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # -------------------------------------------------------------------
