@@ -123,7 +123,6 @@ class PayRate(db.Model):
         Index("ix_payrate_latlon", "lat", "lon"),
     )
 
-
 class JobPosting(db.Model):
     __tablename__ = "job_postings"
 
@@ -132,6 +131,9 @@ class JobPosting(db.Model):
     company_name = db.Column(db.String(255), nullable=True)
     location_text = db.Column(db.String(255), nullable=True)
     postcode = db.Column(db.String(20), nullable=True)
+
+    # NEW: high-level sector classification, e.g. "Social Care", "Nursing", "HR"
+    sector = db.Column(db.String(100), nullable=True, index=True)
 
     min_rate = db.Column(db.Numeric(10, 2), nullable=True)
     max_rate = db.Column(db.Numeric(10, 2), nullable=True)
@@ -154,6 +156,7 @@ class JobPosting(db.Model):
 
     __table_args__ = (
         db.Index("ix_job_postings_source_ext", "source_site", "external_id"),
+        db.Index("ix_job_postings_sector", "sector"),
     )
 
 
@@ -181,4 +184,9 @@ class CronRunLog(db.Model):
     triggered_by = db.Column(db.String(150), nullable=True)
     trigger = db.Column(db.String(50), nullable=True)  # <-- ADD THIS
     day_label = db.Column(db.String(20))
+
+
+
+
+
 

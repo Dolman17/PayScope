@@ -6,7 +6,7 @@ from datetime import datetime, date
 
 from app import create_app
 from app.scrapers.adzuna import AdzunaScraper
-from app.importers.job_importer import import_posting_to_record
+from app.importers.job_importer import import_posting_to_record, classify_sector
 from extensions import db
 from models import JobPosting, CronRunLog
 
@@ -184,6 +184,9 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
 
                     now = datetime.utcnow()
 
+                    # Sector is derived from the live title + search role
+                    sector_value = classify_sector(rec.title, role)
+
                     if existing:
                         # Update existing posting with fresh data
                         posting = existing
@@ -191,6 +194,7 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                         posting.company_name = rec.company_name
                         posting.location_text = rec.location_text
                         posting.postcode = rec.postcode
+                        posting.sector = sector_value
                         posting.min_rate = rec.min_rate
                         posting.max_rate = rec.max_rate
                         posting.rate_type = rec.rate_type
@@ -210,6 +214,7 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                             company_name=rec.company_name,
                             location_text=rec.location_text,
                             postcode=rec.postcode,
+                            sector=sector_value,
                             min_rate=rec.min_rate,
                             max_rate=rec.max_rate,
                             rate_type=rec.rate_type,

@@ -1,9 +1,10 @@
 # app/importers/job_importer.py
-from app import db
 from datetime import datetime
-from models import JobPosting, JobRecord
 import re
 import json
+
+from app import db
+from models import JobPosting, JobRecord
 
 from app.blueprints.utils import (
     normalize_uk_postcode,
@@ -12,6 +13,140 @@ from app.blueprints.utils import (
 )
 
 
+# -------------------------------------------------------------------
+# Sector classification
+# -------------------------------------------------------------------
+def classify_sector(job_title: str | None, search_role: str | None = None) -> str:
+    """
+    Map a free-text job title (and optional search_role) into a high-level sector.
+
+    This is intentionally simple, keyword-based logic so it's:
+      - transparent
+      - easy to tweak later
+    """
+    parts = []
+    if job_title:
+        parts.append(job_title)
+    if search_role and search_role.lower() not in (job_title or "").lower():
+        parts.append(search_role)
+
+    text = " ".join(parts).lower()
+
+    # Social care first (very important precedence)
+    if any(k in text for k in [
+        "support worker",
+        "care assistant",
+        "senior care assistant",
+        "senior carer",
+        "care worker",
+        "care worker",
+        "caregiver",
+        "carer",
+        "domiciliary",
+        "home care",
+        "live-in carer",
+    ]):
+        return "Social Care"
+
+    # Nursing
+    if any(k in text for k in [
+        "nurse",
+        "rgn",
+        "rmn",
+        "rldn",
+        "staff nurse",
+        "registered nurse",
+    ]):
+        return "Nursing"
+
+    # HR / People
+    if "human resources" in text or "hr " in f"{text} " or " hr" in f" {text}":
+        return "HR / People"
+    if any(k in text for k in ["recruitment", "talent acquisition", "resourcing"]):
+        return "HR / People"
+
+    # Finance / Accounting
+    if any(k in text for k in [
+        "accountant",
+        "accounts assistant",
+        "finance assistant",
+        "finance manager",
+        "financial controller",
+        "payroll",
+        "bookkeeper",
+        "book-keeper",
+        "credit control",
+    ]):
+        return "Finance & Accounting"
+
+    # Admin & Office
+    if any(k in text for k in [
+        "administrator",
+        "admin assistant",
+        "office admin",
+        "office assistant",
+        "office manager",
+        "receptionist",
+        "secretary",
+        "personal assistant",
+        "pa ",
+    ]):
+        return "Admin & Office"
+
+    # Operations / Service Mgmt
+    if any(k in text for k in [
+        "operations manager",
+        "operations director",
+        "service manager",
+        "registered manager",
+        "branch manager",
+        "area manager",
+    ]):
+        return "Operations & Management"
+
+    # IT & Tech
+    if any(k in text for k in [
+        "developer",
+        "engineer",
+        "software",
+        "devops",
+        "data analyst",
+        "data engineer",
+        "business analyst",
+        "it support",
+        "1st line support",
+        "2nd line support",
+        "helpdesk",
+        "service desk",
+    ]):
+        return "IT & Technology"
+
+    # Customer Service / Contact centre
+    if any(k in text for k in [
+        "customer service",
+        "call centre",
+        "call center",
+        "contact centre",
+        "call handler",
+    ]):
+        return "Customer Service"
+
+    # Generic leadership (only if nothing else hit)
+    if any(k in text for k in [
+        "manager",
+        "team leader",
+        "head of",
+        "director",
+        "lead ",
+    ]):
+        return "Leadership & Management"
+
+    return "Other"
+
+
+# -------------------------------------------------------------------
+# Helper functions for import
+# -------------------------------------------------------------------
 def _derive_pay_rate(posting: JobPosting):
     """
     Convert scraped salary data to a single hourly pay_rate.
@@ -118,11 +253,15 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
     # Company
     company_id = get_or_create_company_id(posting.company_name)
 
+    # Sector: prefer the normalised sector on JobPosting,
+    # fall back to search_role for older data / safety.
+    sector_value = posting.sector or posting.search_role
+
     # Build JobRecord
     record = JobRecord(
         company_id=company_id,
         company_name=posting.company_name,
-        sector=posting.search_role,
+        sector=sector_value,
         job_role=posting.title,
         postcode=postcode,
         county=county,
