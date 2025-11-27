@@ -38,6 +38,11 @@ from .utils import (
     snap_to_nearest_postcode,
 )
 
+from flask import redirect, url_for, flash
+from flask_login import login_required, current_user
+from cron_runner import run_job_role_canonicaliser
+
+
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
 
@@ -626,6 +631,23 @@ def ai_logs_get(log_id: int):
             "output_html": row.output_html,
         }
     )
+
+@bp.route("/cron/job-role-canonicaliser/run-now", methods=["POST"])
+@login_required
+@superuser_required
+def run_job_role_canonicaliser_now():
+    result = run_job_role_canonicaliser(
+        trigger="admin",
+        triggered_by=current_user.username,
+        max_roles=500,
+    )
+    flash(
+        f"Job role canonicaliser updated {result.get('updated', 0)} rows "
+        f"(examined {result.get('examined', 0)}).",
+        "success",
+    )
+    return redirect(url_for("admin.cron_runs"))
+
 
 
 # -------------------------------------------------------------------
