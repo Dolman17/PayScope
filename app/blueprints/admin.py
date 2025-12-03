@@ -303,17 +303,11 @@ def backfill_counties():
 @bp.route("/admin/ons-import", methods=["POST"])
 @login_required
 def run_ons_import():
-    """
-    Trigger an ONS ASHE import for the current year from the Admin Tools page.
-
-    - Superuser-only (admin_level == 1)
-    - Uses ons_importer.import_ons_earnings_to_db with use_app_context=True
-    - Shows a flash message with the outcome and redirects back to Admin Tools.
-    """
     if getattr(current_user, "admin_level", 0) != 1:
         abort(403)
 
-    year = date.today().year
+    # ASHE is published for previous year, so import that
+    year = date.today().year - 1
 
     result = import_ons_earnings_to_db(
         year,
@@ -323,10 +317,7 @@ def run_ons_import():
     )
 
     if result.get("error"):
-        flash(
-            f"ONS import FAILED for {year}: {result['error']}",
-            "error",
-        )
+        flash(f"ONS import FAILED for {year}: {result['error']}", "error")
     else:
         fetched = result.get("fetched", 0)
         created = result.get("created", 0)
@@ -338,6 +329,7 @@ def run_ons_import():
         )
 
     return redirect(url_for("admin.admin_tools"))
+
 
 
 # -------------------------------------------------------------------
