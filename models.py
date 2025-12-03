@@ -34,6 +34,30 @@ class JobRecord(db.Model):
     logo_filename = db.Column(db.String(200))
 
 
+class JobSummaryDaily(db.Model):
+    __tablename__ = "job_summary_daily"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, index=True)
+
+    # group dimensions
+    county = db.Column(db.String(50), index=True)
+    sector = db.Column(db.String(50), index=True)
+    job_role_group = db.Column(db.String(120), index=True)
+
+    # you can add job_role if you want more granularity
+    # job_role = db.Column(db.String(100), index=True)
+
+    adverts_count = db.Column(db.Integer)
+
+    median_pay_rate = db.Column(db.Float)
+    p25_pay_rate = db.Column(db.Float)
+    p75_pay_rate = db.Column(db.Float)
+
+    min_pay_rate = db.Column(db.Float)
+    max_pay_rate = db.Column(db.Float)
+
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -187,5 +211,25 @@ class CronRunLog(db.Model):
     triggered_by = db.Column(db.String(150), nullable=True)
     trigger = db.Column(db.String(50), nullable=True)  # <-- ADD THIS
     day_label = db.Column(db.String(20))
+
+
+class OnsEarnings(db.Model):
+    __tablename__ = "ons_earnings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False)
+    geography_code = db.Column(db.String(32), nullable=False, index=True)
+    geography_name = db.Column(db.String(255), nullable=False)
+    measure_code = db.Column(db.String(16), nullable=False)   # e.g. 20100, 20701
+    value = db.Column(db.Float, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "year", "geography_code", "measure_code",
+            name="uq_ons_year_geo_measure",
+        ),
+    )
 
 

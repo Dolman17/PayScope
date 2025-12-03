@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before anything else
 
-from flask import Flask, render_template
+from flask import Flask, app, render_template
 from flask_login import LoginManager, login_required
 
 from extensions import db, migrate
@@ -72,7 +72,9 @@ def create_app():
     from .blueprints.maps import bp as maps_bp
     from .blueprints.dashboard import bp as dashboard_bp
     from .blueprints.upload import bp as upload_bp
+    from .blueprints.main import bp as main_bp
 
+    app.register_blueprint(main_bp) 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(records_bp)

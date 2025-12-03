@@ -9,6 +9,8 @@ from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record, classify_sector
 from extensions import db
 from models import JobPosting, CronRunLog, JobRecord
+from job_summaries import build_daily_job_summaries  # Daily summaries
+from ons_importer import import_ons_earnings_to_db   # ONS → DB upsert
 
 # Optional OpenAI client for AI canonicalisation
 try:
@@ -259,6 +261,62 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
 
 
 # -------------------------------------------------------------------
+# Daily JobSummary builder
+# -------------------------------------------------------------------
+def _run_daily_summaries_for_date(
+    target_date: date,
+    trigger: str = "scheduled",
+    triggered_by: str | None = None,
+) -> dict:
+    """
+    Build JobSummaryDaily rows for a given date and log it via CronRunLog.
+
+    Assumes we are already inside app.app_context().
+    """
+    now = datetime.utcnow()
+    safe_label = target_date.isoformat()[:20]
+
+    log = CronRunLog(
+        job_name="job_summary_daily_builder",
+        started_at=now,
+        status="running",
+        trigger=trigger,
+        triggered_by=triggered_by,
+        day_label=safe_label,
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    result: dict = {
+        "log_id": log.id,
+        "rows_created": 0,
+        "error": None,
+        "date": target_date.isoformat(),
+    }
+
+    try:
+        rows_created = build_daily_job_summaries(target_date)
+        log.finished_at = datetime.utcnow()
+        log.status = "success"
+        log.records_created = rows_created
+        log.message = f"Built {rows_created} JobSummaryDaily rows for {target_date.isoformat()}."
+        db.session.commit()
+
+        result["rows_created"] = rows_created
+        return result
+
+    except Exception as e:  # noqa: BLE001
+        db.session.rollback()
+        log.finished_at = datetime.utcnow()
+        log.status = "error"
+        log.message = f"{e!r}"
+        db.session.commit()
+
+        result["error"] = repr(e)
+        return result
+
+
+# -------------------------------------------------------------------
 # AI-driven job-role canonicaliser (chunked)
 # -------------------------------------------------------------------
 def _canonicalise_job_roles_with_ai(
@@ -405,13 +463,13 @@ def _canonicalise_job_roles_with_ai(
                 summary["skipped"] = total_skipped
                 return summary
 
-            # ---- NEW: strip ```json / ``` fences defensively ----
+            # ---- strip ```json / ``` fences defensively ----
             cleaned = content.strip()
             if cleaned.startswith("```"):
                 # Drop first fence line (``` or ```json)
                 first_newline = cleaned.find("\n")
                 if first_newline != -1:
-                    cleaned = cleaned[first_newline + 1 :]
+                    cleaned = cleaned[first_newline + 1:]
                 else:
                     cleaned = cleaned.lstrip("`")
                 # Drop trailing ``` if present
@@ -571,6 +629,48 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
                 except Exception as e:  # noqa: BLE001
                     # Don't break the main cron if canonicaliser fails
                     print("⚠ job_role_canonicaliser failed:", e)
+
+            # Daily JobSummaryDaily for today's data
+            try:
+                target_date = date.today()
+                print(f"📊 Building daily job summaries for {target_date.isoformat()}…")
+                summary_result = _run_daily_summaries_for_date(
+                    target_date=target_date,
+                    trigger=trigger,
+                    triggered_by=triggered_by,
+                )
+                print(
+                    f"📊 Daily summaries done: created={summary_result.get('rows_created')}, "
+                    f"error={summary_result.get('error')}"
+                )
+                result_with_log["summary_log_id"] = summary_result.get("log_id")
+                result_with_log["summary_rows_created"] = summary_result.get("rows_created", 0)
+            except Exception as e:  # noqa: BLE001
+                print("⚠ job_summary_daily_builder failed:", e)
+
+            # NEW: ONS ASHE earnings import / upsert (annual, but idempotent)
+            try:
+                # ASHE is annual; safest default is "last completed year"
+                ashe_year = date.today().year - 1
+                print(f"📈 Importing ONS ASHE earnings for {ashe_year}…")
+                ons_result = import_ons_earnings_to_db(
+                    ashe_year,
+                    trigger=trigger,
+                    triggered_by=triggered_by,
+                    use_app_context=True,  # we are already inside app.app_context()
+                )
+                print(
+                    f"📈 ONS import done: fetched={ons_result.get('fetched')}, "
+                    f"created={ons_result.get('created')}, "
+                    f"updated={ons_result.get('updated')}, "
+                    f"error={ons_result.get('error')}"
+                )
+                result_with_log["ons_log_id"] = ons_result.get("log_id")
+                result_with_log["ons_fetched"] = ons_result.get("fetched", 0)
+                result_with_log["ons_created"] = ons_result.get("created", 0)
+                result_with_log["ons_updated"] = ons_result.get("updated", 0)
+            except Exception as e:  # noqa: BLE001
+                print("⚠ ONS ASHE import failed:", e)
 
             return result_with_log
 

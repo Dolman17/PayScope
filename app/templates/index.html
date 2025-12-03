@@ -1,97 +1,155 @@
 {% extends "base.html" %}
-{% block title %}Pay Rate Map Dashboard{% endblock %}
+{% block title %}Pay Rate Map • Real-Time Pay Insights{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-2 sm:px-4 py-8">
+<div class="max-w-6xl mx-auto py-10 px-4 space-y-10">
 
-  <!-- Header -->
-  <section class="text-center mb-8">
-    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="h-16 sm:h-20 mx-auto mb-5 rounded-md border border-gray-200 bg-white"
-         onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
-    <h1 class="text-3xl sm:text-4xl font-bold" style="color: var(--brand);">Pay Rate Map</h1>
-    <p class="mt-2 text-sm sm:text-base text-gray-600">Visualise and manage pay data across the UK</p>
+  <!-- Hero -->
+  <section class="grid gap-8 lg:grid-cols-2 items-center">
+    <div>
+      <h1 class="text-3xl sm:text-4xl font-extrabold mb-4" style="color: var(--brand);">
+        Real-Time Pay Insights for Every Job, Every Region
+      </h1>
+      <p class="text-gray-700 text-sm sm:text-base leading-relaxed mb-5">
+        Pay Rate Map brings together live job-market data from across the web and blends it with
+        official government statistics to give you a clear, accurate picture of what employers are paying today.
+        Search by job title, postcode, industry or region, and instantly see salary trends, demand levels,
+        and market competitiveness.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-3 mb-4">
+        <a href="{{ url_for('maps.map_sector_select') }}"
+           class="btn btn-primary w-full sm:w-auto justify-center">
+          Explore Pay Rates
+        </a>
+        {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('auth.login') }}"
+           class="btn btn-secondary w-full sm:w-auto justify-center">
+          Log in to Dashboard
+        </a>
+        {% else %}
+        <a href="{{ url_for('dashboard.dashboard') }}"
+           class="btn btn-secondary w-full sm:w-auto justify-center">
+          Open Dashboard
+        </a>
+        {% endif %}
+      </div>
+
+      <p class="text-xs text-gray-500">
+        Powered by job boards, public APIs, government datasets, ONS earnings, apprenticeship data and more.
+      </p>
+    </div>
+
+    <!-- Right column: key value props -->
+    <div>
+      <div class="card p-5 sm:p-6 mb-4">
+        <h2 class="text-sm font-semibold text-gray-900 mb-2">
+          A New, Affordable Way to Benchmark Pay
+        </h2>
+        <p class="text-sm text-gray-700">
+          Traditional labour-market intelligence platforms charge tens of thousands per year and are
+          built for large corporates, government bodies, and universities — not everyday businesses.
+        </p>
+        <p class="text-sm text-gray-700 mt-2">
+          Pay Rate Map combines open data, real-time scraping and smart normalisation to deliver
+          powerful pay benchmarking at a fraction of the cost, making market intelligence accessible
+          to SMEs, HR teams, managers, jobseekers, and local organisations.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 text-center">
+        <div class="card py-3 px-2">
+          <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Coverage</div>
+          <div class="text-lg font-bold" style="color: var(--brand);">UK-wide</div>
+        </div>
+        <div class="card py-3 px-2">
+          <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Data Feeds</div>
+          <div class="text-lg font-bold" style="color: var(--brand);">Live + ONS</div>
+        </div>
+        <div class="card py-3 px-2">
+          <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Built For</div>
+          <div class="text-lg font-bold" style="color: var(--brand);">Real-world use</div>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- User Info -->
-  <section class="card p-4 sm:p-5 mb-8 text-center">
-    <p class="text-sm sm:text-base text-gray-700">
-      Logged in as <span class="font-semibold" style="color: var(--brand);">{{ current_user.username }}</span>
-    </p>
-    <a href="{{ url_for('auth.logout') }}" class="text-xs sm:text-sm text-red-600 underline hover:text-red-800 mt-1 inline-block">Logout</a>
+  <!-- What you can do -->
+  <section class="card p-5 sm:p-6">
+    <h2 class="text-xl font-semibold mb-3" style="color: var(--brand);">
+      What You Can Do With Pay Rate Map
+    </h2>
+    <div class="grid sm:grid-cols-2 gap-4 text-sm text-gray-700">
+      <ul class="space-y-2 list-disc list-inside">
+        <li>Search live pay rates by role, sector, or postcode</li>
+        <li>Compare salaries across regions, industries, and employers</li>
+        <li>Track hiring demand and job-ad volumes over time</li>
+        <li>See how advertised pay compares to ONS earnings</li>
+      </ul>
+      <ul class="space-y-2 list-disc list-inside">
+        <li>Identify pay pressure and competition in any location</li>
+        <li>Monitor trends in remote work, seniority, and skill requirements</li>
+        <li>Export reports for planning, budgeting, or recruitment strategy</li>
+        <li>Access historical data to understand shifts in the market</li>
+      </ul>
+    </div>
   </section>
 
-  <!-- Dashboard Cards -->
-  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-
-    <!-- Upload Pay Data -->
-    <a href="{{ url_for('upload.upload') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16l4-4m0 0l-4-4m4 4H8m4 4v-8m8 4a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">Upload Pay Data</h2>
+  <!-- Who it's for -->
+  <section class="card p-5 sm:p-6">
+    <h2 class="text-xl font-semibold mb-4" style="color: var(--brand);">
+      Who It’s For
+    </h2>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+      <div>
+        <h3 class="font-semibold text-gray-900 mb-1">SMEs & Local Businesses</h3>
+        <p class="text-gray-600">
+          Set competitive pay without enterprise-tool price tags.
+        </p>
       </div>
-      <p class="text-sm text-gray-600">Import pay rates via Excel with automatic geocoding.</p>
-    </a>
-
-    <!-- View Records -->
-    <a href="{{ url_for('records.records') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8m-8-4h8M5 20h14a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v14a1 1 0 001 1z"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">View Records</h2>
+      <div>
+        <h3 class="font-semibold text-gray-900 mb-1">HR & Recruitment Teams</h3>
+        <p class="text-gray-600">
+          Benchmark offers, defend budgets, and spot hot spots in the market.
+        </p>
       </div>
-      <p class="text-sm text-gray-600">Browse, filter, and edit uploaded pay records.</p>
-    </a>
-
-    <!-- View Map -->
-    <a href="{{ url_for('maps.map_sector_select') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11a2 2 0 100-4 2 2 0 000 4z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3a7 7 0 00-7 7c0 5.25 7 11 7 11s7-5.75 7-11a7 7 0 00-7-7z"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">View Map</h2>
+      <div>
+        <h3 class="font-semibold text-gray-900 mb-1">Jobseekers & Career Changers</h3>
+        <p class="text-gray-600">
+          Understand what roles pay in your area and where demand is highest.
+        </p>
       </div>
-      <p class="text-sm text-gray-600">Explore pay data visually on an interactive map.</p>
-    </a>
-
-    <!-- Dashboard -->
-    <a href="{{ url_for('dashboard.dashboard') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M9 17V9m4 8v-5m4 5V5"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">Dashboard</h2>
+      <div>
+        <h3 class="font-semibold text-gray-900 mb-1">Councils, Colleges & Community</h3>
+        <p class="text-gray-600">
+          Support local planning, skills initiatives and labour-market insight work.
+        </p>
       </div>
-      <p class="text-sm text-gray-600">High-level overview of records, companies, and trends.</p>
-    </a>
+    </div>
+  </section>
 
-    <!-- Insights -->
-    <a href="{{ url_for('dashboard.insights') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a7 7 0 107 7 7.008 7.008 0 00-7-7zM21 21l-4.35-4.35"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">Insights</h2>
-      </div>
-      <p class="text-sm text-gray-600">Drill down into filtered analytics by role, location, or sector.</p>
-    </a>
-
-    {% if current_user.is_authenticated and current_user.admin_level == 1 %}
-    <!-- Users (visible to superusers only) -->
-    <a href="{{ url_for('admin.manage_users') }}" class="card p-5 hover:shadow transition block">
-      <div class="flex items-center gap-2 mb-2" style="color: var(--brand);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m2-9a4 4 0 110 8 4 4 0 010-8zm6 4a4 4 0 11-8 0 4 4 0 018 0z"/>
-        </svg>
-        <h2 class="text-base font-semibold text-gray-900">User Management</h2>
-      </div>
-      <p class="text-sm text-gray-600">Add, edit, and manage application users.</p>
-    </a>
-    {% endif %}
-
+  <!-- Pay transparency message + CTA -->
+  <section class="card p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div>
+      <h2 class="text-lg font-semibold mb-2" style="color: var(--brand);">
+        Pay Transparency Shouldn’t Be Expensive
+      </h2>
+      <p class="text-sm text-gray-700">
+        Good pay data should be available to everyone, not just large organisations with deep pockets.
+        Pay Rate Map delivers high-quality labour-market intelligence at low cost, with transparent
+        subscription options and room for a free, ad-supported tier — no locked gates, no inflated pricing.
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 min-w-[180px]">
+      <a href="{{ url_for('maps.map_sector_select') }}" class="btn btn-primary w-full">
+        Start Exploring
+      </a>
+      {% if not current_user.is_authenticated %}
+      <a href="{{ url_for('auth.login') }}" class="btn btn-secondary w-full">
+        Sign In for Full Access
+      </a>
+      {% endif %}
+    </div>
   </section>
 
 </div>

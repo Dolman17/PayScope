@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold text-slate-900">
+        Pay Explorer
+      </h1>
+      <p class="text-sm text-slate-600 mt-1">
+        Compare advertised pay by region, sector, and role using live job-ad data.
+      </p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white shadow-sm rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Sector -->
+      <div>
+        <label for="sector" class="block text-xs font-medium text-slate-700 mb-1">
+          Sector
+        </label>
+        <select id="sector" class="w-full rounded-md border-slate-300 text-sm">
+          <option value="">All sectors</option>
+          {% for s in sectors %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Role (canonical group / text) -->
+      <div>
+        <label for="job_role" class="block text-xs font-medium text-slate-700 mb-1">
+          Role (grouped title)
+        </label>
+        <input
+          id="job_role"
+          type="text"
+          class="w-full rounded-md border-slate-300 text-sm"
+          placeholder="e.g. Care &amp; Support Worker, Software Engineer"
+        />
+        <p class="mt-1 text-[11px] text-slate-500">
+          Uses canonical role groups once your AI classifier has run.
+        </p>
+      </div>
+
+      <!-- Group by -->
+      <div>
+        <label for="group_by" class="block text-xs font-medium text-slate-700 mb-1">
+          Compare by
+        </label>
+        <select id="group_by" class="w-full rounded-md border-slate-300 text-sm">
+          <option value="county">County / region</option>
+          <option value="sector">Sector</option>
+          <option value="sector_county">Sector × county</option>
+        </select>
+      </div>
+
+      <!-- Date range -->
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label for="start_date" class="block text-xs font-medium text-slate-700 mb-1">
+            From
+          </label>
+          <input
+            id="start_date"
+            type="date"
+            class="w-full rounded-md border-slate-300 text-sm"
+            value="{{ default_start.isoformat() }}"
+          />
+        </div>
+        <div>
+          <label for="end_date" class="block text-xs font-medium text-slate-700 mb-1">
+            To
+          </label>
+          <input
+            id="end_date"
+            type="date"
+            class="w-full rounded-md border-slate-300 text-sm"
+            value="{{ default_end.isoformat() }}"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center justify-between pt-2">
+      <p id="summary-text" class="text-xs text-slate-500">
+        Showing last 30 days by county. Adjust filters and refresh.
+      </p>
+      <div class="flex items-center gap-2">
+        <button
+          id="reset-btn"
+          type="button"
+          class="px-3 py-1.5 rounded-md border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Reset
+        </button>
+        <button
+          id="apply-btn"
+          type="button"
+          class="px-4 py-1.5 rounded-md bg-blue-600 text-xs font-medium text-white hover:bg-blue-700"
+        >
+          Update
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results layout -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Table -->
+    <div class="lg:col-span-2 bg-white shadow-sm rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-900">
+          Comparison table
+        </h2>
+        <span id="row-count" class="text-xs text-slate-500"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-xs">
+          <thead class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr id="table-header-row">
+              <!-- Populated dynamically -->
+            </tr>
+          </thead>
+          <tbody id="results-body" class="divide-y divide-slate-100 text-[13px]">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-white shadow-sm rounded-xl border border-slate-200 p-4">
+      <h2 class="text-sm font-semibold text-slate-900 mb-2">
+        Median pay comparison
+      </h2>
+      <p class="text-[11px] text-slate-500 mb-3">
+        Top 15 groups by median advertised pay in the selected period.
+      </p>
+      <div class="h-72">
+        <canvas id="payChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    (function() {
+      const sectorEl = document.getElementById("sector");
+      const roleEl = document.getElementById("job_role");
+      const groupByEl = document.getElementById("group_by");
+      const startEl = document.getElementById("start_date");
+      const endEl = document.getElementById("end_date");
+      const applyBtn = document.getElementById("apply-btn");
+      const resetBtn = document.getElementById("reset-btn");
+      const summaryText = document.getElementById("summary-text");
+      const rowCountEl = document.getElementById("row-count");
+      const headerRow = document.getElementById("table-header-row");
+      const bodyEl = document.getElementById("results-body");
+
+      let chartInstance = null;
+
+      function buildParams() {
+        const params = new URLSearchParams();
+        const sector = sectorEl.value.trim();
+        const role = roleEl.value.trim();
+        const groupBy = groupByEl.value;
+        const startDate = startEl.value;
+        const endDate = endEl.value;
+
+        if (sector) params.append("sector", sector);
+        if (role) params.append("job_role_group", role);
+        if (groupBy) params.append("group_by", groupBy);
+        if (startDate) params.append("start_date", startDate);
+        if (endDate) params.append("end_date", endDate);
+
+        return params;
+      }
+
+      function renderTable(results, groupBy, onsAvailable) {
+        // Header
+        let headerHtml = "";
+        if (groupBy === "sector") {
+          headerHtml += "<th class='px-3 py-2'>Sector</th>";
+        } else if (groupBy === "sector_county") {
+          headerHtml += "<th class='px-3 py-2'>Sector</th>";
+          headerHtml += "<th class='px-3 py-2'>County</th>";
+        } else {
+          headerHtml += "<th class='px-3 py-2'>County</th>";
+        }
+        headerHtml += `
+          <th class="px-3 py-2 text-right">Adverts</th>
+          <th class="px-3 py-2 text-right">Median</th>
+          <th class="px-3 py-2 text-right">P25</th>
+          <th class="px-3 py-2 text-right">P75</th>
+          <th class="px-3 py-2 text-right">Min</th>
+          <th class="px-3 py-2 text-right">Max</th>
+        `;
+        if (onsAvailable) {
+          headerHtml += `
+            <th class="px-3 py-2 text-right">ONS median</th>
+            <th class="px-3 py-2 text-right">Gap vs ONS</th>
+            <th class="px-3 py-2 text-right">% vs ONS</th>
+          `;
+        }
+        headerRow.innerHTML = headerHtml;
+
+        const fmtMoney = v => (v == null ? "–" : "£" + v.toFixed(2));
+        const fmtGap = v => {
+          if (v == null) return "–";
+          const sign = v > 0 ? "+" : "";
+          return sign + "£" + v.toFixed(2);
+        };
+        const fmtPct = v => {
+          if (v == null) return "–";
+          const sign = v > 0 ? "+" : "";
+          return sign + v.toFixed(1) + "%";
+        };
+
+        let rowsHtml = "";
+        for (const r of results) {
+          let labelCols = "";
+          if (groupBy === "sector") {
+            labelCols += `<td class="px-3 py-2 whitespace-nowrap">${r.sector || "Unknown"}</td>`;
+          } else if (groupBy === "sector_county") {
+            labelCols += `<td class="px-3 py-2 whitespace-nowrap">${r.sector || "Unknown"}</td>`;
+            labelCols += `<td class="px-3 py-2 whitespace-nowrap">${r.county || "Unknown"}</td>`;
+          } else {
+            labelCols += `<td class="px-3 py-2 whitespace-nowrap">${r.county || "Unknown"}</td>`;
+          }
+
+          rowsHtml += `
+            <tr>
+              ${labelCols}
+              <td class="px-3 py-2 text-right">${r.adverts_count}</td>
+              <td class="px-3 py-2 text-right">${fmtMoney(r.median_pay_rate)}</td>
+              <td class="px-3 py-2 text-right">${fmtMoney(r.p25_pay_rate)}</td>
+              <td class="px-3 py-2 text-right">${fmtMoney(r.p75_pay_rate)}</td>
+              <td class="px-3 py-2 text-right">${fmtMoney(r.min_pay_rate)}</td>
+              <td class="px-3 py-2 text-right">${fmtMoney(r.max_pay_rate)}</td>
+              ${onsAvailable ? `
+                <td class="px-3 py-2 text-right">${fmtMoney(r.ons_median_hourly)}</td>
+                <td class="px-3 py-2 text-right">${fmtGap(r.pay_vs_ons)}</td>
+                <td class="px-3 py-2 text-right">${fmtPct(r.pay_vs_ons_pct)}</td>
+              ` : ""}
+            </tr>
+          `;
+        }
+        bodyEl.innerHTML = rowsHtml || `
+          <tr>
+            <td colspan="10" class="px-3 py-6 text-center text-sm text-slate-500">
+              No data for this combination yet. Try widening the date range or removing filters.
+            </td>
+          </tr>
+        `;
+
+        rowCountEl.textContent = results.length ? results.length + " group(s)" : "";
+      }
+
+      function renderChart(results, groupBy, onsAvailable) {
+        const ctx = document.getElementById("payChart").getContext("2d");
+
+        const sorted = [...results]
+          .filter(r => r.median_pay_rate != null)
+          .sort((a, b) => b.median_pay_rate - a.median_pay_rate)
+          .slice(0, 15);
+
+        const labels = sorted.map(r => {
+          if (groupBy === "sector") return r.sector || "Unknown";
+          if (groupBy === "sector_county") {
+            const s = r.sector || "Unknown";
+            const c = r.county || "Unknown";
+            return s + " – " + c;
+          }
+          return r.county || "Unknown";
+        });
+
+        const advertised = sorted.map(r => r.median_pay_rate);
+        const ons = onsAvailable ? sorted.map(r => r.ons_median_hourly ?? null) : null;
+
+        if (chartInstance) {
+          chartInstance.destroy();
+        }
+
+        const datasets = [
+          {
+            label: "Advertised median (£/hr)",
+            data: advertised,
+          },
+        ];
+        if (onsAvailable && ons && ons.some(v => v != null)) {
+          datasets.push({
+            label: "ONS median (£/hr)",
+            data: ons,
+          });
+        }
+
+        chartInstance = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets,
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                ticks: { autoSkip: false, maxRotation: 60, minRotation: 30 },
+              },
+              y: {
+                beginAtZero: true,
+              }
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const v = context.parsed.y;
+                    if (v == null) return context.dataset.label + ": –";
+                    return context.dataset.label + ": £" + v.toFixed(2);
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      async function refresh() {
+        const params = buildParams();
+        const url = "/api/pay-compare?" + params.toString();
+
+        summaryText.textContent = "Loading…";
+
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            summaryText.textContent = "Error loading data (" + resp.status + ").";
+            return;
+          }
+          const data = await resp.json();
+          const results = data.results || [];
+          const groupBy = (data.params && data.params.group_by) || groupByEl.value;
+          const onsAvailable = !!data.ons_available;
+          const onsYear = data.ons_year;
+
+          renderTable(results, groupBy, onsAvailable);
+          renderChart(results, groupBy, onsAvailable);
+
+          const descParts = [];
+          if (data.params.sector) descParts.push("sector: " + data.params.sector);
+          if (data.params.job_role_group) descParts.push("role: " + data.params.job_role_group);
+          descParts.push("grouped by " + groupBy.replace("_", " "));
+          descParts.push(data.params.start_date + " → " + data.params.end_date);
+          if (onsAvailable && onsYear) descParts.push("ONS baseline " + onsYear);
+
+          summaryText.textContent = "Showing " + results.length + " group(s); " + descParts.join(" · ");
+        } catch (err) {
+          console.error(err);
+          summaryText.textContent = "Error loading data.";
+        }
+      }
+
+      function resetFilters() {
+        sectorEl.value = "";
+        roleEl.value = "";
+        groupByEl.value = "county";
+        startEl.value = "{{ default_start.isoformat() }}";
+        endEl.value = "{{ default_end.isoformat() }}";
+      }
+
+      applyBtn.addEventListener("click", refresh);
+      resetBtn.addEventListener("click", function() {
+        resetFilters();
+        refresh();
+      });
+
+      // Initial load
+      refresh();
+    })();
+  </script>
+{% endblock %}

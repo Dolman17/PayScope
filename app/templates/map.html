@@ -7,7 +7,12 @@
 
   <!-- Header + Back -->
   <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
-    <h1 class="text-2xl font-bold" style="color: var(--brand);">Pay Rate Map: {{ sector }}</h1>
+    <div>
+      <h1 class="text-2xl font-bold" style="color: var(--brand);">Pay Rate Map: {{ sector }}</h1>
+      <p class="mt-1 text-sm text-gray-600">
+        Explore pay rates for {{ sector }} roles. Each teal £ marker is a single job record; bubble sizes show how many jobs are in that area.
+      </p>
+    </div>
     <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip w-full sm:w-auto text-center">← Back to Sectors</a>
   </div>
 
@@ -17,26 +22,37 @@
       <div class="lg:col-span-2">
         <label for="job_role" class="label">Job Role</label>
         <select id="job_role" name="job_role" class="input">
-  <option value="">All Job Roles</option>
-  {% for role in job_roles %}
-    {% set label = (role | string).strip() %}
-    <option value="{{ label }}"
-            {% if filters.job_role == label %}selected{% endif %}>
-      {{ label or "[Unknown role]" }}
-    </option>
-  {% endfor %}
-</select>
-
+          <option value="">All Job Roles</option>
+          {% for role in job_roles %}
+            {% set label = (role | string).strip() %}
+            <option value="{{ label }}"
+                    {% if filters.job_role == label %}selected{% endif %}>
+              {{ label or "[Unknown role]" }}
+            </option>
+          {% endfor %}
+        </select>
       </div>
 
       <div>
         <label for="min_pay" class="label">Min £</label>
-        <input id="min_pay" type="number" step="0.01" name="min_pay" placeholder="Min £" class="input" value="{{ filters.min_pay }}">
+        <input id="min_pay"
+               type="number"
+               step="0.01"
+               name="min_pay"
+               placeholder="Min £"
+               class="input"
+               value="{{ filters.min_pay }}">
       </div>
 
       <div>
         <label for="max_pay" class="label">Max £</label>
-        <input id="max_pay" type="number" step="0.01" name="max_pay" placeholder="Max £" class="input" value="{{ filters.max_pay }}">
+        <input id="max_pay"
+               type="number"
+               step="0.01"
+               name="max_pay"
+               placeholder="Max £"
+               class="input"
+               value="{{ filters.max_pay }}">
       </div>
 
       <div class="flex items-end">
@@ -53,11 +69,10 @@
         <div class="lg:col-span-3">
           <div id="map" class="w-full rounded-lg border border-gray-200" style="height:70vh;"></div>
 
-          <!-- Legend (sits under the map on the left column) -->
+          <!-- Legend / explanation under the map -->
           <div id="rateLegend"
-               class="mt-2 inline-flex flex-wrap items-center gap-2 text-xs bg-white/90 border border-gray-200 rounded-lg px-3 py-2.shadow"
+               class="mt-2 inline-flex flex-wrap items-center gap-2 text-xs bg-white/90 border border-gray-200 rounded-lg px-3 py-2 shadow"
                style="backdrop-filter: saturate(180%) blur(6px);">
-            <span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span>
             <!-- filled by JS -->
           </div>
         </div>
@@ -67,10 +82,17 @@
              class="rounded-2xl border border-slate-200 bg-white shadow-xl"
              style="height:70vh; overflow:auto;">
           <div class="flex items-center justify-between px-4 pt-3">
-            <h3 class="font-semibold text-slate-800">Map Insights</h3>
+            <div>
+              <h3 class="font-semibold text-slate-800">Map Insights</h3>
+              <p class="text-[11px] text-slate-500 mt-0.5">
+                Live summary of the jobs currently visible on the map.
+              </p>
+            </div>
             <button id="insightRefresh"
                     class="text-white text-xs font-semibold px-2 py-1 rounded-md"
-                    style="background:#0160B1">Refresh</button>
+                    style="background:#0160B1">
+              Refresh
+            </button>
           </div>
           <div id="insightBody" class="px-4 pb-4 pt-2 text-sm text-slate-700">
             <div class="py-2 text-slate-500">Calculating…</div>
@@ -80,6 +102,33 @@
     </div>
   </section>
 
+</div>
+
+<!-- Visible providers modal -->
+<div id="visibleProvidersModal"
+     class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-40"
+     style="z-index: 9999;">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col border border-slate-200">
+    <div class="px-4 py-3 border-b flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-800">Visible providers on map</h2>
+        <p class="text-[11px] text-slate-500">
+          These are the job records currently within your map view and filters.
+        </p>
+      </div>
+      <button type="button"
+              class="nav-chip text-xs"
+              data-close-visible-modal="1">
+        Close
+      </button>
+    </div>
+    <div id="visibleProvidersTable" class="px-4 py-3 overflow-auto text-sm text-slate-700">
+      <!-- Filled dynamically -->
+      <div class="py-4 text-center text-slate-400 text-xs">
+        Loading visible providers…
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -95,10 +144,35 @@
 
   <style>
     #map, #map .leaflet-container { height: 70vh; min-height: 360px; }
+
+    /* Make sure map sits below overlays */
+    .leaflet-container,
+    .leaflet-pane,
+    .leaflet-top,
+    .leaflet-bottom {
+      z-index: 0 !important;
+    }
+
     .legend-swatch {
-      width: 12px; height: 12px; border-radius: 3px; display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
       border: 1px solid #9ca3af; /* gray-400 */
       vertical-align: -2px;
+    }
+
+    /* Neutralise MarkerCluster "heatmap" colours */
+    .marker-cluster-small,
+    .marker-cluster-medium,
+    .marker-cluster-large {
+      background-color: #0160B1 !important;   /* brand teal */
+      border: 2px solid #ffffff !important;
+      color: #ffffff !important;
+    }
+    .marker-cluster div {
+      background-color: #0160B1 !important;
+      color: #ffffff !important;
     }
   </style>
 
@@ -117,6 +191,7 @@
       // ======= Config =======
       const RLW_UK = 12.00;
       const RLW_LONDON = 13.15;
+      const MARKER_COLOR = "#0160B1";  // Single brand teal marker
 
       // ======= Map init =======
       const map = L.map('map', { zoomControl: true });
@@ -133,41 +208,19 @@
       const pointsLayer = L.markerClusterGroup();
       map.addLayer(pointsLayer);
 
-      // Colour ramp for bins 1..5
-      const binColor = (bin) => ({
-        1: '#bbf7d0', // green-200
-        2: '#fef08a', // yellow-200
-        3: '#facc15', // yellow-400
-        4: '#fdba74', // orange-300
-        5: '#fca5a5', // red-300
-      })[bin] || '#e5e7eb';
-
-      function renderLegend(thresholds) {
+      // Simple narrative "legend" (no heatmap bins)
+      function renderLegend() {
         const el = document.getElementById('rateLegend');
-        if (!el || !Array.isArray(thresholds) || thresholds.length !== 4) {
-          el && (el.innerHTML = '<span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span><span class="text-gray-500">No data visible — pan/zoom to update.</span>');
-          return;
-        }
-        const fmt = (v) => (isFinite(Number(v)) ? `£${Number(v).toFixed(2)}` : '—');
-        const [t1, t2, t3, t4] = thresholds.map(Number);
-        const labels = [
-          `≤ ${fmt(t1)}`,
-          `${fmt(t1)}–${fmt(t2)}`,
-          `${fmt(t2)}–${fmt(t3)}`,
-          `${fmt(t3)}–${fmt(t4)}`,
-          `> ${fmt(t4)}`
-        ];
-        const html = [
-          '<span class="font-semibold mr-1" style="color:var(--brand);">Rate bins:</span>',
-          ...labels.map((lab, i) => `
-            <span class="inline-flex items-center gap-1 mr-2">
-              <span class="legend-swatch" style="background:${binColor(i+1)}"></span>
-              <span>${lab}</span>
-            </span>
-          `)
-        ].join('');
-        el.innerHTML = html;
+        if (!el) return;
+        el.innerHTML = `
+          <span class="font-semibold mr-1" style="color:var(--brand);">How to read this map:</span>
+          <span class="text-gray-600">
+            Each teal <span class="legend-swatch" style="background:${MARKER_COLOR};"></span> marker is a single job record.
+            Larger bubbles show more jobs clustered together – colour does not indicate pay level.
+          </span>
+        `;
       }
+      renderLegend();
 
       async function loadPoints() {
         const b = map.getBounds();
@@ -182,48 +235,35 @@
         if (!res.ok) return;
         const geo = await res.json();
 
-        // Update legend from server thresholds
-        renderLegend(geo.thresholds);
-
         // (Re)draw markers
         pointsLayer.clearLayers();
 
         geo.features.forEach(f => {
           const [lng, lat] = f.geometry.coordinates;
           const p = f.properties;
-          const bin = p.rate_bin || 1;
 
-          const borderColor = p.has_logo ? '#0160B1' : '#9ca3af';  // brand vs grey
-
-          // Stronger visual: halo + coloured ring around logo
+          // Simple teal £ marker (no logo, no heat colour)
           const el = document.createElement('div');
           el.style.position = 'relative';
-          el.style.width = '44px';
-          el.style.height = '44px';
-
-          el.innerHTML = `
-            <!-- soft halo -->
-            <div style="
-              width: 24px; height: 24px; border-radius: 9999px;
-              background:${binColor(bin)}; border:1px solid #6b7280;
-              position:absolute; top:10px; left:10px; z-index: 0;">
-            </div>
-            <!-- logo with coloured ring -->
-            <div style="
-              position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center;">
-              <img src="${p.logo_url}" alt="${p.name}" style="
-                width: 40px; height: 40px; object-fit: contain; background:#fff;
-                border: 2px solid ${borderColor}; border-radius: .5rem;" 
-                onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
-            </div>
-          `;
+          el.style.width = '32px';
+          el.style.height = '32px';
+          el.style.borderRadius = '9999px';
+          el.style.background = MARKER_COLOR;
+          el.style.color = '#ffffff';
+          el.style.display = 'flex';
+          el.style.alignItems = 'center';
+          el.style.justifyContent = 'center';
+          el.style.fontWeight = '700';
+          el.style.fontSize = '14px';
+          el.style.border = '2px solid #ffffff';
+          el.textContent = '£';
 
           const icon = L.divIcon({
             className: '',
             html: el,
-            iconSize: [44, 44],
-            iconAnchor: [22, 44],
-            popupAnchor: [0, -38]
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -28]
           });
 
           const m = L.marker([lat, lng], {
@@ -239,34 +279,21 @@
 
           const rateText = (p.rate != null) ? `£${Number(p.rate).toFixed(2)}` : '—';
 
-          const logoBadge = p.has_logo
-            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px]">
-                 Custom logo
-               </span>`
-            : `<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-300 text-[11px]">
-                 Placeholder logo
-               </span>`;
-
           const popupHtml = `
-            <div class="text-sm space-y-1 max-w-[260px]">
-              <div class="flex items-center gap-2 mb-2">
-                <img src="${p.logo_url}" alt="${p.name}"
-                     class="w-8 h-8 object-contain rounded border border-gray-200 bg-white"
-                     onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
-                <div>
-                  <div class="font-semibold" style="color: var(--brand);">
-                    ${p.name || 'Unknown company'}
-                  </div>
-                  <div class="text-xs text-gray-500">${p.role || '—'}</div>
+            <div class="text-sm space-y-1 max-w-[280px]">
+              <div class="mb-1">
+                <div class="text-xs uppercase tracking-wide text-gray-400">Job role</div>
+                <div class="font-semibold text-[15px]" style="color: var(--brand);">
+                  ${p.role || 'Unknown role'}
+                </div>
+                <div class="text-xs text-gray-500">
+                  ${p.name || 'Unknown employer'}
                 </div>
               </div>
-              <div><strong>Pay Rate:</strong> ${rateText}</div>
+              <div><strong>Pay rate:</strong> ${rateText}</div>
               <div><strong>Postcode:</strong> ${p.postcode || '—'}</div>
               <div><strong>County:</strong> ${p.county || '—'}</div>
               <div><strong>Uploaded:</strong> ${p.imported_month || '—'} ${p.imported_year || ''}</div>
-              <div class="mt-2">
-                ${logoBadge}
-              </div>
             </div>
           `;
 
@@ -315,7 +342,6 @@
         const rlwFlags = rows.map(r => {
           const base = Number(r.hourly_rate);
           if (!isFinite(base)) return null;
-          // Simple London/UK threshold check
           const region = (r.region || '').toString();
           const isLondon = ["London","Greater London","City of London"].includes(region);
           const threshold = isLondon ? RLW_LONDON : RLW_UK;
@@ -355,32 +381,37 @@
 
         const topStats = `
           <div class="grid grid-cols-2 gap-3">
-            <div class="rounded-xl.border.border-slate-200.p-3">
-              <div class="text-xs text-slate-500">Visible Providers</div>
-              <div class="text-xl.font-semibold">${stats.total}</div>
+            <button type="button"
+                    id="visibleProvidersCard"
+                    class="rounded-xl border border-slate-200 p-3 text-left cursor-pointer hover:bg-slate-50 transition">
+              <div class="text-xs text-slate-500 flex items-center justify-between">
+                <span>Visible providers</span>
+                <span class="text-[10px] text-slate-400">Tap to view list →</span>
+              </div>
+              <div class="text-xl font-semibold mt-0.5">${stats.total}</div>
+            </button>
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="text-xs text-slate-500">Avg hourly rate</div>
+              <div class="text-xl font-semibold">${gbp(stats.avg)}</div>
             </div>
-            <div class="rounded-xl.border.border-slate-200.p-3">
-              <div class="text-xs text-slate-500">Avg Hourly Rate</div>
-              <div class="text-xl.font-semibold">${gbp(stats.avg)}</div>
-            </div>
-            <div class="rounded-xl.border.border-slate-200.p-3">
+            <div class="rounded-xl border border-slate-200 p-3">
               <div class="text-xs text-slate-500">Median</div>
-              <div class="text-xl.font-semibold">${gbp(stats.med)}</div>
+              <div class="text-xl font-semibold">${gbp(stats.med)}</div>
             </div>
-            <div class="rounded-xl.border.border-slate-200.p-3">
+            <div class="rounded-xl border border-slate-200 p-3">
               <div class="text-xs text-slate-500">Range</div>
-              <div class="text-xl.font-semibold">${gbp(stats.min)} – ${gbp(stats.max)}</div>
+              <div class="text-xl font-semibold">${gbp(stats.min)} – ${gbp(stats.max)}</div>
             </div>
           </div>
-        `;
+       `;
 
         const regions = Object.entries(stats.byRegion)
           .sort((a,b)=>b[1]-a[1]).slice(0,3)
-          .map(([k,v])=>`<span class="inline-flex.items-center.rounded-full.border.border-slate-200.px-2.py-0.5.text-xs">${k}: ${v}</span>`)
+          .map(([k,v])=>`<span class="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5 text-xs">${k}: ${v}</span>`)
           .join(' ');
 
         const hist = stats.hist.map(h => `
-          <div class="flex.items-center.justify-between">
+          <div class="flex items-center justify-between">
             <span>${h.label}</span>
             <span class="font-medium">${h.count}</span>
           </div>
@@ -388,22 +419,32 @@
 
         const elHtml = `
           ${topStats}
-          <div class="mt-3.rounded-xl.border.border-slate-200.p-3">
-            <div class="text-xs.mb-1.font-medium.text-slate-500">RLW Compliance (est.)</div>
-            <div class="text-lg.font-semibold">${pctStr(stats.rlwPct)}</div>
-            <div class="text-[11px].text-slate-400.mt-1">Thresholds: UK £${RLW_UK.toFixed(2)} / London £${RLW_LONDON.toFixed(2)}</div>
+          <div class="mt-3 rounded-xl border border-slate-200 p-3">
+            <div class="text-xs mb-1 font-medium text-slate-500">RLW compliance (est.)</div>
+            <div class="text-lg font-semibold">${pctStr(stats.rlwPct)}</div>
+            <div class="text-[11px] text-slate-400 mt-1">
+              Thresholds: UK £${RLW_UK.toFixed(2)} / London £${RLW_LONDON.toFixed(2)}
+            </div>
           </div>
           <div class="mt-3">
-            <div class="text-xs.mb-1.font-medium.text-slate-500">Top Regions</div>
-            <div class="flex.flex-wrap.gap-1">${regions || '<span class="text-slate-400.text-xs">—</span>'}</div>
+            <div class="text-xs mb-1 font-medium text-slate-500">Top regions (by count)</div>
+            <div class="flex flex-wrap gap-1">${regions || '<span class="text-slate-400 text-xs">—</span>'}</div>
           </div>
-          <div class="mt-3.rounded-xl.border.border-slate-200.p-3">
-            <div class="text-xs.mb-2.font-medium.text-slate-500">Rate Distribution</div>
+          <div class="mt-3 rounded-xl border border-slate-200 p-3">
+            <div class="text-xs mb-2 font-medium text-slate-500">Rate distribution</div>
             <div class="space-y-1">${hist}</div>
           </div>
-          <div class="mt-2.text-[11px].text-slate-400">Updates when you pan/zoom or apply filters.</div>
+          <div class="mt-2 text-[11px] text-slate-400">
+            Updates whenever you pan, zoom, or change filters.
+          </div>
         `;
         el.innerHTML = elHtml;
+
+        // Wire up card click after we inject HTML
+        const card = document.getElementById('visibleProvidersCard');
+        if (card) {
+          card.addEventListener('click', openVisibleProvidersModal);
+        }
       }
 
       function updateInsights() {
@@ -412,6 +453,114 @@
         renderInsightBox(stats);
       }
 
+      // ======= Modal helpers =======
+      function escapeHtml(value) {
+        const str = String(value ?? '');
+        return str.replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        }[ch] || ch));
+      }
+
+      function openVisibleProvidersModal() {
+        const modal = document.getElementById('visibleProvidersModal');
+        const tableWrap = document.getElementById('visibleProvidersTable');
+        if (!modal || !tableWrap) return;
+
+        const rows = collectVisibleProviders();
+        if (!rows.length) {
+          tableWrap.innerHTML = `
+            <div class="py-6 text-center text-slate-400 text-sm">
+              There are no providers currently visible on the map.
+            </div>
+          `;
+        } else {
+          const sorted = [...rows].sort((a, b) => {
+            const roleA = (a.service_type || '').toString().toLowerCase();
+            const roleB = (b.service_type || '').toString().toLowerCase();
+            if (roleA < roleB) return -1;
+            if (roleA > roleB) return 1;
+            const rateA = Number(a.hourly_rate);
+            const rateB = Number(b.hourly_rate);
+            if (isFinite(rateB) && isFinite(rateA)) return rateB - rateA;
+            return 0;
+          });
+
+          const header = `
+            <table class="min-w-full text-xs sm:text-sm border border-slate-200 rounded-lg overflow-hidden">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="px-2 py-2 text-left font-semibold text-slate-700">Job role</th>
+                  <th class="px-2 py-2 text-left font-semibold text-slate-700">Employer</th>
+                  <th class="px-2 py-2 text-right font-semibold text-slate-700">Hourly rate</th>
+                  <th class="px-2 py-2 text-left font-semibold text-slate-700">County</th>
+                  <th class="px-2 py-2 text-left font-semibold text-slate-700">Postcode</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+          `;
+
+          const rowsHtml = sorted.map(r => {
+            const rate = isFinite(Number(r.hourly_rate)) ? '£' + Number(r.hourly_rate).toFixed(2) : '—';
+            return `
+              <tr>
+                <td class="px-2 py-1.5 align-top text-slate-800">
+                  ${escapeHtml(r.service_type || 'Unknown role')}
+                </td>
+                <td class="px-2 py-1.5 align-top text-slate-600">
+                  ${escapeHtml(r.provider_name || 'Unknown employer')}
+                </td>
+                <td class="px-2 py-1.5 align-top text-right text-slate-800">
+                  ${rate}
+                </td>
+                <td class="px-2 py-1.5 align-top text-slate-600">
+                  ${escapeHtml(r.region || '—')}
+                </td>
+                <td class="px-2 py-1.5 align-top text-slate-600">
+                  ${escapeHtml(r.postcode || '—')}
+                </td>
+              </tr>
+            `;
+          }).join('');
+
+          const footer = `
+              </tbody>
+            </table>
+            <div class="mt-2 text-[11px] text-slate-400">
+              Showing ${rows.length} job record${rows.length === 1 ? '' : 's'} currently in view.
+            </div>
+          `;
+
+          tableWrap.innerHTML = header + rowsHtml + footer;
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function closeVisibleProvidersModal() {
+        const modal = document.getElementById('visibleProvidersModal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      // Modal close wiring
+      document.addEventListener('click', (evt) => {
+        const target = evt.target;
+        if (target.matches('[data-close-visible-modal]')) {
+          closeVisibleProvidersModal();
+        }
+        // Click on backdrop closes too
+        if (target.id === 'visibleProvidersModal') {
+          closeVisibleProvidersModal();
+        }
+      });
+
+      // ======= Hook up map events =======
       map.on('moveend', loadPoints);
       map.on('zoomend', loadPoints);
       document.getElementById('insightRefresh')?.addEventListener('click', () => { updateInsights(); });

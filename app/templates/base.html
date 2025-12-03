@@ -13,19 +13,19 @@
 
   <style>
     :root{
-      --brand: #005b5a;        /* Deep teal */
+      --brand: #005b5a;        
       --brand-600: #0b6b6a;
-      --ink: #1f2937;          /* Gray-800 */
-      --ink-2: #4b5563;        /* Gray-600 */
-      --muted: #f3f4f6;        /* Gray-100 */
+      --ink: #1f2937;          
+      --ink-2: #4b5563;        
+      --muted: #f3f4f6;        
       --card: #ffffff;
       --ring: rgba(0,91,90,0.3);
-      --success-bg: #ecfdf5;   /* teal-50 */
-      --success-fg: #065f46;   /* teal-700 */
-      --info-bg: #eff6ff;      /* blue-50 */
-      --info-fg: #1e40af;      /* blue-800 */
-      --error-bg: #fef2f2;     /* red-50 */
-      --error-fg: #991b1b;     /* red-800 */
+      --success-bg: #ecfdf5;  
+      --success-fg: #065f46;  
+      --info-bg: #eff6ff;      
+      --info-fg: #1e40af;     
+      --error-bg: #fef2f2;     
+      --error-fg: #991b1b;     
     }
 
     html, body { height: 100%; }
@@ -71,11 +71,13 @@
 
     .app-header{ position: sticky; top:0; z-index:40; background: #ffffffcc; backdrop-filter: saturate(180%) blur(6px); }
   </style>
+
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
 </head>
 
 <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
 
+  {% if not hide_nav %}
   <!-- Header -->
   <header class="app-header border-b">
     <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
@@ -94,9 +96,10 @@
           <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
           <a href="{{ url_for('upload.upload') }}" class="nav-chip">Upload</a>
           <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
+          <!-- NEW: Pay Explorer link -->
+          <a href="{{ url_for('maps.pay_explorer') }}" class="nav-chip">Pay Explorer</a>
           <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
 
-          {# Superuser-only Admin Tools hub #}
           {% if current_user.admin_level == 1 %}
             <a href="{{ url_for('admin.admin_tools') }}" class="nav-chip">Admin Tools</a>
           {% endif %}
@@ -108,6 +111,7 @@
       </nav>
     </div>
   </header>
+  {% endif %}
 
   <!-- Flash Messages -->
   <div class="max-w-7xl mx-auto px-4 mt-4 space-y-2">
