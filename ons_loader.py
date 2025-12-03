@@ -17,6 +17,7 @@ a summary dict so we can iterate on the schema safely.
 Once you're happy with the dataset & structure, we can add a simple
 OnsEarnings model and store these rows for fast joins in the UI.
 """
+
 import csv
 import io
 import os
@@ -25,9 +26,9 @@ from datetime import date
 from typing import List, Dict, Any, Optional
 
 import requests
-from dotenv import load_dotenv  # <-- add this
+from dotenv import load_dotenv
 
-load_dotenv()  # <-- now this works
+load_dotenv()
 
 # -------------------------------------------------------------------
 # Configuration
@@ -54,26 +55,26 @@ NOMIS_UID = os.getenv("NOMIS_UID")
 #
 # Until you configure these, calls will raise a ValueError explaining what to set.
 
-ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID")  # e.g. "NM_17_5"
+ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID")  # e.g. "NM_99_1"
 
-# Geography:
-# Typical choices (you'll see these in the link Nomis gives you):
+# Geography dimension:
 #   TYPE450 = Local authorities: County / Unitary (for England/Wales)
-#   TYPE480 = Countries / English regions
 ASHE_GEOGRAPHY = os.getenv("NOMIS_ASHE_GEOGRAPHY")  # e.g. "TYPE450"
 
 # Measures:
-# In ASHE, "measures" usually include:
 #   20101 = Median gross hourly pay (excluding overtime)
-# Again, copy this from the Nomis link you generate.
 ASHE_MEASURES = os.getenv("NOMIS_ASHE_MEASURES")  # e.g. "20101"
 
 # Sex / full-time / occupation etc can also be constrained.
-# For now we keep this simple and let you copy the key filters from the Nomis URL.
+# Copy these straight from the Nomis URL.
 ASHE_EXTRA_PARAMS = os.getenv("NOMIS_ASHE_EXTRA_PARAMS", "").strip()
 # Example:
-#   NOMIS_ASHE_EXTRA_PARAMS="sex=0&fulltime=0&occupation=0"
+#   NOMIS_ASHE_EXTRA_PARAMS="sex=0&item=1&pay=5&freq=A"
 # These get appended to the query string as-is.
+
+# Some datasets use TIME, others DATE as the dimension id.
+# NM_99_1 uses DATE in the query string, even though the concept is TIME.
+ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")  # <-- KEY BIT
 
 
 # -------------------------------------------------------------------
@@ -106,8 +107,8 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
     """
     Fetch raw CSV from a Nomis dataset.
 
-    `dataset_id` is something like "NM_17_5".
-    `params` is the querystring dict (geography, time, measures, etc).
+    `dataset_id` is something like "NM_99_1".
+    `params` is the querystring dict (geography, time/date, measures, etc).
     """
     if not dataset_id:
         raise ValueError(
@@ -142,7 +143,7 @@ def _ensure_config():
     """Simple guard to make sure you've wired the environment vars."""
     missing = []
     if not ASHE_DATASET_ID:
-        missing.append("NOMIS_ASHE_DATASET_ID (e.g. NM_17_5)")
+        missing.append("NOMIS_ASHE_DATASET_ID (e.g. NM_99_1)")
     if not ASHE_GEOGRAPHY:
         missing.append("NOMIS_ASHE_GEOGRAPHY (e.g. TYPE450)")
     if not ASHE_MEASURES:
@@ -157,6 +158,7 @@ def _ensure_config():
               "into these environment variables."
         )
 
+
 def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
     """
     Fetch ASHE earnings for a single year from Nomis.
@@ -170,28 +172,30 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
         "row_count": 152,
         "rows": [OnsEarningsRow.as_dict(), ...],
       }
-
-    At this stage we ONLY download + parse. We do NOT persist to the DB.
     """
     _ensure_config()
 
     # Build core params for the CSV call.
-    # For NM_99_1 the dimension is "date", not "time", so we use date=YYYY.
+    # IMPORTANT: use DATE (not TIME) for NM_99_1.
     params: Dict[str, Any] = {
-        "date": str(year),
+        ASHE_DATE_PARAM: str(year),        # <-- HERE: 'date': '2025'
         "geography": ASHE_GEOGRAPHY,
         "measures": ASHE_MEASURES,
+        # Only pull what we need — names + codes + value.
+        "select": "geography_code,geography_name,measures,obs_value",
+        # One row per geography x measure.
+        "rows": "geography",
+        "cols": "measures",
     }
 
     # Allow you to tack on extra params straight from your Nomis URL,
-    # e.g. "sex=1...9&item=1...15&pay=5".
+    # e.g. "sex=0&item=1&pay=5&freq=A".
     if ASHE_EXTRA_PARAMS:
         for part in ASHE_EXTRA_PARAMS.split("&"):
             part = part.strip()
             if not part or "=" not in part:
                 continue
             k, v = part.split("=", 1)
-            # Don't overwrite the core ones we just set
             if k and k not in params:
                 params[k] = v
 
@@ -201,50 +205,16 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
     f = io.StringIO(csv_text)
     reader = csv.DictReader(f)
 
-    # ---- NEW: dynamic column detection ----
-    fieldnames = reader.fieldnames or []
-    upper_map = {name.upper(): name for name in fieldnames}
-
-    def pick_column(*candidates: str, contains: Optional[list[str]] = None) -> Optional[str]:
-        # 1) exact candidate matches (case-insensitive)
-        for cand in candidates:
-            key = upper_map.get(cand.upper())
-            if key:
-                return key
-        # 2) fuzzy "contains" match on uppercased names
-        if contains:
-            for up, orig in upper_map.items():
-                if all(part.upper() in up for part in contains):
-                    return orig
-        return None
-
-    geo_code_col = pick_column("GEOGRAPHY_CODE", "GEOGCD", "GEOGRAPHY", contains=["GEOG", "CODE"])
-    geo_name_col = pick_column("GEOGRAPHY_NAME", "GEOGNM", contains=["GEOG", "NAME"])
-    measure_col  = pick_column("MEASURES", "MEASURE_CODE", "ITEM", contains=["MEAS", "ITEM"])
-    value_col    = pick_column("OBS_VALUE", "OBS_VALUE_1", "OBS_VALUE_0", "VALUE", contains=["OBS", "VAL"])
-
-    if not value_col:
-        # If we can't even find a value column, dump the header to help debugging
-        print("[ONS] Could not detect OBS/VALUE column. Headers were:", fieldnames)
-        return {
-            "year": year,
-            "dataset_id": ASHE_DATASET_ID,
-            "measure_code": ASHE_MEASURES,
-            "row_count": 0,
-            "rows": [],
-            "fetched_at": date.today().isoformat(),
-        }
-
     rows: List[OnsEarningsRow] = []
-
     for raw in reader:
-        geo_code = (raw.get(geo_code_col) or "").strip() if geo_code_col else ""
-        geo_name = (raw.get(geo_name_col) or "").strip() if geo_name_col else ""
-        measure  = (raw.get(measure_col)  or "").strip() if measure_col  else ""
-        val_raw  = (raw.get(value_col)    or "").strip()
+        # Nomis column names are typically upper-case: GEOGRAPHY_CODE, OBS_VALUE, etc.
+        geo_code = (raw.get("GEOGRAPHY_CODE") or "").strip()
+        geo_name = (raw.get("GEOGRAPHY_NAME") or "").strip()
+        measure = (raw.get("MEASURES") or raw.get("MEASURES_NAME") or "").strip()
+        val_raw = (raw.get("OBS_VALUE") or "").strip()
 
-        # Skip pure blank lines
-        if not geo_code and not geo_name and not val_raw:
+        if not geo_code and not geo_name:
+            # Header / blank line / rubbish
             continue
 
         try:
@@ -255,9 +225,9 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
         rows.append(
             OnsEarningsRow(
                 year=year,
-                geography_code=geo_code or "",
-                geography_name=geo_name or "",
-                measure_code=measure or ASHE_MEASURES,
+                geography_code=geo_code,
+                geography_name=geo_name,
+                measure_code=measure,
                 value=value,
             )
         )
@@ -276,13 +246,4 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
         f"{summary['row_count']} rows from dataset {ASHE_DATASET_ID}"
     )
 
-    # If we still somehow got zero rows, print the first few lines of the CSV
-    # to help diagnose (doesn't spam too much).
-    if summary["row_count"] == 0:
-        snippet = "\n".join(csv_text.splitlines()[:10])
-        print("[ONS] DEBUG – CSV head (first 10 lines):")
-        print(snippet)
-
     return summary
-
-
