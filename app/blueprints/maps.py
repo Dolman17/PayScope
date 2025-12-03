@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required
 from sqlalchemy import or_, func
+from datetime import date
 
 from extensions import db
 from models import JobRecord, JobSummaryDaily, OnsEarnings
@@ -245,6 +246,37 @@ def pay_explorer():
         default_end=default_end,
     )
 
+def _load_ons_medians_for_year(ashe_year: int) -> dict[str, float]:
+    """
+    Load ONS ASHE median values for a given year, keyed by geography_name (lowercased).
+
+    - If multiple measures exist per geography, we pick a 'best' one
+      with a simple priority (e.g. 20101/20100 > others).
+    """
+    rows = OnsEarnings.query.filter_by(year=ashe_year).all()
+    index: dict[str, OnsEarnings] = {}
+
+    def score(measure_code: str | None) -> int:
+        code = (measure_code or "").strip()
+        if code in ("20101", "20100", "20701"):
+            return 2
+        return 1
+
+    for r in rows:
+        name = (r.geography_name or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key not in index:
+            index[key] = r
+        else:
+            if score(r.measure_code) > score(index[key].measure_code):
+                index[key] = r
+
+    # Flatten to { "lancashire": 13.42, ... }
+    return {k: (v.value if v.value is not None else None) for k, v in index.items()}
+
+
 @bp.route("/api/pay-compare")
 @login_required
 def api_pay_compare():
@@ -355,12 +387,12 @@ def api_pay_compare():
     if results and group_by in ("county", "sector_county"):
         counties = sorted({r["county"] for r in results if r["county"]})
         if counties:
+            # OnsEarnings has year + geography_name + value
             ons_rows = (
                 OnsEarnings.query.filter(
-                    OnsEarnings.geography_level == "county",
                     OnsEarnings.geography_name.in_(counties),
                 )
-                .order_by(OnsEarnings.geography_name, OnsEarnings.period_year.desc())
+                .order_by(OnsEarnings.geography_name, OnsEarnings.year.desc())
                 .all()
             )
 
@@ -369,16 +401,18 @@ def api_pay_compare():
                 name = (r.geography_name or "").strip()
                 if not name:
                     continue
+                if r.value is None:
+                    continue
                 # keep latest year per county
-                if name not in ons_map or r.period_year > ons_map[name]["period_year"]:
+                if name not in ons_map or r.year > ons_map[name]["year"]:
                     ons_map[name] = {
-                        "period_year": r.period_year,
+                        "year": r.year,
                         "median_hourly": float(r.value),
                     }
 
             if ons_map:
                 ons_available = True
-                ons_year = max(v["period_year"] for v in ons_map.values())
+                ons_year = max(v["year"] for v in ons_map.values())
 
                 for r in results:
                     c = (r.get("county") or "").strip()
@@ -392,7 +426,7 @@ def api_pay_compare():
                     advertised = r.get("median_pay_rate")
                     ons_val = info["median_hourly"]
                     r["ons_median_hourly"] = ons_val
-                    if advertised is None:
+                    if advertised is None or ons_val is None:
                         r["pay_vs_ons"] = None
                         r["pay_vs_ons_pct"] = None
                     else:
@@ -414,4 +448,5 @@ def api_pay_compare():
             "ons_year": ons_year,
         }
     )
+
 

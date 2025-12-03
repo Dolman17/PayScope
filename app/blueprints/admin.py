@@ -4,6 +4,15 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+from datetime import date  # NEW
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request  # you may already have these
+from flask_login import login_required, current_user
+from werkzeug.exceptions import abort  # if not already imported
+
+from ons_importer import import_ons_earnings_to_db  # NEW
+
+
 from flask import (
     Blueprint,
     render_template,
@@ -290,6 +299,45 @@ def backfill_counties():
     except Exception:
         flash("Failed to save backfill results.", "error")
     return redirect(url_for("upload.upload"))
+
+@bp.route("/admin/ons-import", methods=["POST"])
+@login_required
+def run_ons_import():
+    """
+    Trigger an ONS ASHE import for the current year from the Admin Tools page.
+
+    - Superuser-only (admin_level == 1)
+    - Uses ons_importer.import_ons_earnings_to_db with use_app_context=True
+    - Shows a flash message with the outcome and redirects back to Admin Tools.
+    """
+    if getattr(current_user, "admin_level", 0) != 1:
+        abort(403)
+
+    year = date.today().year
+
+    result = import_ons_earnings_to_db(
+        year,
+        trigger="admin_button",
+        triggered_by=getattr(current_user, "username", None),
+        use_app_context=True,
+    )
+
+    if result.get("error"):
+        flash(
+            f"ONS import FAILED for {year}: {result['error']}",
+            "error",
+        )
+    else:
+        fetched = result.get("fetched", 0)
+        created = result.get("created", 0)
+        updated = result.get("updated", 0)
+        flash(
+            f"Imported ONS ASHE for {year}: "
+            f"fetched {fetched}, created {created}, updated {updated}.",
+            "success",
+        )
+
+    return redirect(url_for("admin.admin_tools"))
 
 
 # -------------------------------------------------------------------

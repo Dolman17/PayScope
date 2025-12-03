@@ -26,15 +26,30 @@ Usage patterns:
         triggered_by=triggered_by,
         use_app_context=True,
     )
+
+3) Import a range of years (e.g. 2020–2023):
+
+    from app import create_app
+    from ons_importer import import_ons_earnings_range_to_db
+
+    app = create_app()
+    with app.app_context():
+        summaries = import_ons_earnings_range_to_db(2020, 2023, use_app_context=True)
+        print(summaries)
 """
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from app import create_app
 from extensions import db
 from models import OnsEarnings, CronRunLog
 from ons_loader import import_ons_earnings_for_year
+
+
+# -------------------------------------------------------------------
+# Core single-year implementation
+# -------------------------------------------------------------------
 
 
 def _import_ons_earnings_to_db_impl(
@@ -155,6 +170,11 @@ def _import_ons_earnings_to_db_impl(
         return summary
 
 
+# -------------------------------------------------------------------
+# Public single-year entry point
+# -------------------------------------------------------------------
+
+
 def import_ons_earnings_to_db(
     year: int,
     trigger: str = "manual",
@@ -162,7 +182,7 @@ def import_ons_earnings_to_db(
     use_app_context: bool = False,
 ) -> Dict[str, Any]:
     """
-    Public entry point.
+    Public entry point for a single year.
 
     - If use_app_context=False (default):
         Creates an app and app context internally. Safe for REPL / CLI use.
@@ -173,22 +193,100 @@ def import_ons_earnings_to_db(
     """
     if use_app_context:
         # Caller is responsible for having an active app context.
-        return _import_ons_earnings_to_db_impl(year, trigger=trigger, triggered_by=triggered_by)
+        return _import_ons_earnings_to_db_impl(
+            year,
+            trigger=trigger,
+            triggered_by=triggered_by,
+        )
 
     app = create_app()
     with app.app_context():
-        return _import_ons_earnings_to_db_impl(year, trigger=trigger, triggered_by=triggered_by)
+        return _import_ons_earnings_to_db_impl(
+            year,
+            trigger=trigger,
+            triggered_by=triggered_by,
+        )
+
+
+# -------------------------------------------------------------------
+# Range helper (multi-year import)
+# -------------------------------------------------------------------
+
+
+def import_ons_earnings_range_to_db(
+    start_year: int,
+    end_year: int,
+    trigger: str = "manual",
+    triggered_by: str | None = None,
+    use_app_context: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Convenience helper to import a whole range of ASHE years.
+
+    Returns a list of per-year summary dicts in ascending year order.
+
+    Example:
+
+        with app.app_context():
+            summaries = import_ons_earnings_range_to_db(2020, 2023, use_app_context=True)
+            for s in summaries:
+                print(s["year"], s["created"], s["updated"], s["error"])
+    """
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+
+    summaries: List[Dict[str, Any]] = []
+
+    if use_app_context:
+        # Assume caller already created an app and pushed context.
+        for year in range(start_year, end_year + 1):
+            res = _import_ons_earnings_to_db_impl(
+                year,
+                trigger=trigger,
+                triggered_by=triggered_by,
+            )
+            summaries.append(res)
+        return summaries
+
+    # Manage app context ourselves for CLI / quick scripts
+    app = create_app()
+    with app.app_context():
+        for year in range(start_year, end_year + 1):
+            res = _import_ons_earnings_to_db_impl(
+                year,
+                trigger=trigger,
+                triggered_by=triggered_by,
+            )
+            summaries.append(res)
+        return summaries
+
+
+# -------------------------------------------------------------------
+# CLI helper
+# -------------------------------------------------------------------
 
 
 if __name__ == "__main__":
-    # Simple CLI helper:
+    # Usage:
+    #
     #   py ons_importer.py 2023
+    #   py ons_importer.py 2020 2023
+    #
+    # First form imports a single year.
+    # Second form imports a whole range (inclusive).
     import sys
 
-    if len(sys.argv) < 2:
-        print("Usage: py ons_importer.py <year>")
+    if len(sys.argv) == 2:
+        year = int(sys.argv[1])
+        result = import_ons_earnings_to_db(year)
+        print(result)
+    elif len(sys.argv) == 3:
+        start = int(sys.argv[1])
+        end = int(sys.argv[2])
+        results = import_ons_earnings_range_to_db(start, end)
+        print(results)
+    else:
+        print("Usage:")
+        print("  py ons_importer.py <year>")
+        print("  py ons_importer.py <start_year> <end_year>")
         raise SystemExit(1)
-
-    y = int(sys.argv[1])
-    result = import_ons_earnings_to_db(y)
-    print(result)
