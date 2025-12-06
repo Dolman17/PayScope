@@ -1,22 +1,12 @@
-# app/api.py
+# app/blueprints/api.py
 
 from flask import Blueprint, request, jsonify
-from app.pay_compare import get_pay_comparison  # or from .pay_compare import get_pay_comparison
+from app.pay_compare import get_pay_comparison  # or from ..pay_compare import get_pay_comparison
 
-api_bp = Blueprint("api", __name__)
+bp = Blueprint("api", __name__)  # ⬅️ name is "bp" to match other blueprints
 
-
-@api_bp.route("/pay-compare", methods=["GET"])
+@bp.route("/pay-compare", methods=["GET"])
 def pay_compare():
-    """
-    GET /api/pay-compare
-
-    Query parameters (all optional):
-    - county
-    - sector
-    - job_role_group
-    - days (int, default 30)
-    """
     county = request.args.get("county") or None
     sector = request.args.get("sector") or None
     job_role_group = request.args.get("job_role_group") or None
@@ -29,3 +19,4 @@ def pay_compare():
         days=days,
     )
     return jsonify(data)
+
