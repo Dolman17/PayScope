@@ -81,6 +81,7 @@ def create_app():
     app.register_blueprint(maps_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(upload_bp)
+    app.register_blueprint(api_bp, url_prefix="/api")  # NEW
 
     # ---------------------------------------------------------
     # Home route
