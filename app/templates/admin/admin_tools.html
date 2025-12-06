@@ -25,7 +25,6 @@
     </a>
 
     <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}" class="inline-block">
-  {{ csrf_token() }}
   <button type="submit" class="btn btn-secondary btn-sm">
     Run ONS earnings import (latest year)
   </button>
