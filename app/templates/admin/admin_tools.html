@@ -24,6 +24,14 @@
       <p class="text-gray-600 text-sm">Manage imported job postings.</p>
     </a>
 
+    <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}" class="inline-block">
+  {{ csrf_token() }}
+  <button type="submit" class="btn btn-secondary btn-sm">
+    Run ONS earnings import (latest year)
+  </button>
+</form>
+
+
     <a href="{{ url_for('admin.admin_job_scrape') }}" class="card p-5 hover:shadow-md transition">
       <h2 class="text-lg font-semibold mb-1">Job Scrape</h2>
       <p class="text-gray-600 text-sm">Run scrapers and review scrape logs.</p>
