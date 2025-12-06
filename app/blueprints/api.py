@@ -1,7 +1,7 @@
 # app/api.py
 
 from flask import Blueprint, request, jsonify
-from app.pay_compare import get_pay_comparison
+from app.pay_compare import get_pay_comparison  # or from .pay_compare import get_pay_comparison
 
 api_bp = Blueprint("api", __name__)
 
