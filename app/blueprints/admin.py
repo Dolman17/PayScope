@@ -11,6 +11,7 @@ from flask_login import login_required, current_user
 from werkzeug.exceptions import abort  # if not already imported
 
 from ons_importer import import_ons_earnings_to_db  # NEW
+from ons_importer import import_latest_ons_earnings_for_cron
 
 
 from flask import (
@@ -545,6 +546,31 @@ def regenerate_company_ids():
         flash("Failed to regenerate company IDs.", "error")
 
     return redirect(url_for("admin.admin_companies"))
+
+@bp.route("/ons/import", methods=["POST"])
+@login_required
+def run_ons_import_manual():
+    # TODO: wrap with your proper admin/superuser decorator if you have one
+    who = getattr(current_user, "email", None) or getattr(current_user, "username", None) or "admin"
+
+    try:
+        result = import_latest_ons_earnings_for_cron(
+            trigger="manual",
+            triggered_by=who,
+            use_app_context=True,  # we are already in a request/app context
+        )
+        year = result.get("year")
+        created = result.get("created")
+        updated = result.get("updated")
+        msg = f"ONS ASHE import for {year} completed: created={created}, updated={updated}"
+        flash(msg, "success")
+    except Exception as e:
+        flash(f"ONS ASHE import failed: {e}", "danger")
+
+    # Redirect to whatever admin view makes sense (cron runs, admin dashboard, etc.)
+    return redirect(url_for("admin.admin_tools"))
+
+
 
 
 # -------------------------------------------------------------------
