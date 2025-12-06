@@ -1,9 +1,12 @@
 # app/blueprints/api.py
 
-from flask import Blueprint, request, jsonify
-from app.pay_compare import get_pay_comparison  # or from ..pay_compare import get_pay_comparison
+# app/blueprints/api.py
 
-bp = Blueprint("api", __name__)  # ⬅️ name is "bp" to match other blueprints
+from flask import Blueprint, request, jsonify
+from .pay_compare import get_pay_comparison   # ⬅️ LOCAL IMPORT (same folder)
+
+bp = Blueprint("api", __name__)
+
 
 @bp.route("/pay-compare", methods=["GET"])
 def pay_compare():
