@@ -1,193 +1,229 @@
-# app/pay_compare.py
+# app/blueprints/pay_compare.py
 
-from datetime import date, timedelta
-from sqlalchemy import func, desc
+from datetime import date, datetime, timedelta
+
+from sqlalchemy import func
 
 from models import db, JobSummaryDaily, OnsEarnings
 
-# This should match whatever your ons_importer uses for
-# "Gross hourly pay (excluding overtime), median".
-# Adjust if your importer uses a different code.
+# Adjust this if your ons_importer uses a different code
+# for "Gross hourly pay (excluding overtime), median"
 ONS_MEDIAN_HOURLY_MEASURE_CODE = "20100"
 
 
-def _get_latest_ons_year():
-    """Return the most recent ONS year we have in OnsEarnings."""
-    latest = (
-        db.session.query(func.max(OnsEarnings.year))
-        .scalar()
-    )
-    return latest
+def _parse_date(value: str | None, default: date) -> date:
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except Exception:
+        return default
 
 
-def get_latest_ons_median_for_county(
-    county: str,
-    measure_code: str = ONS_MEDIAN_HOURLY_MEASURE_CODE,
-):
+def _get_latest_ons_year() -> int | None:
+    return db.session.query(func.max(OnsEarnings.year)).scalar()
+
+
+def _build_ons_map(counties: set[str]) -> tuple[dict[str, float], int | None]:
     """
-    Fetch the latest ONS median hourly pay for a given county
-    using OnsEarnings.
-
-    We match on geography_name == county and the latest year.
+    Return (map of county -> median value, year).
+    Only used when grouping includes county.
     """
+    if not counties:
+        return {}, None
+
     latest_year = _get_latest_ons_year()
     if not latest_year:
-        return None
+        return {}, None
 
-    record = (
+    rows = (
         OnsEarnings.query
         .filter(
             OnsEarnings.year == latest_year,
-            OnsEarnings.geography_name == county,
-            OnsEarnings.measure_code == measure_code,
+            OnsEarnings.measure_code == ONS_MEDIAN_HOURLY_MEASURE_CODE,
+            OnsEarnings.geography_name.in_(list(counties)),
         )
-        .order_by(desc(OnsEarnings.year))
-        .first()
+        .all()
     )
 
-    return record
+    ons_map: dict[str, float] = {}
+    for r in rows:
+        if r.value is not None:
+            ons_map[r.geography_name] = float(r.value)
+
+    if not ons_map:
+        return {}, None
+
+    return ons_map, latest_year
 
 
-def get_advertised_pay(
-    county: str | None = None,
-    sector: str | None = None,
-    job_role_group: str | None = None,
-    days: int = 30,
-):
+def get_pay_explorer_data(
+    start_date_str: str | None,
+    end_date_str: str | None,
+    sector: str | None,
+    job_role_group: str | None,
+    group_by: str,
+) -> dict:
     """
-    Aggregate advertised pay from JobSummaryDaily over the last N days.
+    Returns data in the exact shape expected by the Pay Explorer JS:
 
-    Returns a dict like:
     {
-        "sample_size": 123,
-        "median_pay_rate": 12.75,
-        "p25_pay_rate": 11.50,
-        "p75_pay_rate": 13.50,
-        "min_pay_rate": 10.90,
-        "max_pay_rate": 14.20,
+      "results": [...],
+      "ons_available": true/false,
+      "ons_year": 2024 or null
     }
-    or None if no data.
     """
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
 
-    q = JobSummaryDaily.query.filter(
-        JobSummaryDaily.date >= start_date,
-        JobSummaryDaily.date <= end_date,
-    )
+    today = date.today()
+    default_start = today - timedelta(days=30)
 
-    if county:
-        q = q.filter(JobSummaryDaily.county == county)
+    start = _parse_date(start_date_str, default_start)
+    end = _parse_date(end_date_str, today)
+
+    # Guard against inverted ranges
+    if start > end:
+        start, end = end - timedelta(days=30), end
+
+    group_by = group_by or "county"
+    if group_by not in ("county", "sector", "sector_county"):
+        group_by = "county"
+
+    # Base query
+    base_filters = [
+        JobSummaryDaily.date >= start,
+        JobSummaryDaily.date <= end,
+    ]
     if sector:
-        q = q.filter(JobSummaryDaily.sector == sector)
+        base_filters.append(JobSummaryDaily.sector == sector)
     if job_role_group:
-        q = q.filter(JobSummaryDaily.job_role_group == job_role_group)
+        base_filters.append(JobSummaryDaily.job_role_group == job_role_group)
 
-    result = q.with_entities(
-        func.sum(JobSummaryDaily.adverts_count).label("sample_size"),
-        func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
-        func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
-        func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
-        func.min(JobSummaryDaily.min_pay_rate).label("min_pay_rate"),
-        func.max(JobSummaryDaily.max_pay_rate).label("max_pay_rate"),
-    ).one_or_none()
+    results: list[dict] = []
+    ons_available = False
+    ons_year: int | None = None
 
-    if not result or not result.sample_size:
-        return None
+    if group_by == "county":
+        q = (
+            db.session.query(
+                JobSummaryDaily.county.label("county"),
+                func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
+                func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
+                func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
+                func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
+            )
+            .filter(*base_filters)
+            .group_by(JobSummaryDaily.county)
+        )
+        rows = q.all()
+
+        county_names = {r.county for r in rows if r.county}
+        ons_map, year = _build_ons_map(county_names)
+        if year is not None:
+            ons_available = True
+            ons_year = year
+
+        for r in rows:
+            county = r.county or "Unknown county"
+            adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
+            ons_val = ons_map.get(r.county) if r.county else None
+
+            pay_vs_ons = None
+            pay_vs_ons_pct = None
+            if adv_med is not None and ons_val is not None and ons_val != 0:
+                pay_vs_ons = round(adv_med - ons_val, 2)
+                pay_vs_ons_pct = round((adv_med - ons_val) / ons_val * 100, 1)
+
+            results.append(
+                {
+                    "county": county,
+                    "sector": None,
+                    "adverts_count": int(r.adverts_count or 0),
+                    "median_pay_rate": adv_med,
+                    "ons_median_hourly": ons_val,
+                    "pay_vs_ons": pay_vs_ons,
+                    "pay_vs_ons_pct": pay_vs_ons_pct,
+                }
+            )
+
+    elif group_by == "sector":
+        # Aggregated by sector only; no ONS (county-based) overlay here
+        q = (
+            db.session.query(
+                JobSummaryDaily.sector.label("sector"),
+                func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
+                func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
+                func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
+                func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
+            )
+            .filter(*base_filters)
+            .group_by(JobSummaryDaily.sector)
+        )
+        rows = q.all()
+
+        for r in rows:
+            adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
+
+            results.append(
+                {
+                    "county": None,
+                    "sector": r.sector or "Unknown sector",
+                    "adverts_count": int(r.adverts_count or 0),
+                    "median_pay_rate": adv_med,
+                    "ons_median_hourly": None,
+                    "pay_vs_ons": None,
+                    "pay_vs_ons_pct": None,
+                }
+            )
+
+        ons_available = False
+        ons_year = None
+
+    else:  # "sector_county"
+        q = (
+            db.session.query(
+                JobSummaryDaily.sector.label("sector"),
+                JobSummaryDaily.county.label("county"),
+                func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
+                func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
+                func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
+                func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
+            )
+            .filter(*base_filters)
+            .group_by(JobSummaryDaily.sector, JobSummaryDaily.county)
+        )
+        rows = q.all()
+
+        county_names = {r.county for r in rows if r.county}
+        ons_map, year = _build_ons_map(county_names)
+        if year is not None:
+            ons_available = True
+            ons_year = year
+
+        for r in rows:
+            county = r.county or "Unknown county"
+            adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
+            ons_val = ons_map.get(r.county) if r.county else None
+
+            pay_vs_ons = None
+            pay_vs_ons_pct = None
+            if adv_med is not None and ons_val is not None and ons_val != 0:
+                pay_vs_ons = round(adv_med - ons_val, 2)
+                pay_vs_ons_pct = round((adv_med - ons_val) / ons_val * 100, 1)
+
+            results.append(
+                {
+                    "county": county,
+                    "sector": r.sector or "Unknown sector",
+                    "adverts_count": int(r.adverts_count or 0),
+                    "median_pay_rate": adv_med,
+                    "ons_median_hourly": ons_val,
+                    "pay_vs_ons": pay_vs_ons,
+                    "pay_vs_ons_pct": pay_vs_ons_pct,
+                }
+            )
 
     return {
-        "sample_size": int(result.sample_size),
-        "median_pay_rate": float(result.median_pay_rate) if result.median_pay_rate is not None else None,
-        "p25_pay_rate": float(result.p25_pay_rate) if result.p25_pay_rate is not None else None,
-        "p75_pay_rate": float(result.p75_pay_rate) if result.p75_pay_rate is not None else None,
-        "min_pay_rate": float(result.min_pay_rate) if result.min_pay_rate is not None else None,
-        "max_pay_rate": float(result.max_pay_rate) if result.max_pay_rate is not None else None,
-    }
-
-
-def get_pay_comparison(
-    county: str | None = None,
-    sector: str | None = None,
-    job_role_group: str | None = None,
-    days: int = 30,
-):
-    """
-    Core engine: compares advertised pay vs ONS median (county-level),
-    returns a JSON-safe dict.
-
-    We compare:
-    - Advertised median_pay_rate (from JobSummaryDaily)
-    - ONS median hourly earnings (OnsEarnings.value)
-    """
-
-    advertised = get_advertised_pay(
-        county=county,
-        sector=sector,
-        job_role_group=job_role_group,
-        days=days,
-    )
-
-    ons_record = None
-    if county:
-        ons_record = get_latest_ons_median_for_county(county=county)
-
-    # If nothing at all, bail with empty result
-    if not advertised and not ons_record:
-        return {
-            "filters": {
-                "county": county,
-                "sector": sector,
-                "job_role_group": job_role_group,
-                "days": days,
-            },
-            "advertised": None,
-            "ons": None,
-            "gap": None,
-        }
-
-    # Build advertised block
-    advertised_block = advertised if advertised else None
-
-    # Build ONS block
-    ons_block = None
-    if ons_record:
-        ons_block = {
-            "year": ons_record.year,
-            "geography_code": ons_record.geography_code,
-            "geography_name": ons_record.geography_name,
-            "measure_code": ons_record.measure_code,
-            "median_hourly": ons_record.value,
-            "source": "ASHE",
-        }
-
-    # Compute gap (only if both sides exist and have numbers)
-    gap_block = None
-    if (
-        advertised_block
-        and ons_block
-        and advertised_block.get("median_pay_rate") is not None
-        and ons_block.get("median_hourly") is not None
-    ):
-        adv = advertised_block["median_pay_rate"]
-        ons_val = ons_block["median_hourly"]
-        if ons_val:
-            absolute = round(adv - ons_val, 2)
-            ratio = adv / ons_val
-            percent = round((adv - ons_val) / ons_val * 100, 1)
-            gap_block = {
-                "absolute": absolute,   # £ difference
-                "percent": percent,     # % below/above ONS
-                "ratio": ratio,         # advertised / ONS
-            }
-
-    return {
-        "filters": {
-            "county": county,
-            "sector": sector,
-            "job_role_group": job_role_group,
-            "days": days,
-        },
-        "advertised": advertised_block,
-        "ons": ons_block,
-        "gap": gap_block,
+        "results": results,
+        "ons_available": ons_available,
+        "ons_year": ons_year,
     }
