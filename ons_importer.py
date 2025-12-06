@@ -260,6 +260,33 @@ def import_ons_earnings_range_to_db(
             summaries.append(res)
         return summaries
 
+from datetime import datetime as _dt
+
+
+def import_latest_ons_earnings_for_cron(
+    trigger: str = "cron",
+    triggered_by: str | None = None,
+    use_app_context: bool = True,
+) -> dict:
+    """
+    Convenience wrapper for cron/admin:
+
+    - Picks a 'latest' ASHE year (typically last full year)
+    - Calls import_ons_earnings_to_db with trigger + triggered_by
+    - Assumes app context by default (cron_runner/admin already have it)
+    """
+    # ASHE for year N usually lands well into year N+1,
+    # so "latest full year" is often current_year - 1.
+    current_year = _dt.utcnow().year
+    target_year = current_year - 1
+
+    return import_ons_earnings_to_db(
+        year=target_year,
+        trigger=trigger,
+        triggered_by=triggered_by,
+        use_app_context=use_app_context,
+    )
+
 
 # -------------------------------------------------------------------
 # CLI helper
