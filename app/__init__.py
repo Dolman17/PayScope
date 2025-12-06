@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before anything else
 
-from flask import Flask, app, render_template
+from flask import Flask, render_template  # ⬅️ removed "app" here
 from flask_login import LoginManager, login_required
 
 from extensions import db, migrate
@@ -57,13 +57,6 @@ def create_app():
         return {"current_year": datetime.now(timezone.utc).year}
 
     # ---------------------------------------------------------
-    # IMPORTANT: Removed create_all() for Postgres + Alembic
-    # ---------------------------------------------------------
-    # Alembic handles all schema creation.
-    # db.create_all() should not be used in a production app with migrations.
-    # ---------------------------------------------------------
-
-    # ---------------------------------------------------------
     # Register blueprints
     # ---------------------------------------------------------
     from .blueprints.auth import bp as auth_bp
@@ -73,15 +66,16 @@ def create_app():
     from .blueprints.dashboard import bp as dashboard_bp
     from .blueprints.upload import bp as upload_bp
     from .blueprints.main import bp as main_bp
+    from .blueprints.api import bp as api_bp      # ⬅️ NEW IMPORT
 
-    app.register_blueprint(main_bp) 
+    app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(records_bp)
     app.register_blueprint(maps_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(upload_bp)
-    app.register_blueprint(api_bp, url_prefix="/api")  # NEW
+    app.register_blueprint(api_bp, url_prefix="/api")  # now valid
 
     # ---------------------------------------------------------
     # Home route
