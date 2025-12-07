@@ -61,11 +61,12 @@ def _import_ons_earnings_to_db_impl(
     Core implementation. Assumes we are already inside app.app_context().
 
     - Calls ons_loader.import_ons_earnings_for_year(year)
-    - Upserts into OnsEarnings (year + geography_code + measure_code)
+      (which may choose a different effective year based on available data)
+    - Upserts into OnsEarnings (effective_year + geography_code + measure_code)
     - Logs to CronRunLog as job_name="ons_ashe_import"
     """
     now = datetime.utcnow()
-    day_label = str(year)[:20]
+    day_label = str(year)[:20]  # keep label as the requested year
 
     # Create CronRunLog row
     log = CronRunLog(
@@ -84,28 +85,38 @@ def _import_ons_earnings_to_db_impl(
     db.session.commit()
 
     summary: Dict[str, Any] = {
-        "year": year,
+        "requested_year": year,   # what the caller asked for
+        "year": year,             # will be overwritten by effective year
         "log_id": log.id,
         "fetched": 0,
         "created": 0,
         "updated": 0,
         "error": None,
+        "available_years": [],
     }
 
     try:
         # Fetch from Nomis via ons_loader
         fetched = import_ons_earnings_for_year(year)
+
         rows = fetched.get("rows", [])
         fetched_count = int(fetched.get("row_count", len(rows)) or 0)
         measure_code = str(fetched.get("measure_code") or "").strip()
 
+        # ons_loader may decide to use a different effective year
+        # (e.g. if requested year is not present in the dataset)
+        effective_year = int(fetched.get("year", year) or year)
+        available_years = fetched.get("available_years") or []
+
+        summary["year"] = effective_year
+        summary["available_years"] = available_years
         summary["fetched"] = fetched_count
 
         created = 0
         updated = 0
 
         # Simple, robust upsert: one SELECT per geo_code + measure_code.
-        # This is fine for ~25k rows on a local dev machine.
+        # This is fine for ~25k rows on a modest DB.
         for r in rows:
             geo_code = (r.get("geography_code") or "").strip()
             geo_name = (r.get("geography_name") or "").strip()
@@ -116,7 +127,7 @@ def _import_ons_earnings_to_db_impl(
                 continue
 
             existing = OnsEarnings.query.filter_by(
-                year=year,
+                year=effective_year,
                 geography_code=geo_code,
                 measure_code=measure,
             ).first()
@@ -128,7 +139,7 @@ def _import_ons_earnings_to_db_impl(
             else:
                 db.session.add(
                     OnsEarnings(
-                        year=year,
+                        year=effective_year,
                         geography_code=geo_code,
                         geography_name=geo_name,
                         measure_code=measure,
@@ -144,14 +155,17 @@ def _import_ons_earnings_to_db_impl(
         log.rows_scraped = fetched_count
         log.records_created = created
         log.message = (
-            f"Upserted ONS ASHE for {year}: fetched={fetched_count}, "
-            f"created={created}, updated={updated}"
+            f"Upserted ONS ASHE for requested {year}, effective {effective_year}: "
+            f"fetched={fetched_count}, created={created}, updated={updated}; "
+            f"available_years={available_years}"
         )
         db.session.commit()
 
         print(
-            f"[ONS] Upserted earnings for {year}: "
-            f"fetched={fetched_count}, created={created}, updated={updated}"
+            f"[ONS] Upserted earnings "
+            f"(requested {year}, effective {effective_year}): "
+            f"fetched={fetched_count}, created={created}, updated={updated}; "
+            f"available_years={available_years}"
         )
 
         summary["created"] = created
@@ -260,6 +274,7 @@ def import_ons_earnings_range_to_db(
             summaries.append(res)
         return summaries
 
+
 from datetime import datetime as _dt
 
 
@@ -317,3 +332,4 @@ if __name__ == "__main__":
         print("  py ons_importer.py <year>")
         print("  py ons_importer.py <start_year> <end_year>")
         raise SystemExit(1)
+
