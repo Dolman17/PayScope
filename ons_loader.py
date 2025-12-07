@@ -38,28 +38,32 @@ BASE_URL = "https://www.nomisweb.co.uk/api/v01"
 NOMIS_UID = os.getenv("NOMIS_UID")
 
 # ------------------- DATASET & PARAMS --------------------
-# We HARD-CODE the ASHE dataset id here to avoid legacy NM_99_1 issues.
-# If Nomis changes naming again later, we can revisit, but for now this
-# prevents env vars pointing to old datasets from breaking imports.
+# We hard-wire a *known-good* ASHE query here so you don't get bitten by
+# legacy NM_99_1 configs or giant geography code lists in env.
 
-ASHE_DATASET_ID = "ASHE"  # do NOT override via env; NM_99_1 is deprecated for 2024+
+# Workplace analysis dataset (people working in an area)
+ASHE_DATASET_ID = "ASHE"
 
-# Geography dimension:
-#   TYPE450 = Local authorities: County / Unitary (for England/Wales)
-ASHE_GEOGRAPHY = os.getenv("NOMIS_ASHE_GEOGRAPHY")  # e.g. "TYPE450" or explicit geo codes
+# Geography:
+#   TYPE450 = "Local authorities: county / unitary"
+# Nomis will expand this to all current LAs.
+ASHE_GEOGRAPHY = "TYPE450"
 
 # Measures:
 #   20101 = Median gross hourly pay (excluding overtime)
-ASHE_MEASURES = os.getenv("NOMIS_ASHE_MEASURES")  # e.g. "20101"
+ASHE_MEASURES = os.getenv("NOMIS_ASHE_MEASURES", "20101")
 
-# Sex / full-time / occupation etc can also be constrained.
-# Copy these straight from the Nomis URL.
-ASHE_EXTRA_PARAMS = os.getenv("NOMIS_ASHE_EXTRA_PARAMS", "").strip()
-# Example:
-#   NOMIS_ASHE_EXTRA_PARAMS="sex=0&item=1&pay=5&freq=A"
-# These get appended to the query string as-is.
+# Sex / item / pay / freq:
+#   sex=0   -> all employees
+#   item=1  -> all employees (not subset like full-time only)
+#   pay=5   -> gross hourly pay excluding overtime
+#   freq=A  -> annual
+ASHE_EXTRA_PARAMS = os.getenv(
+    "NOMIS_ASHE_EXTRA_PARAMS",
+    "sex=0&item=1&pay=5&freq=A",
+).strip()
 
-# ASHE API typically uses "date" for the year.
+# ASHE API uses "date" for the year
 ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")  # usually "date"
 
 
@@ -97,9 +101,7 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
     `params` is the querystring dict (geography, time/date, measures, etc).
     """
     if not dataset_id:
-        raise ValueError(
-            "ASHE_DATASET_ID is not set. This should be hard-coded to 'ASHE'."
-        )
+        raise ValueError("ASHE_DATASET_ID is not set. This should be 'ASHE'.")
 
     url = f"{BASE_URL}/dataset/{dataset_id}.data.csv"
 
@@ -131,11 +133,12 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
 # -------------------------------------------------------------------
 
 def _ensure_config():
-    """Simple guard to make sure you've wired the environment vars."""
+    """
+    Simple guard to make sure you've wired the essentials.
+
+    Geography and dataset are hard-coded; we only require a measure.
+    """
     missing = []
-    # Dataset id is hard-coded now, so no check here.
-    if not ASHE_GEOGRAPHY:
-        missing.append("NOMIS_ASHE_GEOGRAPHY (e.g. TYPE450 or explicit geography codes)")
     if not ASHE_MEASURES:
         missing.append("NOMIS_ASHE_MEASURES (e.g. 20101 for median hourly)")
 
@@ -144,8 +147,9 @@ def _ensure_config():
             "ONS / Nomis ASHE config is incomplete. Please set:\n- "
             + "\n- ".join(missing)
             + "\n\nUse the Nomis UI to build your ASHE query, "
-              "copy the RESTful link, and copy the geography + measures "
-              "into these environment variables."
+              "copy the RESTful link, and copy the MEASURES value "
+              "into NOMIS_ASHE_MEASURES if you want something other "
+              "than median hourly pay."
         )
 
 
@@ -157,9 +161,9 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
 
       {
         "year": 2024,
-        "dataset_id": "...",
-        "measure_code": "...",
-        "row_count": 152,
+        "dataset_id": "ASHE",
+        "measure_code": "20101",
+        "row_count": 3xx,
         "rows": [OnsEarningsRow.as_dict(), ...],
       }
     """
@@ -236,4 +240,5 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
     )
 
     return summary
+
 
