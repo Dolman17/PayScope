@@ -10,6 +10,12 @@ from models import db, JobSummaryDaily, OnsEarnings
 # for "Gross hourly pay (excluding overtime), median"
 ONS_MEDIAN_HOURLY_MEASURE_CODE = "20100"
 
+def get_latest_ons_year() -> int | None:
+    """
+    Return the newest ONS ASHE year we have in the DB, or None if empty.
+    """
+    return db.session.query(func.max(OnsEarnings.year)).scalar()
+
 
 def _parse_date(value: str | None, default: date) -> date:
     if not value:
