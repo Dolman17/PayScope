@@ -13,9 +13,6 @@ This module is deliberately lightweight:
 At the moment this DOES NOT write to the database. The function
 `import_ons_earnings_for_year()` just downloads + parses and returns
 a summary dict so we can iterate on the schema safely.
-
-Once you're happy with the dataset & structure, we can add a simple
-OnsEarnings model and store these rows for fast joins in the UI.
 """
 
 import csv
@@ -50,12 +47,11 @@ NOMIS_UID = os.getenv("NOMIS_UID")
 #    (ASHE earnings, "All employees", median gross hourly pay,
 #     geography = local authority / county).
 # 2) On the final "Format" page, choose "CSV" and copy the RESTful link.
-# 3) Take the dataset id (NM_xxx_x) and the key query parameters from that link
-#    and plug them into the constants below.
-#
-# Until you configure these, calls will raise a ValueError explaining what to set.
+# 3) Take the dataset id (now typically "ASHE") and the key query parameters
+#    from that link and plug them into the constants below.
 
-ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID")  # e.g. "NM_99_1"
+# Default to the new ASHE dataset id if not explicitly set
+ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID", "ASHE")  # e.g. "ASHE"
 
 # Geography dimension:
 #   TYPE450 = Local authorities: County / Unitary (for England/Wales)
@@ -73,8 +69,8 @@ ASHE_EXTRA_PARAMS = os.getenv("NOMIS_ASHE_EXTRA_PARAMS", "").strip()
 # These get appended to the query string as-is.
 
 # Some datasets use TIME, others DATE as the dimension id.
-# NM_99_1 uses DATE in the query string, even though the concept is TIME.
-ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")  # <-- KEY BIT
+# ASHE API typically uses "date" for the year.
+ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")  # usually "date"
 
 
 # -------------------------------------------------------------------
@@ -107,7 +103,7 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
     """
     Fetch raw CSV from a Nomis dataset.
 
-    `dataset_id` is something like "NM_99_1".
+    `dataset_id` is something like "ASHE".
     `params` is the querystring dict (geography, time/date, measures, etc).
     """
     if not dataset_id:
@@ -126,10 +122,18 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
     resp = requests.get(url, params=params, timeout=30)
     try:
         resp.raise_for_status()
-    except Exception as e:  # noqa: BLE001
-        # Bubble up a clearer error message including the final URL
+    except requests.HTTPError as e:
+        # Give a clearer error, especially for 406s which usually mean
+        # incompatible year/dataset/params (e.g. old dataset id for new year).
+        status = resp.status_code
+        if status == 406:
+            raise RuntimeError(
+                f"Nomis request failed: 406 Not Acceptable for dataset '{dataset_id}' "
+                f"with params {params!r}. This often means the dataset id or "
+                f"parameter combination is not valid for that year. | URL={resp.url} | status={status}"
+            ) from e
         raise RuntimeError(
-            f"Nomis request failed: {e!r} | URL={resp.url} | status={resp.status_code}"
+            f"Nomis request failed: {e!r} | URL={resp.url} | status={status}"
         ) from e
 
     return resp.text
@@ -143,7 +147,7 @@ def _ensure_config():
     """Simple guard to make sure you've wired the environment vars."""
     missing = []
     if not ASHE_DATASET_ID:
-        missing.append("NOMIS_ASHE_DATASET_ID (e.g. NM_99_1)")
+        missing.append("NOMIS_ASHE_DATASET_ID (e.g. ASHE)")
     if not ASHE_GEOGRAPHY:
         missing.append("NOMIS_ASHE_GEOGRAPHY (e.g. TYPE450)")
     if not ASHE_MEASURES:
@@ -176,9 +180,8 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
     _ensure_config()
 
     # Build core params for the CSV call.
-    # IMPORTANT: use DATE (not TIME) for NM_99_1.
     params: Dict[str, Any] = {
-        ASHE_DATE_PARAM: str(year),        # <-- HERE: 'date': '2025'
+        ASHE_DATE_PARAM: str(year),        # e.g. 'date': '2024'
         "geography": ASHE_GEOGRAPHY,
         "measures": ASHE_MEASURES,
         # Only pull what we need — names + codes + value.
