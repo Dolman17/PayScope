@@ -1,4 +1,5 @@
 # app/blueprints/api.py
+from __future__ import annotations
 
 from flask import Blueprint, request, jsonify
 
@@ -33,3 +34,4 @@ def pay_compare():
         group_by=group_by,
     )
     return jsonify(data)
+
