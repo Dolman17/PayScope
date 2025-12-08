@@ -42,6 +42,8 @@ from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
 from ons_importer import import_ons_earnings_to_db, import_latest_ons_earnings_for_cron
 
+from . import pay_compare  # relative import of the module you just edited
+
 # Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
 
@@ -293,8 +295,6 @@ def backfill_counties():
 # -------------------------------------------------------------------
 # ONS IMPORT – BUTTON 1 (legacy route)
 # -------------------------------------------------------------------
-from sqlalchemy import func  # make sure this import is present near the top
-
 @bp.route("/admin/ons-import", methods=["POST"])
 @login_required
 def run_ons_import():
@@ -349,7 +349,6 @@ def run_ons_import():
         )
 
     return redirect(url_for("admin.admin_tools"))
-
 
 
 # -------------------------------------------------------------------
@@ -452,6 +451,29 @@ def inspect_ons():
             "latest_rows": latest_rows,
         }
     )
+
+
+# -------------------------------------------------------------------
+# Pay Explorer / ONS mapping debug endpoint
+# -------------------------------------------------------------------
+@bp.route("/debug/pay-explorer-mapping")
+@login_required
+@superuser_required
+def debug_pay_explorer_mapping():
+    """
+    Debug endpoint: shows how each county label maps to an ONS geography
+    and whether we have an ONS median for it.
+    Optional query param: ?days=30 to change the lookback window.
+    """
+    days = request.args.get("days", default=30, type=int)
+    rows, ons_year = pay_compare.build_pay_explorer_debug_snapshot(days=days)
+    return jsonify(
+        {
+            "ons_year": ons_year,
+            "rows": rows,
+        }
+    )
+
 
 # -------------------------------------------------------------------
 # COMPANIES ADMIN
@@ -1129,3 +1151,4 @@ def cron_run_now():
 
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
+
