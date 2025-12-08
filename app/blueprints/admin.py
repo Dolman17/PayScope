@@ -364,7 +364,7 @@ def run_ons_import_manual():
 # -------------------------------------------------------------------
 # Simple ONS inspection helper
 # -------------------------------------------------------------------
-@bp.route("/admin/inspect/ons")
+@bp.route("inspect/ons")
 @superuser_required
 def inspect_ons():
     """
@@ -428,10 +428,6 @@ def inspect_ons():
             "latest_rows": latest_rows,
         }
     )
-
-
-
-
 
 # -------------------------------------------------------------------
 # COMPANIES ADMIN
