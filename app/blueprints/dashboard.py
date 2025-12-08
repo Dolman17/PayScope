@@ -228,29 +228,38 @@ def dashboard():
 def insights():
     """
     Insights over JobRecord with filters.
-    - Unpacks (filters, extra_search) from build_filters_from_request
-    - Uses a subquery alias for aggregates to avoid cartesian products
-    - Supplies `records` for any client-side scripts in insights.html
+    Supports multi-select for sector / county / job_role.
+    - Text / numeric filters still handled by build_filters_from_request
+    - Multi-select fields applied via .in_() filters on base_q
     """
-    filters_map = {
+    # Multi-selects: repeated query params (?sector=A&sector=B)
+    sectors_selected = request.args.getlist("sector")
+    counties_selected = request.args.getlist("county")
+    roles_selected = request.args.getlist("job_role") or request.args.getlist("role")
+
+    # Scalar filters still use the shared helper
+    scalar_filter_map = {
         "q": request.args.get("q"),
-        "sector": request.args.get("sector"),
-        # Accept both ?job_role= and ?role= just in case
-        "job_role": request.args.get("job_role") or request.args.get("role"),
-        "county": request.args.get("county"),
         "month": request.args.get("month"),
         "year": request.args.get("year"),
         "rate_min": request.args.get("rate_min"),
         "rate_max": request.args.get("rate_max"),
     }
-
-    filters, extra_search = build_filters_from_request(filters_map)
+    filters, extra_search = build_filters_from_request(scalar_filter_map)
 
     base_q = JobRecord.query.filter(*filters)
     if extra_search is not None:
         base_q = extra_search(base_q)
 
-    # Subquery
+    # Apply multi-select filters via IN clauses
+    if sectors_selected:
+        base_q = base_q.filter(JobRecord.sector.in_(sectors_selected))
+    if counties_selected:
+        base_q = base_q.filter(JobRecord.county.in_(counties_selected))
+    if roles_selected:
+        base_q = base_q.filter(JobRecord.job_role.in_(roles_selected))
+
+    # Subquery (from the now-filtered base_q)
     sq = base_q.with_entities(
         JobRecord.id.label("id"),
         JobRecord.company_id.label("company_id"),
@@ -264,7 +273,7 @@ def insights():
         JobRecord.imported_year.label("imported_year"),
     ).subquery(name="sq_records")
 
-    # Aggregates over the full filtered dataset (no limit here)
+    # Aggregates over full filtered dataset
     agg_row = db.session.query(
         func.count(sq.c.id),
         func.avg(sq.c.pay_rate),
@@ -349,20 +358,19 @@ def insights():
         {"label": "≥ £14", "count": _band_count(14, None, include_lower=True)},
     ]
 
-    # Full stats dict (adds total_count so the template can use stats.total_count)
     stats = {
         "total": total,
-        "total_count": total,  # for template convenience
+        "total_count": total,
         "avg_rate": avg_rate,
         "min_rate": min_rate,
         "max_rate": max_rate,
         "top_counties": top_counties,
         "top_roles": top_roles,
-        "sector_stats": sector_stats,  # safe extra for insights.html
+        "sector_stats": sector_stats,
         "distribution": dist,
     }
 
-    # Lightweight set of rows for client-side UI in insights.html
+    # Sample (max 200) sent to front-end / AI
     rows_for_client = (
         db.session.query(
             sq.c.id,
@@ -398,13 +406,25 @@ def insights():
 
     options = get_filter_options(force=True)
 
+    # Filter state for the template (lists for multi-selects)
+    filter_state = {
+        "q": request.args.get("q"),
+        "sector": sectors_selected,
+        "county": counties_selected,
+        "job_role": roles_selected,
+        "month": request.args.get("month"),
+        "year": request.args.get("year"),
+        "rate_min": request.args.get("rate_min"),
+        "rate_max": request.args.get("rate_max"),
+    }
+
     return render_template(
         "insights.html",
         stats=stats,
         options=options,
-        filters=filters_map,
+        filters=filter_state,
         filter_query=request.query_string.decode(),
         records=records,
-        total_count=total,  # separate top-level var for the snapshot card
+        total_count=total,
     )
 
