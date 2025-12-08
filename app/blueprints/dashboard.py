@@ -264,7 +264,7 @@ def insights():
         JobRecord.imported_year.label("imported_year"),
     ).subquery(name="sq_records")
 
-    # Aggregates
+    # Aggregates over the full filtered dataset (no limit here)
     agg_row = db.session.query(
         func.count(sq.c.id),
         func.avg(sq.c.pay_rate),
@@ -349,8 +349,10 @@ def insights():
         {"label": "≥ £14", "count": _band_count(14, None, include_lower=True)},
     ]
 
+    # Full stats dict (adds total_count so the template can use stats.total_count)
     stats = {
         "total": total,
+        "total_count": total,  # for template convenience
         "avg_rate": avg_rate,
         "min_rate": min_rate,
         "max_rate": max_rate,
@@ -403,4 +405,6 @@ def insights():
         filters=filters_map,
         filter_query=request.query_string.decode(),
         records=records,
+        total_count=total,  # separate top-level var for the snapshot card
     )
+
