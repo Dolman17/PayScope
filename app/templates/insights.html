@@ -5,21 +5,93 @@
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
 
   <!-- Heading -->
-  <div class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+  <div class="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
     <div>
-      <h1 class="text-2xl sm:text-3xl font-bold" style="color: var(--brand);">Insights &amp; Analytics</h1>
-      <p class="text-sm text-gray-500 mt-1">Filter the dataset and explore charts by sector, role, county, and year.</p>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
+        Insights &amp; Analytics
+      </h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Explore cross-sector pay rates with interactive filters and charts. Refine by sector, role, county, year and pay band.
+      </p>
     </div>
 
     <!-- AI Analyse Button -->
     <button id="openAiConfirm"
-            class="btn btn-primary w-full sm:w-auto">
-      Use AI to analyse data
+            class="btn btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-2">
+      <span>
+        <!-- Simple sparkles icon -->
+        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M10 2.5 11.3 6l3.7 1.3L11.3 8.7 10 12.2 8.7 8.7 5 7.3 8.7 6 10 2.5Zm-5 8.5.8 2.2L8 14l-2.2.8L5 17l-.8-2.2L2 14l2.2-.8L5 11Z" />
+        </svg>
+      </span>
+      <span>Use AI to analyse data</span>
     </button>
   </div>
 
+  <!-- Snapshot row -->
+  <section class="mb-6 grid gap-4 md:grid-cols-3">
+    <!-- Dataset snapshot -->
+    <div class="card">
+      <div class="p-4 sm:p-5">
+        <h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+          Dataset snapshot
+        </h2>
+        <p class="mt-1 text-2xl font-semibold text-gray-900">
+          {{ records|length }}
+        </p>
+        <p class="mt-1 text-xs text-gray-500">
+          records currently in view after filters are applied.
+        </p>
+      </div>
+    </div>
+
+    <!-- Filter summary -->
+    <div class="card md:col-span-2">
+      <div class="p-4 sm:p-5">
+        <h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+          Current filter set
+        </h2>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {% if filters.sector %}
+            <span class="filter-pill">Sector: {{ filters.sector }}</span>
+          {% endif %}
+          {% if filters.county %}
+            <span class="filter-pill">County: {{ filters.county }}</span>
+          {% endif %}
+          {% if filters.job_role %}
+            <span class="filter-pill">Role: {{ filters.job_role }}</span>
+          {% endif %}
+          {% if filters.year %}
+            <span class="filter-pill">Year: {{ filters.year }}</span>
+          {% endif %}
+          {% if filters.rate_min %}
+            <span class="filter-pill">Min pay: £{{ filters.rate_min }}</span>
+          {% endif %}
+          {% if filters.rate_max %}
+            <span class="filter-pill">Max pay: £{{ filters.rate_max }}</span>
+          {% endif %}
+
+          {% if not (filters.sector or filters.county or filters.job_role or filters.year or filters.rate_min or filters.rate_max) %}
+            <span class="text-xs text-gray-400">
+              No filters applied &mdash; showing the full dataset.
+            </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Filters -->
   <section class="card mb-8">
+    <div class="border-b border-gray-100 px-5 sm:px-6 py-3 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-800">
+        Refine dataset
+      </h2>
+      <span class="text-[11px] uppercase tracking-wide text-gray-400">
+        Core &amp; pay band filters
+      </span>
+    </div>
+
     <form method="get" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
       <div>
         <label class="label" for="sector">Sector</label>
@@ -69,7 +141,7 @@
                name="rate_min"
                value="{{ filters.rate_min or '' }}"
                class="input"
-               placeholder="Min Pay">
+               placeholder="e.g. 12.00">
       </div>
 
       <div>
@@ -80,44 +152,71 @@
                name="rate_max"
                value="{{ filters.rate_max or '' }}"
                class="input"
-               placeholder="Max Pay">
+               placeholder="e.g. 18.50">
       </div>
 
-      <div class="sm:col-span-2 lg:col-span-6 flex items-end">
-        <button type="submit" class="btn btn-primary w-full sm:w-auto">Apply Filters</button>
+      <div class="sm:col-span-2 lg:col-span-6 flex flex-wrap items-center justify-between gap-3 pt-2">
+        <div class="text-xs text-gray-400">
+          Charts below will update based on this filter set.
+        </div>
+        <div class="flex gap-2 w-full sm:w-auto">
+          <button type="submit" class="btn btn-primary flex-1 sm:flex-none">
+            Apply Filters
+          </button>
+          <!-- Optional: simple "reset" link back to base insights route -->
+          <a href="{{ url_for('insights') }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
+            Reset
+          </a>
+        </div>
       </div>
     </form>
   </section>
 
   <!-- AI Insights (appears after analysis) -->
   <section id="aiInsightsCard" class="card mb-8 hidden">
+    <div class="border-b border-gray-100 px-5 sm:px-6 py-3 flex items-center justify-between">
+      <h2 class="text-sm sm:text-base font-semibold text-gray-800 flex items-center gap-2">
+        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-[11px] font-semibold text-blue-600">
+          AI
+        </span>
+        Narrative insights
+      </h2>
+      <button id="copyAiText" class="btn btn-secondary text-xs sm:text-sm">
+        Copy text
+      </button>
+    </div>
+
     <div class="p-5 sm:p-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg sm:text-xl font-semibold text-gray-800">AI Insights</h2>
-        <button id="copyAiText" class="btn btn-secondary text-xs sm:text-sm">Copy text</button>
+      <div id="aiStatus" class="text-sm text-gray-500 hidden mb-2">
+        Analysing the filtered dataset&hellip;
       </div>
 
-      <div id="aiStatus" class="text-sm text-gray-500 hidden">Analysing…</div>
-
-      <div id="aiOutput" class="prose max-w-none">
+      <div id="aiOutput" class="prose max-w-none text-sm leading-relaxed">
         <!-- AI output goes here -->
       </div>
 
       <div id="aiFooterNote" class="mt-3 text-xs text-gray-400 hidden">
-        Generated from the current filter set. Always sanity-check against source data.
+        Generated from the current filter set. Always sanity-check against source data before making decisions.
       </div>
     </div>
   </section>
 
   <!-- Charts -->
-  <section class="space-y-8">
+  <section class="grid gap-6 xl:grid-cols-2">
 
     <!-- Avg Pay by Sector -->
     <div class="card">
       <div class="p-5 sm:p-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Average Pay by Sector</h2>
-          <button type="button" onclick="downloadChart('sectorChart')" class="btn btn-secondary text-xs sm:text-sm">
+          <div>
+            <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Average Pay by Sector</h2>
+            <p class="mt-1 text-xs text-gray-500">
+              Compare typical hourly rates across sectors in the filtered dataset.
+            </p>
+          </div>
+          <button type="button"
+                  onclick="downloadChart('sectorChart')"
+                  class="btn btn-secondary text-xs sm:text-sm">
             Download PNG
           </button>
         </div>
@@ -131,8 +230,15 @@
     <div class="card">
       <div class="p-5 sm:p-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Average Pay by Role</h2>
-          <button type="button" onclick="downloadChart('roleChart')" class="btn btn-secondary text-xs sm:text-sm">
+          <div>
+            <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Average Pay by Role</h2>
+            <p class="mt-1 text-xs text-gray-500">
+              See how pay varies between roles within your chosen filters.
+            </p>
+          </div>
+          <button type="button"
+                  onclick="downloadChart('roleChart')"
+                  class="btn btn-secondary text-xs sm:text-sm">
             Download PNG
           </button>
         </div>
@@ -146,8 +252,15 @@
     <div class="card">
       <div class="p-5 sm:p-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Records by County</h2>
-          <button type="button" onclick="downloadChart('countyPieChart')" class="btn btn-secondary text-xs sm:text-sm">
+          <div>
+            <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Records by County</h2>
+            <p class="mt-1 text-xs text-gray-500">
+              Distribution of records across counties for the current filter set.
+            </p>
+          </div>
+          <button type="button"
+                  onclick="downloadChart('countyPieChart')"
+                  class="btn btn-secondary text-xs sm:text-sm">
             Download PNG
           </button>
         </div>
@@ -161,8 +274,15 @@
     <div class="card">
       <div class="p-5 sm:p-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Records by Sector</h2>
-          <button type="button" onclick="downloadChart('sectorPieChart')" class="btn btn-secondary text-xs sm:text-sm">
+          <div>
+            <h2 class="text-lg sm:text-xl font-semibold text-gray-800">Records by Sector</h2>
+            <p class="mt-1 text-xs text-gray-500">
+              Volume of records per sector to understand sample size.
+            </p>
+          </div>
+          <button type="button"
+                  onclick="downloadChart('sectorPieChart')"
+                  class="btn btn-secondary text-xs sm:text-sm">
             Download PNG
           </button>
         </div>
@@ -216,6 +336,18 @@
     background-size: contain;
     cursor: ns-resize;
     position: absolute; bottom: 0; right: 0;
+  }
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.70rem;
+    line-height: 1.2;
+    background-color: #eff6ff; /* blue-50 */
+    color: #1d4ed8;            /* blue-700 */
+    border: 1px solid #dbeafe; /* blue-100 */
+    white-space: nowrap;
   }
 </style>
 {% endblock %}
@@ -303,7 +435,11 @@
         if (html) {
           out.innerHTML = html;
         } else if (text) {
-          out.innerHTML = text.split('\n').map(line => line.trim()).filter(Boolean).map(p => `<p>${p}</p>`).join('');
+          out.innerHTML = text.split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(p => `<p>${p}</p>`)
+            .join('');
         } else {
           out.innerHTML = `<p class="text-gray-500">No output returned.</p>`;
         }
