@@ -22,6 +22,7 @@ def _fresh_filter_options():
     Avoid TTL cache; query distincts directly so selects always populate
     on the dashboard filters.
     """
+
     def col_distinct(col):
         return [
             v[0]
@@ -229,8 +230,7 @@ def insights():
     """
     Insights over JobRecord with filters.
     Supports multi-select for sector / county / job_role.
-    - Text / numeric filters still handled by build_filters_from_request
-    - Multi-select fields applied via .in_() filters on base_q
+    Provides extended stats for multiple charts.
     """
     # Multi-selects: repeated query params (?sector=A&sector=B)
     sectors_selected = request.args.getlist("sector")
@@ -286,7 +286,7 @@ def insights():
     min_rate = float(agg_row[2]) if agg_row[2] is not None else None
     max_rate = float(agg_row[3]) if agg_row[3] is not None else None
 
-    # Top counties
+    # Top counties (count)
     top_counties_rows = (
         db.session.query(sq.c.county, func.count(sq.c.id))
         .filter(sq.c.county.isnot(None))
@@ -295,9 +295,9 @@ def insights():
         .limit(10)
         .all()
     )
-    top_counties = [{"county": c or "—", "count": n} for c, n in top_counties_rows]
+    top_counties = [{"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows]
 
-    # Top roles
+    # Top roles (count)
     top_roles_rows = (
         db.session.query(sq.c.job_role, func.count(sq.c.id))
         .filter(sq.c.job_role.isnot(None))
@@ -306,29 +306,59 @@ def insights():
         .limit(10)
         .all()
     )
-    top_roles = [{"role": r or "—", "count": n} for r, n in top_roles_rows]
+    top_roles = [{"role": r or "—", "count": int(n or 0)} for r, n in top_roles_rows]
 
-    # Sector breakdown (count + avg pay per sector)
+    # Sector breakdown (count + avg + min/max + stddev)
     sector_rows = (
         db.session.query(
             sq.c.sector,
             func.count(sq.c.id),
             func.avg(sq.c.pay_rate),
+            func.min(sq.c.pay_rate),
+            func.max(sq.c.pay_rate),
+            func.stddev_samp(sq.c.pay_rate),
         )
         .group_by(sq.c.sector)
         .order_by(func.count(sq.c.id).desc())
         .all()
     )
-    sector_stats = [
-        {
-            "sector": s or "Unknown",
-            "count": int(n or 0),
-            "avg_rate": float(a or 0.0) if a is not None else 0.0,
-        }
-        for (s, n, a) in sector_rows
-    ]
 
-    # Distribution bands
+    sector_stats = []
+    sector_ranges = []
+    sector_volatility = []
+    for s, n, a, mn, mx, sd in sector_rows:
+        sector_name = s or "Unknown"
+        count = int(n or 0)
+        avg_val = float(a) if a is not None else 0.0
+        min_val = float(mn) if mn is not None else 0.0
+        max_val = float(mx) if mx is not None else 0.0
+        sd_val = float(sd) if sd is not None else 0.0
+
+        sector_stats.append(
+            {
+                "sector": sector_name,
+                "count": count,
+                "avg_rate": avg_val,
+            }
+        )
+        sector_ranges.append(
+            {
+                "sector": sector_name,
+                "count": count,
+                "avg_rate": avg_val,
+                "min_rate": min_val,
+                "max_rate": max_val,
+            }
+        )
+        sector_volatility.append(
+            {
+                "sector": sector_name,
+                "stddev": sd_val,
+                "count": count,
+            }
+        )
+
+    # Distribution bands for histogram
     def _band_count(lower, upper, include_lower=True, include_upper=False):
         q = db.session.query(func.count(sq.c.id))
         if lower is not None:
@@ -358,6 +388,138 @@ def insights():
         {"label": "≥ £14", "count": _band_count(14, None, include_lower=True)},
     ]
 
+    # Monthly trend (avg pay by year/month)
+    trend_rows = (
+        db.session.query(
+            sq.c.imported_year,
+            sq.c.imported_month,
+            func.avg(sq.c.pay_rate),
+        )
+        .filter(sq.c.imported_year.isnot(None), sq.c.imported_month.isnot(None))
+        .group_by(sq.c.imported_year, sq.c.imported_month)
+        .order_by(sq.c.imported_year, sq.c.imported_month)
+        .all()
+    )
+    monthly_trend = [
+        {
+            "year": y,
+            "month": m,
+            "avg_rate": float(a) if a is not None else None,
+        }
+        for (y, m, a) in trend_rows
+    ]
+
+    # Sector × county average pay (heatmap / stacked)
+    heat_rows = (
+        db.session.query(
+            sq.c.sector,
+            sq.c.county,
+            func.avg(sq.c.pay_rate),
+        )
+        .filter(sq.c.sector.isnot(None), sq.c.county.isnot(None))
+        .group_by(sq.c.sector, sq.c.county)
+        .all()
+    )
+    sector_county_heat = [
+        {
+            "sector": s or "Unknown",
+            "county": c or "Unknown",
+            "avg_rate": float(a) if a is not None else None,
+        }
+        for (s, c, a) in heat_rows
+    ]
+
+    # Top companies by avg pay
+    company_rows = (
+        db.session.query(
+            sq.c.company_name,
+            func.avg(sq.c.pay_rate),
+            func.count(sq.c.id),
+        )
+        .filter(sq.c.company_name.isnot(None))
+        .group_by(sq.c.company_name)
+        .order_by(func.avg(sq.c.pay_rate).desc())
+        .limit(10)
+        .all()
+    )
+    top_companies = [
+        {
+            "company_name": n or "Unknown",
+            "avg_rate": float(a) if a is not None else None,
+            "count": int(c or 0),
+        }
+        for (n, a, c) in company_rows
+    ]
+
+    # Role mix (role counts per sector)
+    mix_rows = (
+        db.session.query(
+            sq.c.sector,
+            sq.c.job_role,
+            func.count(sq.c.id),
+        )
+        .filter(sq.c.sector.isnot(None), sq.c.job_role.isnot(None))
+        .group_by(sq.c.sector, sq.c.job_role)
+        .all()
+    )
+    role_mix = [
+        {
+            "sector": s or "Unknown",
+            "role": r or "Unknown",
+            "count": int(c or 0),
+        }
+        for (s, r, c) in mix_rows
+    ]
+
+    # County trend (for top 5 counties by count)
+    top_county_names = [c["county"] for c in top_counties[:5]]
+    county_trend_rows = []
+    if top_county_names:
+        county_trend_rows = (
+            db.session.query(
+                sq.c.county,
+                sq.c.imported_year,
+                sq.c.imported_month,
+                func.avg(sq.c.pay_rate),
+            )
+            .filter(
+                sq.c.county.isnot(None),
+                sq.c.imported_year.isnot(None),
+                sq.c.imported_month.isnot(None),
+                sq.c.county.in_(top_county_names),
+            )
+            .group_by(sq.c.county, sq.c.imported_year, sq.c.imported_month)
+            .order_by(sq.c.county, sq.c.imported_year, sq.c.imported_month)
+            .all()
+        )
+
+    county_trends = {}
+    for county, y, m, a in county_trend_rows:
+        c_name = county or "Unknown"
+        county_trends.setdefault(c_name, []).append(
+            {"year": y, "month": m, "avg_rate": float(a) if a is not None else None}
+        )
+
+    # Role × sector matrix (avg pay per role/sector)
+    matrix_rows = (
+        db.session.query(
+            sq.c.sector,
+            sq.c.job_role,
+            func.avg(sq.c.pay_rate),
+        )
+        .filter(sq.c.sector.isnot(None), sq.c.job_role.isnot(None))
+        .group_by(sq.c.sector, sq.c.job_role)
+        .all()
+    )
+    role_sector_matrix = [
+        {
+            "sector": s or "Unknown",
+            "role": r or "Unknown",
+            "avg_rate": float(a) if a is not None else None,
+        }
+        for (s, r, a) in matrix_rows
+    ]
+
     stats = {
         "total": total,
         "total_count": total,
@@ -367,10 +529,18 @@ def insights():
         "top_counties": top_counties,
         "top_roles": top_roles,
         "sector_stats": sector_stats,
+        "sector_ranges": sector_ranges,
+        "sector_volatility": sector_volatility,
         "distribution": dist,
+        "monthly_trend": monthly_trend,
+        "sector_county_heat": sector_county_heat,
+        "top_companies": top_companies,
+        "role_mix": role_mix,
+        "county_trends": county_trends,
+        "role_sector_matrix": role_sector_matrix,
     }
 
-    # Sample (max 200) sent to front-end / AI
+    # Sample (max 200) sent to front-end / AI / scatter
     rows_for_client = (
         db.session.query(
             sq.c.id,
@@ -406,7 +576,7 @@ def insights():
 
     options = get_filter_options(force=True)
 
-    # Filter state for the template (lists for multi-selects)
+    # Filter state for the template (lists for multi-selects / checkboxes)
     filter_state = {
         "q": request.args.get("q"),
         "sector": sectors_selected,
