@@ -331,6 +331,23 @@ def run_ons_import():
 
     return redirect(url_for("admin.admin_tools"))
 
+# app/blueprints/admin.py
+
+@bp.route("/admin/inspect/ons")
+@superuser_required
+def inspect_ons():
+    from sqlalchemy import func
+    from models import OnsEarnings, db
+    
+    rows = db.session.query(
+        OnsEarnings.year,
+        OnsEarnings.measure_code,
+        func.count()
+    ).group_by(
+        OnsEarnings.year, OnsEarnings.measure_code
+    ).all()
+
+    return {"ons_summary": rows}
 
 # -------------------------------------------------------------------
 # COMPANIES ADMIN
