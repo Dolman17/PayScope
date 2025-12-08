@@ -37,7 +37,7 @@
           Dataset snapshot
         </h2>
         <p class="mt-1 text-2xl font-semibold text-gray-900">
-          {{ stats.total_count or records|length }}
+          {{ total_count or stats.total_count or records|length }}
         </p>
         <p class="mt-1 text-xs text-gray-500">
           records currently in view after filters are applied.
@@ -53,16 +53,24 @@
         </h2>
         <div class="mt-2 flex flex-wrap gap-1.5">
           {% if filters.sector %}
-            <span class="filter-pill">Sector: {{ filters.sector }}</span>
+            <span class="filter-pill">
+              Sector: {{ filters.sector|join(', ') }}
+            </span>
           {% endif %}
           {% if filters.county %}
-            <span class="filter-pill">County: {{ filters.county }}</span>
+            <span class="filter-pill">
+              County: {{ filters.county|join(', ') }}
+            </span>
           {% endif %}
           {% if filters.job_role %}
-            <span class="filter-pill">Role: {{ filters.job_role }}</span>
+            <span class="filter-pill">
+              Role: {{ filters.job_role|join(', ') }}
+            </span>
           {% endif %}
           {% if filters.year %}
-            <span class="filter-pill">Year: {{ filters.year }}</span>
+            <span class="filter-pill">
+              Year: {{ filters.year }}
+            </span>
           {% endif %}
           {% if filters.rate_min %}
             <span class="filter-pill">Min pay: £{{ filters.rate_min }}</span>
@@ -93,36 +101,49 @@
     </div>
 
     <form method="get" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+      <!-- Sector (multi-select) -->
       <div>
         <label class="label" for="sector">Sector</label>
-        <select id="sector" name="sector" class="input">
-          <option value="">All Sectors</option>
+        <select id="sector" name="sector" class="input" multiple>
+          <option value="" disabled class="text-gray-400 text-xs">Select one or more sectors</option>
           {% for s in options.sectors %}
-            <option value="{{ s }}" {% if filters.sector == s %}selected{% endif %}>{{ s }}</option>
+            <option value="{{ s }}"
+                    {% if s in (filters.sector or []) %}selected{% endif %}>
+              {{ s }}
+            </option>
           {% endfor %}
         </select>
       </div>
 
+      <!-- County (multi-select) -->
       <div>
         <label class="label" for="county">County</label>
-        <select id="county" name="county" class="input">
-          <option value="">All Counties</option>
+        <select id="county" name="county" class="input" multiple>
+          <option value="" disabled class="text-gray-400 text-xs">Select one or more counties</option>
           {% for c in options.counties %}
-            <option value="{{ c }}" {% if filters.county == c %}selected{% endif %}>{{ c }}</option>
+            <option value="{{ c }}"
+                    {% if c in (filters.county or []) %}selected{% endif %}>
+              {{ c }}
+            </option>
           {% endfor %}
         </select>
       </div>
 
+      <!-- Job Role (multi-select) -->
       <div>
         <label class="label" for="job_role">Job Role</label>
-        <select id="job_role" name="job_role" class="input">
-          <option value="">All Roles</option>
+        <select id="job_role" name="job_role" class="input" multiple>
+          <option value="" disabled class="text-gray-400 text-xs">Select one or more roles</option>
           {% for r in options.roles %}
-            <option value="{{ r }}" {% if filters.job_role == r %}selected{% endif %}>{{ r }}</option>
+            <option value="{{ r }}"
+                    {% if r in (filters.job_role or []) %}selected{% endif %}>
+              {{ r }}
+            </option>
           {% endfor %}
         </select>
       </div>
 
+      <!-- Year (single) -->
       <div>
         <label class="label" for="year">Year</label>
         <select id="year" name="year" class="input">
@@ -133,6 +154,7 @@
         </select>
       </div>
 
+      <!-- Min / Max pay -->
       <div>
         <label class="label" for="rate_min">Min Pay</label>
         <input id="rate_min"
