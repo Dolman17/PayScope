@@ -1113,12 +1113,21 @@ def backfill_company_ids():
     return redirect(url_for("admin.admin_companies"))
 
 @bp.route("/admin/utils/create-job-role-mapping-table")
-@login_required  # ideally wrap with your superuser decorator if you have one
+@login_required
 def create_job_role_mapping_table():
-    # This is idempotent: if the table already exists, nothing happens.
+    """
+    One-off helper: create the job_role_mappings table if it doesn't exist.
+    Safe to call multiple times thanks to checkfirst=True.
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
     JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
     flash("JobRoleMapping table has been created (or already existed).", "success")
+
+    # This assumes you've added admin_job_roles() on the dashboard blueprint
     return redirect(url_for("dashboard.admin_job_roles"))
+
 
 
 # -------------------------------------------------------------------
