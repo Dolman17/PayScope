@@ -196,6 +196,18 @@ class Company(db.Model):
     sector = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class JobRoleMapping(db.Model):
+    __tablename__ = "job_role_mappings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    raw_value = db.Column(db.Text, unique=True, nullable=False)  # full raw title
+    canonical_role = db.Column(db.String(255), nullable=False)   # e.g. "Support Worker"
+    source = db.Column(db.String(50))                            # optional: "adzuna", "indeed" etc
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
 
 class CronRunLog(db.Model):
     __tablename__ = "cron_run_logs"
