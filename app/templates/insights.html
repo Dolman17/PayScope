@@ -100,84 +100,106 @@
       </span>
     </div>
 
-    <form method="get" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-      <!-- Sector (multi-select) -->
-      <div>
-        <label class="label" for="sector">Sector</label>
-        <select id="sector" name="sector" class="input" multiple>
-          <option value="" disabled class="text-gray-400 text-xs">Select one or more sectors</option>
+    <form method="get" class="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-6 gap-4">
+      <!-- Sector checkboxes -->
+      <div class="lg:col-span-2">
+        <label class="label mb-1 block" for="sector">Sector</label>
+        <div class="rounded-xl border border-gray-200 bg-white max-h-44 overflow-y-auto px-3 py-2 space-y-1">
           {% for s in options.sectors %}
-            <option value="{{ s }}"
-                    {% if s in (filters.sector or []) %}selected{% endif %}>
-              {{ s }}
-            </option>
+            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+              <input type="checkbox"
+                     name="sector"
+                     value="{{ s }}"
+                     class="h-4 w-4 rounded border-gray-300"
+                     {% if s in (filters.sector or []) %}checked{% endif %}>
+              <span class="truncate">{{ s }}</span>
+            </label>
           {% endfor %}
-        </select>
+        </div>
+        <p class="mt-1 text-[11px] text-gray-400">
+          Choose one or more sectors.
+        </p>
       </div>
 
-      <!-- County (multi-select) -->
-      <div>
-        <label class="label" for="county">County</label>
-        <select id="county" name="county" class="input" multiple>
-          <option value="" disabled class="text-gray-400 text-xs">Select one or more counties</option>
+      <!-- County checkboxes -->
+      <div class="lg:col-span-2">
+        <label class="label mb-1 block" for="county">County</label>
+        <div class="rounded-xl border border-gray-200 bg-white max-h-44 overflow-y-auto px-3 py-2 space-y-1">
           {% for c in options.counties %}
-            <option value="{{ c }}"
-                    {% if c in (filters.county or []) %}selected{% endif %}>
-              {{ c }}
-            </option>
+            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+              <input type="checkbox"
+                     name="county"
+                     value="{{ c }}"
+                     class="h-4 w-4 rounded border-gray-300"
+                     {% if c in (filters.county or []) %}checked{% endif %}>
+              <span class="truncate">{{ c }}</span>
+            </label>
           {% endfor %}
-        </select>
+        </div>
+        <p class="mt-1 text-[11px] text-gray-400">
+          Choose one or more counties.
+        </p>
       </div>
 
-      <!-- Job Role (multi-select) -->
-      <div>
-        <label class="label" for="job_role">Job Role</label>
-        <select id="job_role" name="job_role" class="input" multiple>
-          <option value="" disabled class="text-gray-400 text-xs">Select one or more roles</option>
+      <!-- Job Role checkboxes -->
+      <div class="lg:col-span-2">
+        <label class="label mb-1 block" for="job_role">Job Role</label>
+        <div class="rounded-xl border border-gray-200 bg-white max-h-44 overflow-y-auto px-3 py-2 space-y-1">
           {% for r in options.roles %}
-            <option value="{{ r }}"
-                    {% if r in (filters.job_role or []) %}selected{% endif %}>
-              {{ r }}
-            </option>
+            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+              <input type="checkbox"
+                     name="job_role"
+                     value="{{ r }}"
+                     class="h-4 w-4 rounded border-gray-300"
+                     {% if r in (filters.job_role or []) %}checked{% endif %}>
+              <span class="truncate">{{ r }}</span>
+            </label>
           {% endfor %}
-        </select>
+        </div>
+        <p class="mt-1 text-[11px] text-gray-400">
+          Choose one or more roles.
+        </p>
       </div>
 
-      <!-- Year (single) -->
-      <div>
-        <label class="label" for="year">Year</label>
-        <select id="year" name="year" class="input">
-          <option value="">All Years</option>
-          {% for y in options.years %}
-            <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
-          {% endfor %}
-        </select>
+      <!-- Year / Min / Max pay row -->
+      <div class="lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+        <!-- Year (single) -->
+        <div>
+          <label class="label" for="year">Year</label>
+          <select id="year" name="year" class="input">
+            <option value="">All Years</option>
+            {% for y in options.years %}
+              <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Min pay -->
+        <div>
+          <label class="label" for="rate_min">Min Pay</label>
+          <input id="rate_min"
+                 type="number"
+                 step="0.01"
+                 name="rate_min"
+                 value="{{ filters.rate_min or '' }}"
+                 class="input"
+                 placeholder="e.g. 12.00">
+        </div>
+
+        <!-- Max pay -->
+        <div>
+          <label class="label" for="rate_max">Max Pay</label>
+          <input id="rate_max"
+                 type="number"
+                 step="0.01"
+                 name="rate_max"
+                 value="{{ filters.rate_max or '' }}"
+                 class="input"
+                 placeholder="e.g. 18.50">
+        </div>
       </div>
 
-      <!-- Min / Max pay -->
-      <div>
-        <label class="label" for="rate_min">Min Pay</label>
-        <input id="rate_min"
-               type="number"
-               step="0.01"
-               name="rate_min"
-               value="{{ filters.rate_min or '' }}"
-               class="input"
-               placeholder="e.g. 12.00">
-      </div>
-
-      <div>
-        <label class="label" for="rate_max">Max Pay</label>
-        <input id="rate_max"
-               type="number"
-               step="0.01"
-               name="rate_max"
-               value="{{ filters.rate_max or '' }}"
-               class="input"
-               placeholder="e.g. 18.50">
-      </div>
-
-      <div class="sm:col-span-2 lg:col-span-6 flex flex-wrap items-center justify-between gap-3 pt-2">
+      <div class="lg:col-span-6 flex flex-wrap items-center justify-between gap-3 pt-2">
         <div class="text-xs text-gray-400">
           Charts below will update based on this filter set.
         </div>
@@ -482,3 +504,4 @@
     confirmBtn?.addEventListener('click', runAIAnalysis);
   </script>
 {% endblock %}
+
