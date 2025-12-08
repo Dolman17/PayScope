@@ -1,158 +1,163 @@
-{# templates/admin_job_roles.html #}
 {% extends "base.html" %}
-{% block title %}Job Role Cleaner{% endblock %}
+{% block title %}Job Role Cleaner • Pay Rate Map{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-2 sm:px-4 py-6">
-  <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <!-- Header -->
+  <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
         Job Role Cleaner
       </h1>
       <p class="mt-1 text-sm text-gray-500">
-        Review raw job roles from imported adverts and map them to a clean, canonical role name.
-        Mappings can also be applied immediately to existing records.
+        Review raw job titles and map them to clean, canonical job roles used across insights and analytics.
       </p>
+      {% if uncategorised_roles_count %}
+        <p class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+          <span class="text-lg">⚠️</span>
+          <span>
+            <strong>{{ uncategorised_roles_count }}</strong> records are currently uncategorised.
+            Cleaning job roles will improve the quality of all charts and AI analysis.
+          </span>
+        </p>
+      {% endif %}
     </div>
-
-    <div class="card">
-      <div class="px-4 py-3">
-        <p class="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
-          Uncategorised roles
-        </p>
-        <p class="mt-1 text-xl font-semibold text-gray-900">
-          {{ uncategorised_roles_count }}
-        </p>
-        <p class="mt-1 text-xs text-gray-500">
-          records currently have no canonical <code>job_role</code> assigned.
-        </p>
-      </div>
+    <div class="text-xs text-gray-400 uppercase tracking-wide">
+      <span class="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 bg-gray-50">
+        <span class="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"></span>
+        Data Hygiene
+      </span>
     </div>
-  </div>
+  </header>
 
+  <!-- Search / filters -->
   <section class="card mb-6">
-    <form method="get" class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end px-4 py-3 sm:px-5 sm:py-4">
-      <div class="flex-1">
-        <label for="q" class="label block mb-1">Search raw job role</label>
-        <input id="q"
-               type="text"
-               name="q"
-               value="{{ search }}"
-               class="input w-full"
-               placeholder="e.g. Support Worker, Market Research Study, etc.">
+    <form method="get" class="p-4 sm:p-5 flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+      <div class="w-full sm:w-2/3">
+        <label for="q" class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+          Search raw job roles
+        </label>
+        <input
+          id="q"
+          name="q"
+          type="text"
+          value="{{ search }}"
+          class="input w-full"
+          placeholder="e.g. senior care assistant, HCA, night nurse"
+        >
       </div>
-      <div class="flex gap-2">
-        <button type="submit" class="btn btn-primary self-end">
-          Filter
+      <div class="flex gap-2 sm:gap-3">
+        <button type="submit" class="btn btn-primary">
+          Search
         </button>
-        <a href="{{ url_for('dashboard.admin_job_roles') }}" class="btn btn-secondary self-end">
+        <a href="{{ url_for('dashboard.admin_job_roles') }}" class="btn btn-secondary">
           Clear
+        </a>
+        <a href="{{ url_for('admin.admin_tools') }}" class="btn btn-secondary hidden sm:inline-flex">
+          Back to Admin Tools
         </a>
       </div>
     </form>
   </section>
 
+  <!-- Table of roles -->
   <section class="card">
-    <div class="border-b border-gray-100 px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between">
+    <div class="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
-        <h2 class="text-sm font-semibold text-gray-800">
-          Raw job roles in dataset
-        </h2>
-        <p class="mt-0.5 text-xs text-gray-500">
-          Showing up to 500 distinct values ordered by frequency. Use the mapping column to normalise messy titles.
+        <h2 class="text-sm font-semibold text-gray-800">Raw job titles</h2>
+        <p class="text-xs text-gray-500">
+          Highest-volume raw roles first. Use the mapping form to normalise them into canonical roles.
         </p>
       </div>
-      <span class="text-[11px] text-gray-400 uppercase tracking-wide">
-        {{ rows|length }} values
-      </span>
+      <div class="text-xs text-gray-400">
+        Showing up to <strong>500</strong> distinct raw job_role values.
+      </div>
     </div>
 
-    {% if rows %}
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50 border-b border-gray-100">
-          <tr>
-            <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">
-              #
-            </th>
-            <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Raw job role
-            </th>
-            <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">
-              Records
-            </th>
-            <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-64">
-              Canonical mapping
-            </th>
-            <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-48">
-              Actions
-            </th>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <th class="px-4 py-2 w-1/3">Raw Job Role</th>
+            <th class="px-4 py-2 w-20 text-right">Count</th>
+            <th class="px-4 py-2 w-1/3">Canonical Role</th>
+            <th class="px-4 py-2 w-1/4 text-right">Actions</th>
           </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-          {% for row in rows %}
-            {% set mapping = mappings.get(row.raw_value) %}
-            <tr class="align-top hover:bg-gray-50">
-              <td class="px-4 py-2 text-xs text-gray-400">
-                {{ loop.index }}
-              </td>
-              <td class="px-4 py-2">
-                <div class="text-xs font-mono text-gray-800 break-all">
-                  {{ row.raw_value }}
-                </div>
-              </td>
-              <td class="px-4 py-2 text-right text-xs text-gray-600">
-                {{ row.count }}
-              </td>
-              <td class="px-4 py-2">
-                <div class="text-xs text-gray-600">
-                  {% if mapping %}
-                    <span class="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                      {{ mapping.canonical_role }}
-                    </span>
-                    <p class="mt-1 text-[11px] text-gray-400">
-                      Last updated {{ mapping.updated_at.strftime('%Y-%m-%d') if mapping.updated_at }}
-                    </p>
-                  {% else %}
-                    <span class="text-[11px] text-gray-400">
-                      No mapping saved yet.
-                    </span>
-                  {% endif %}
-                </div>
-              </td>
-              <td class="px-4 py-2">
-                <form method="post"
-                      action="{{ url_for('dashboard.admin_job_roles_map', q=search) }}"
-                      class="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                  {{ csrf_token() }}
-                  <input type="hidden" name="raw_value" value="{{ row.raw_value }}">
-                  <input type="text"
-                         name="canonical_role"
-                         class="input input-sm w-full sm:w-44"
-                         placeholder="Canonical role"
-                         value="{{ mapping.canonical_role if mapping else '' }}">
-                  <label class="inline-flex items-center gap-1 text-[11px] text-gray-500">
-                    <input type="checkbox"
-                           name="apply_now"
-                           value="1"
-                           class="h-3 w-3 rounded border-gray-300">
-                    Apply to existing
-                  </label>
-                  <button type="submit" class="btn btn-primary btn-xs">
-                    Save
-                  </button>
-                </form>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% if rows|length == 0 %}
+            <tr>
+              <td colspan="4" class="px-4 py-6 text-center text-sm text-gray-500">
+                No job roles found for this filter. Try clearing the search.
               </td>
             </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="px-4 py-6 sm:px-5 sm:py-8 text-sm text-gray-500">
-        No job roles found for this filter. Try clearing the search or check back after the next data import.
-      </div>
-    {% endif %}
+          {% else %}
+            {% for row in rows %}
+              {% set raw_value = row.raw_value %}
+              {% set mapping = mappings.get(raw_value) %}
+              <tr class="hover:bg-gray-50/60">
+                <td class="px-4 py-3 align-top">
+                  <div class="font-medium text-gray-900 break-words">
+                    {{ raw_value or "—" }}
+                  </div>
+                </td>
+                <td class="px-4 py-3 align-top text-right text-gray-700">
+                  {{ row.count }}
+                </td>
+                <td class="px-4 py-3 align-top">
+                  <form method="post"
+                        action="{{ url_for('dashboard.admin_job_roles_map', q=search) }}"
+                        class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      type="hidden"
+                      name="raw_value"
+                      value="{{ raw_value }}"
+                    >
+                    <input
+                      type="text"
+                      name="canonical_role"
+                      value="{{ mapping.canonical_role if mapping else '' }}"
+                      class="input w-full sm:w-auto"
+                      placeholder="e.g. Care Assistant, Registered Nurse"
+                    >
+                </td>
+                <td class="px-4 py-3 align-top text-right">
+                  <div class="flex flex-col sm:flex-row gap-2 sm:justify-end sm:items-center">
+                    <label class="inline-flex items-center gap-1.5 text-[11px] text-gray-600">
+                      <input
+                        type="checkbox"
+                        name="apply_now"
+                        value="1"
+                        class="rounded border-gray-300"
+                        {% if mapping %}checked{% endif %}
+                      >
+                      <span>Apply to existing records</span>
+                    </label>
+                    <button
+                      type="submit"
+                      class="btn btn-primary btn-sm">
+                      Save
+                    </button>
+                  </div>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="px-4 sm:px-5 py-3 border-t border-gray-100 text-xs text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <p>
+        Mappings are stored in the <code>job_role_mappings</code> table. The nightly canonicaliser can also use these
+        mappings as hints to clean new data as it arrives.
+      </p>
+      <a href="{{ url_for('admin.admin_tools') }}" class="btn btn-secondary btn-sm sm:inline-flex">
+        Back to Admin Tools
+      </a>
+    </div>
   </section>
 </div>
 {% endblock %}
+
