@@ -2,17 +2,8 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
-
-from datetime import date  # NEW
-
-from flask import Blueprint, render_template, redirect, url_for, flash, request  # you may already have these
-from flask_login import login_required, current_user
-from werkzeug.exceptions import abort  # if not already imported
-
-from ons_importer import import_ons_earnings_to_db  # NEW
-from ons_importer import import_latest_ons_earnings_for_cron
-
+from datetime import datetime, date
+from functools import wraps
 
 from flask import (
     Blueprint,
@@ -27,9 +18,6 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from sqlalchemy import desc, or_, cast, String, text, inspect, func
-from functools import wraps
-from flask import abort
-from flask_login import current_user
 
 from extensions import db
 from models import (
@@ -38,7 +26,8 @@ from models import (
     JobRecord,
     JobPosting,
     Company,
-    CronRunLog,   # <-- NEW: cron log model
+    CronRunLog,
+    OnsEarnings,
 )
 from .utils import (
     commit_or_rollback,
@@ -48,16 +37,14 @@ from .utils import (
     snap_to_nearest_postcode,
 )
 
-from flask import redirect, url_for, flash
-from flask_login import login_required, current_user
 from cron_runner import run_job_role_canonicaliser
-
-
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
+from ons_importer import import_ons_earnings_to_db, import_latest_ons_earnings_for_cron
 
 # Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
+
 
 def superuser_required(f):
     @wraps(f)
@@ -66,6 +53,7 @@ def superuser_required(f):
         if not current_user.is_authenticated or current_user.admin_level != 1:
             abort(403)
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -149,7 +137,7 @@ def admin_job_scrape():
         scraper = AdzunaScraper(what=role, where=location)
         try:
             records = scraper.scrape()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             message = f"Error during scrape: {exc}"
             return render_template(
                 "admin/jobs_scrape.html",
@@ -287,7 +275,7 @@ def backfill_counties():
                     updated += 1
                 else:
                     skipped += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"❌ Error reverse geocoding ID {record.id}: {e}")
                 skipped += 1
 
@@ -301,13 +289,21 @@ def backfill_counties():
         flash("Failed to save backfill results.", "error")
     return redirect(url_for("upload.upload"))
 
+
+# -------------------------------------------------------------------
+# ONS IMPORT – BUTTON 1 (legacy route)
+# -------------------------------------------------------------------
 @bp.route("/admin/ons-import", methods=["POST"])
 @login_required
 def run_ons_import():
+    """
+    Legacy ONS import endpoint (kept so any existing form posting here still works).
+
+    Uses "previous year" logic directly via import_ons_earnings_to_db.
+    """
     if getattr(current_user, "admin_level", 0) != 1:
         abort(403)
 
-    # ASHE is published for previous year, so import that
     year = date.today().year - 1
 
     result = import_ons_earnings_to_db(
@@ -331,23 +327,70 @@ def run_ons_import():
 
     return redirect(url_for("admin.admin_tools"))
 
-# app/blueprints/admin.py
 
-@bp.route("/admin/inspect/ons")
+# -------------------------------------------------------------------
+# ONS IMPORT – BUTTON 2 (new helper-based route)
+# -------------------------------------------------------------------
+@bp.route("/ons/import", methods=["POST"])
+@login_required
+@superuser_required
+def run_ons_import_manual():
+    """
+    New ONS import endpoint using the helper that chooses the latest full year.
+    """
+    who = (
+        getattr(current_user, "email", None)
+        or getattr(current_user, "username", None)
+        or "admin"
+    )
+
+    try:
+        result = import_latest_ons_earnings_for_cron(
+            trigger="manual",
+            triggered_by=who,
+            use_app_context=True,  # already in a request/app context
+        )
+        year = result.get("year")
+        created = result.get("created")
+        updated = result.get("updated")
+        msg = f"ONS ASHE import for {year} completed: created={created}, updated={updated}"
+        flash(msg, "success")
+    except Exception as e:  # noqa: BLE001
+        flash(f"ONS ASHE import failed: {e}", "danger")
+
+    return redirect(url_for("admin.admin_tools"))
+
+
+# -------------------------------------------------------------------
+# Simple ONS inspection helper
+# -------------------------------------------------------------------
+@bp.route("/inspect/ons")
 @superuser_required
 def inspect_ons():
-    from sqlalchemy import func
-    from models import OnsEarnings, db
-    
-    rows = db.session.query(
-        OnsEarnings.year,
-        OnsEarnings.measure_code,
-        func.count()
-    ).group_by(
-        OnsEarnings.year, OnsEarnings.measure_code
-    ).all()
+    rows = (
+        db.session.query(
+            OnsEarnings.year.label("year"),
+            OnsEarnings.measure_code.label("measure_code"),
+            func.count().label("count"),
+        )
+        .group_by(OnsEarnings.year, OnsEarnings.measure_code)
+        .order_by(OnsEarnings.year.desc(), OnsEarnings.measure_code)
+        .all()
+    )
 
-    return {"ons_summary": rows}
+    payload = [
+        {
+            "year": int(r.year),
+            "measure_code": r.measure_code,
+            "count": int(r.count),
+        }
+        for r in rows
+    ]
+
+    return jsonify({"ons_summary": payload})
+
+
+
 
 # -------------------------------------------------------------------
 # COMPANIES ADMIN
@@ -402,7 +445,7 @@ def admin_companies():
                         f"({total_moved} job records updated).",
                         "success",
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print("Merge companies error:", e)
                     flash("Failed to merge companies.", "error")
 
@@ -427,7 +470,7 @@ def admin_companies():
             try:
                 commit_or_rollback()
                 flash("Company updated.", "success")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print("Update company error:", e)
                 flash("Failed to update company.", "error")
 
@@ -449,14 +492,13 @@ def admin_companies():
             try:
                 logo_file.save(path)
                 flash(f"Logo uploaded for '{slug}'.", "success")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print("Logo upload error:", e)
                 flash("Failed to upload logo.", "error")
 
             return redirect(url_for("admin.admin_companies"))
 
     # ----- GET: build view model -----
-    # Aggregate JobRecords by company_id
     company_groups = (
         db.session.query(
             JobRecord.company_id,
@@ -470,11 +512,9 @@ def admin_companies():
 
     all_companies = Company.query.order_by(Company.canonical_name, Company.name).all()
 
-    # Build mapping: slug (as used in JobRecord.company_id) -> Company row (best guess)
     slug_to_company = {}
     for c in all_companies:
         slug = _slugify(c.canonical_name or c.name or "")
-        # First one wins; if multiple map to same slug, we keep the first for now
         slug_to_company.setdefault(slug, c)
 
     rows = []
@@ -501,10 +541,6 @@ def admin_companies():
 def regenerate_company_ids():
     """
     Rebuild JobRecord.company_id values from the current Company canonical names.
-
-    Use this AFTER:
-      - You have cleaned up Company.name / Company.canonical_name via the UI
-      - You want JobRecords to be aligned to those canonical values
     """
     if not _require_superuser():
         return redirect(url_for("home"))
@@ -514,7 +550,6 @@ def regenerate_company_ids():
     companies = Company.query.all()
     jobs = JobRecord.query.all()
 
-    # Build map: canonical_name -> slug
     canonical_to_slug: dict[str, str] = {}
     for c in companies:
         raw_canon = (c.canonical_name or "").strip()
@@ -535,16 +570,16 @@ def regenerate_company_ids():
             skipped += 1
             continue
 
+        if job.company_id and job.company_id.strip():
+            skipped += 1
+            continue
+
         cleaned = _clean_company_name(raw_name)
         if not cleaned:
             skipped += 1
             continue
 
-        target_slug = canonical_to_slug.get(cleaned)
-        if not target_slug:
-            # Fallback: derive slug directly from cleaned name
-            target_slug = _slugify(cleaned)
-
+        target_slug = canonical_to_slug.get(cleaned) or _slugify(cleaned)
         if job.company_id == target_slug:
             skipped += 1
             continue
@@ -558,36 +593,11 @@ def regenerate_company_ids():
             f"Regenerated company IDs from canonical names — updated {updated}, skipped {skipped}.",
             "success",
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print("Regenerate company IDs error:", e)
         flash("Failed to regenerate company IDs.", "error")
 
     return redirect(url_for("admin.admin_companies"))
-
-@bp.route("/ons/import", methods=["POST"])
-@login_required
-def run_ons_import_manual():
-    # TODO: wrap with your proper admin/superuser decorator if you have one
-    who = getattr(current_user, "email", None) or getattr(current_user, "username", None) or "admin"
-
-    try:
-        result = import_latest_ons_earnings_for_cron(
-            trigger="manual",
-            triggered_by=who,
-            use_app_context=True,  # we are already in a request/app context
-        )
-        year = result.get("year")
-        created = result.get("created")
-        updated = result.get("updated")
-        msg = f"ONS ASHE import for {year} completed: created={created}, updated={updated}"
-        flash(msg, "success")
-    except Exception as e:
-        flash(f"ONS ASHE import failed: {e}", "danger")
-
-    # Redirect to whatever admin view makes sense (cron runs, admin dashboard, etc.)
-    return redirect(url_for("admin.admin_tools"))
-
-
 
 
 # -------------------------------------------------------------------
@@ -604,7 +614,6 @@ def regeocode_jobs():
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    # Clear postcode cache so we get fresh results
     geocode_postcode_cached.cache_clear()
 
     limit = request.args.get("limit", type=int)
@@ -620,7 +629,6 @@ def regeocode_jobs():
         lat = job.latitude
         lon = job.longitude
 
-        # 1) Try standard postcode geocode if we have a postcode
         if job.postcode:
             new_lat, new_lon = geocode_postcode_cached(job.postcode)
             if new_lat is not None and new_lon is not None:
@@ -629,8 +637,6 @@ def regeocode_jobs():
                 updated += 1
                 continue
 
-        # 2) If postcode geocoding failed (or no postcode) but we already
-        #    have coordinates, snap them to the nearest postcode
         if lat is not None and lon is not None:
             inferred_pc, snapped_lat, snapped_lon = snap_to_nearest_postcode(lat, lon)
             if inferred_pc and snapped_lat is not None and snapped_lon is not None:
@@ -641,7 +647,6 @@ def regeocode_jobs():
                 updated += 1
                 continue
 
-        # 3) If we get here, we couldn't geocode this record at all
         job.latitude = None
         job.longitude = None
         cleared += 1
@@ -714,6 +719,7 @@ def ai_logs_get(log_id: int):
         }
     )
 
+
 @bp.route("/cron/job-role-canonicaliser/run-now", methods=["POST"])
 @login_required
 @superuser_required
@@ -729,7 +735,6 @@ def run_job_role_canonicaliser_now():
         "success",
     )
     return redirect(url_for("admin.cron_runs"))
-
 
 
 # -------------------------------------------------------------------
@@ -785,7 +790,7 @@ def clear_job_records():
         deleted = JobRecord.query.delete()
         commit_or_rollback()
         flash(f"✅ Deleted {deleted} job records.", "success")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error clearing job records: {e}")
         flash("Failed to delete job records.", "error")
 
@@ -891,22 +896,23 @@ def admin_import_all_jobs():
 def import_job(posting_id):
     posting = JobPosting.query.get_or_404(posting_id)
 
-    from app.job_importer import import_posting_to_record
+    from app.job_importer import import_posting_to_record as legacy_import_posting_to_record
 
-    record = import_posting_to_record(posting)
+    record = legacy_import_posting_to_record(posting)
     db.session.commit()
 
     flash("Job imported successfully.", "success")
     return redirect(url_for("admin.jobs_page"))
 
 
+# -------------------------------------------------------------------
+# ADMIN TOOLS PAGE
+# -------------------------------------------------------------------
 @bp.route("/tools")
 @login_required
 @superuser_required
 def admin_tools():
     return render_template("admin/admin_tools.html")
-
-
 
 
 # -------------------------------------------------------------------
@@ -917,10 +923,6 @@ def admin_tools():
 def db_health():
     """
     Simple DB health + table list page.
-
-    - Superuser only
-    - Pings the DB with SELECT 1
-    - Lists all tables in the current database
     """
     if not _require_superuser():
         return redirect(url_for("home"))
@@ -928,9 +930,7 @@ def db_health():
     uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
     masked_uri = uri
 
-    # Mask credentials so we can see where we're connected
     if "@" in uri:
-        # e.g. postgresql+pg8000://user:pass@host:port/db -> ***@host:port/db
         try:
             _, suffix = uri.split("@", 1)
             masked_uri = f"***@{suffix}"
@@ -943,20 +943,18 @@ def db_health():
     tables_error = None
     backend = None
 
-    # 1) Basic ping
     try:
         db.session.execute(text("SELECT 1"))
         ping_ok = True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         ping_error = repr(e)
 
-    # 2) List tables if ping succeeded
     if ping_ok:
         try:
             inspector = inspect(db.engine)
             tables = sorted(inspector.get_table_names())
-            backend = db.engine.name  # e.g. "postgresql"
-        except Exception as e:
+            backend = db.engine.name
+        except Exception as e:  # noqa: BLE001
             tables_error = repr(e)
 
     return render_template(
@@ -978,8 +976,6 @@ def db_health():
 def backfill_company_ids():
     """
     Backfill all JobRecord.company_id values using canonical Company table.
-    Uses the same logic as importer (normalised name).
-    Safe to run multiple times.
     """
     if not _require_superuser():
         return redirect(url_for("home"))
@@ -997,7 +993,6 @@ def backfill_company_ids():
             skipped += 1
             continue
 
-        # Already has a company_id? Leave it alone.
         if job.company_id and job.company_id.strip():
             skipped += 1
             continue
@@ -1009,7 +1004,7 @@ def backfill_company_ids():
     try:
         commit_or_rollback()
         flash(f"Backfill complete — updated {updated}, skipped {skipped}.", "success")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         flash("Failed to backfill company IDs.", "error")
         print("Backfill error:", e)
 
@@ -1049,21 +1044,17 @@ def cron_run_now():
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    # Import from the top-level cron_runner.py
     from cron_runner import run_scheduled_jobs
 
-    # Run, log, etc.
     started_at = datetime.utcnow()
     try:
         result = run_scheduled_jobs()
         status = "success"
         message = result or "OK"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         status = "error"
         message = repr(e)
     finished_at = datetime.utcnow()
-
-    from models import CronRunLog  # wherever we defined it
 
     log_row = CronRunLog(
         job_name="manual_run_all",
@@ -1077,4 +1068,3 @@ def cron_run_now():
 
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
-
