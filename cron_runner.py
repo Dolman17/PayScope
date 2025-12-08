@@ -8,7 +8,7 @@ from app import create_app
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record, classify_sector
 from extensions import db
-from models import JobPosting, CronRunLog, JobRecord
+from models import JobPosting, CronRunLog, JobRecord, JobRoleMapping
 from job_summaries import build_daily_job_summaries  # Daily summaries
 from ons_importer import import_ons_earnings_to_db   # ONS → DB upsert
 
@@ -317,7 +317,7 @@ def _run_daily_summaries_for_date(
 
 
 # -------------------------------------------------------------------
-# AI-driven job-role canonicaliser (chunked)
+# AI-driven job-role canonicaliser (via JobRoleMapping)
 # -------------------------------------------------------------------
 def _canonicalise_job_roles_with_ai(
     trigger: str = "scheduled",
@@ -329,17 +329,21 @@ def _canonicalise_job_roles_with_ai(
     """
     Canonicalise job titles in small AI batches.
 
-    - Fetch up to `max_roles` distinct (sector, job_role) needing grouping.
-    - Split into chunks of `chunk_size` items.
-    - For each chunk, call OpenAI with a compact JSON payload.
-    - Apply canonical labels to JobRecord.job_role_group.
-    - Log everything in CronRunLog.
+    NEW BEHAVIOUR:
+    - Works at the level of JobRecord.job_role (distinct raw values).
+    - Only processes roles that do NOT yet have a JobRoleMapping row.
+    - For each raw role, asks OpenAI for a canonical group label.
+    - Writes/updates JobRoleMapping(raw_value, canonical_role).
+    - Applies that canonical role back to JobRecord:
+        - JobRecord.job_role      = canonical_role
+        - JobRecord.job_role_group = canonical_role (for any existing usage)
+    - Logs progress via CronRunLog.
 
     Assumes it is called inside app.app_context().
     """
 
     now = datetime.utcnow()
-    safe_day_label = (day_label or "Weekly Roles")[:20]
+    safe_day_label = (day_label or "Job roles")[:20]
 
     log = CronRunLog(
         job_name="job_role_canonicaliser",
@@ -369,20 +373,31 @@ def _canonicalise_job_roles_with_ai(
             summary["error"] = msg
             return summary
 
-        # 1) Fetch distinct roles that haven't been grouped yet
-        rows = (
-            db.session.query(JobRecord.sector, JobRecord.job_role)
+        # ------------------------------------------------------------------
+        # 1) Fetch distinct raw roles that do NOT yet have a mapping
+        # ------------------------------------------------------------------
+        from sqlalchemy import func, outerjoin
+
+        # Left join JobRoleMapping on raw_value
+        roles_query = (
+            db.session.query(
+                JobRecord.job_role.label("raw_value"),
+                func.count(JobRecord.id).label("count"),
+            )
+            .outerjoin(
+                JobRoleMapping,
+                JobRoleMapping.raw_value == JobRecord.job_role,
+            )
             .filter(JobRecord.job_role.isnot(None))
             .filter(
-                (JobRecord.job_role_group.is_(None)) |
-                (JobRecord.job_role_group == "")
+                (JobRoleMapping.id.is_(None))  # no mapping yet
             )
-            .distinct()
-            .order_by(JobRecord.sector, JobRecord.job_role)
+            .group_by(JobRecord.job_role)
+            .order_by(func.count(JobRecord.id).desc())
             .limit(max_roles)
-            .all()
         )
 
+        rows = roles_query.all()
         summary["examined"] = len(rows)
 
         if not rows:
@@ -397,44 +412,54 @@ def _canonicalise_job_roles_with_ai(
                 yield seq[i: i + n]
 
         system_msg = (
-            "You are cleaning job titles for an analytics tool. "
-            "For each input item (sector + raw title), you assign a short, "
-            "human-readable canonical group name. Similar roles should share "
-            "the same group label. Keep labels concise (max ~40 characters). "
-            "Respond ONLY with valid JSON, no commentary or markdown fences."
+            "You are normalising job titles for an analytics tool.\n"
+            "You will be given a list of raw job titles from multiple sectors "
+            "(social care, IT, finance, admin, etc.). Your job is to assign a "
+            "short, human-readable canonical group name for each raw title.\n\n"
+            "Rules:\n"
+            "- Similar titles must share the SAME canonical group label.\n"
+            "- Keep labels concise (ideally 2–4 words, max ~40 characters).\n"
+            "- Do NOT include contract details (full-time, part-time, nights).\n"
+            "- Do NOT include seniority modifiers in the label unless it changes the job level "
+            "(e.g. 'Senior Support Worker' vs 'Support Worker' can be separate groups).\n"
+            "- It is OK to reuse common groups such as 'Support Worker', "
+            "'Care Assistant', 'Registered Nurse', 'Administrator', etc.\n\n"
+            "Response format:\n"
+            "Return ONLY valid JSON, no commentary, no markdown fences. The JSON should look like:\n"
+            "{\n"
+            '  \"mappings\": {\n'
+            '    \"raw title 1\": \"Canonical Group 1\",\n'
+            '    \"raw title 2\": \"Canonical Group 2\"\n'
+            "  }\n"
+            "}\n"
         )
 
         total_updated = 0
         total_skipped = 0
 
-        # Process in chunks to keep prompts and responses small
+        # ------------------------------------------------------------------
+        # 2) Process in chunks to keep prompts and responses small
+        # ------------------------------------------------------------------
         for chunk_index, chunk_rows in enumerate(chunked(rows, chunk_size), start=1):
-            # Build JSON payload for this chunk
+            # chunk_rows: list of (raw_value, count)
             role_items = []
-            for sector, raw in chunk_rows:
-                raw_title = (raw or "").strip()
+            for raw_value, count in chunk_rows:
+                raw_title = (raw_value or "").strip()
                 if not raw_title:
                     total_skipped += 1
                     continue
-                role_items.append({
-                    "sector": sector or "Unknown",
-                    "title": raw_title,
-                })
+                role_items.append(raw_title)
 
             if not role_items:
                 continue
 
-            payload = json.dumps(role_items, ensure_ascii=False)
-
+            # Build prompt payload: simple bullet list of raw titles
+            list_block = "\n".join(f"- {title}" for title in role_items)
             user_msg = (
-                "You are given a JSON array of job roles. "
-                "Each item has keys: 'sector' and 'title'.\n\n"
-                "Return a JSON object where:\n"
-                '- each key is exactly \"sector|||title\" using the given values, and\n'
-                "- each value is your canonical group label (short, human-readable).\n\n"
-                "Input JSON:\n"
-                f"{payload}\n\n"
-                "Output JSON only, no explanation, no markdown fences."
+                "Here is the list of raw job titles you need to normalise:\n\n"
+                f"{list_block}\n\n"
+                "Remember: respond ONLY with JSON as described "
+                "in the system message, covering ALL of the titles above."
             )
 
             # Call OpenAI with a hard timeout so we don't hang the worker
@@ -477,7 +502,12 @@ def _canonicalise_job_roles_with_ai(
                     cleaned = cleaned.rsplit("```", 1)[0].strip()
 
             try:
-                mapping = json.loads(cleaned)
+                data = json.loads(cleaned)
+                if isinstance(data, dict) and "mappings" in data:
+                    mapping = data.get("mappings") or {}
+                else:
+                    # If the model returned a flat dict, treat it as the mapping
+                    mapping = data if isinstance(data, dict) else {}
             except Exception as e:
                 msg = (
                     f"Failed to parse AI JSON for chunk {chunk_index}: {e!r} "
@@ -491,26 +521,37 @@ def _canonicalise_job_roles_with_ai(
                 summary["skipped"] = total_skipped
                 return summary
 
-            # Apply mapping back to JobRecord for this chunk
-            for sector, raw in chunk_rows:
-                raw_title = (raw or "").strip()
+            # ------------------------------------------------------------------
+            # 3) Apply mapping back to JobRoleMapping + JobRecord for this chunk
+            # ------------------------------------------------------------------
+            for raw_value, count in chunk_rows:
+                raw_title = (raw_value or "").strip()
                 if not raw_title:
                     continue
-                key = f"{sector or 'Unknown'}|||{raw_title}"
-                canonical = (mapping.get(key) or "").strip()
+
+                canonical = (mapping.get(raw_title) or "").strip()
                 if not canonical:
                     total_skipped += 1
                     continue
 
-                q = JobRecord.query.filter(
-                    JobRecord.job_role == raw_title,
-                    JobRecord.sector == sector,
-                )
-                count = q.update(
-                    {"job_role_group": canonical},
+                # Upsert JobRoleMapping
+                m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
+                if m is None:
+                    m = JobRoleMapping(raw_value=raw_title, canonical_role=canonical)
+                    db.session.add(m)
+                else:
+                    m.canonical_role = canonical
+
+                # Apply to all JobRecord rows with this raw_title
+                q = JobRecord.query.filter(JobRecord.job_role == raw_title)
+                count_updated = q.update(
+                    {
+                        "job_role": canonical,        # use canonical as the main role
+                        "job_role_group": canonical,  # keep group in sync
+                    },
                     synchronize_session=False,
                 )
-                total_updated += count
+                total_updated += count_updated
 
             # Commit after each chunk so progress is saved
             db.session.commit()
