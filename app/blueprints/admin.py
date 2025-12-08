@@ -350,6 +350,24 @@ def run_ons_import():
 
     return redirect(url_for("admin.admin_tools"))
 
+@bp.route("/debug/pay-explorer-json")
+@login_required
+@superuser_required
+def debug_pay_explorer_json():
+    """
+    Return the exact JSON that get_pay_explorer_data() produces for
+    the default Pay Explorer view (last 30 days, group_by=county).
+    This lets us see whether ons_median_hourly is populated per row.
+    """
+    data = pay_compare.get_pay_explorer_data(
+        start_date_str=None,
+        end_date_str=None,
+        sector=None,
+        job_role_group=None,
+        group_by="county",
+    )
+    return jsonify(data)
+
 
 # -------------------------------------------------------------------
 # ONS IMPORT – BUTTON 2 (new helper-based route)
