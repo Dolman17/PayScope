@@ -81,6 +81,29 @@
     </div>
   </form>
 
+  <!-- Summary card -->
+  <div id="summary-card" class="hidden card p-4 flex flex-wrap gap-4 items-center justify-between text-sm">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">Σ</span>
+      <div>
+        <div class="text-gray-500">Areas in view</div>
+        <div id="summary-areas" class="font-semibold text-gray-900">–</div>
+      </div>
+    </div>
+    <div>
+      <div class="text-gray-500">Avg advertised median</div>
+      <div id="summary-adv" class="font-semibold text-gray-900">–</div>
+    </div>
+    <div>
+      <div class="text-gray-500">Avg ONS median</div>
+      <div id="summary-ons" class="font-semibold text-gray-900">–</div>
+    </div>
+    <div>
+      <div class="text-gray-500">Avg gap vs ONS</div>
+      <div id="summary-gap" class="font-semibold">–</div>
+    </div>
+  </div>
+
   <!-- Layout: Chart + Table -->
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
     <!-- Chart card -->
@@ -110,8 +133,21 @@
     <!-- Table card -->
     <div class="card p-4 overflow-hidden">
       <div class="flex items-center justify-between mb-2">
-        <h2 class="text-lg font-semibold text-gray-900">Detail by area</h2>
-        <span id="row-count" class="text-xs text-gray-500"></span>
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900">Detail by area</h2>
+          <span id="row-count" class="text-xs text-gray-500"></span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-600">
+          <span class="hidden sm:inline">Sort by</span>
+          <select id="sort_by" class="input !py-1 !px-2 text-xs">
+            <option value="gap_desc">Gap £/hr (highest first)</option>
+            <option value="gap_asc">Gap £/hr (lowest first)</option>
+            <option value="adv_desc">Advertised median (high → low)</option>
+            <option value="adv_asc">Advertised median (low → high)</option>
+            <option value="adverts_desc">Adverts count (high → low)</option>
+            <option value="alpha">Area A → Z</option>
+          </select>
+        </div>
       </div>
       <div class="overflow-auto max-h-[28rem] border border-gray-100 rounded-lg">
         <table class="min-w-full text-xs">
@@ -157,6 +193,13 @@
       const onsMeta = document.getElementById("ons-meta");
       const onsYearLabel = document.getElementById("ons-year-label");
 
+      const summaryCard = document.getElementById("summary-card");
+      const summaryAreas = document.getElementById("summary-areas");
+      const summaryAdv = document.getElementById("summary-adv");
+      const summaryOns = document.getElementById("summary-ons");
+      const summaryGap = document.getElementById("summary-gap");
+      const sortSelect = document.getElementById("sort_by");
+
       let chartInstance = null;
 
       function todayIso() {
@@ -200,14 +243,16 @@
       }
 
       function formatMoney(v) {
-        if (v === null || v === undefined || isNaN(v)) return "–";
-        return "£" + v.toFixed(2);
+        const num = typeof v === "string" ? Number(v) : v;
+        if (num === null || num === undefined || isNaN(num)) return "–";
+        return "£" + num.toFixed(2);
       }
 
       function formatPct(v) {
-        if (v === null || v === undefined || isNaN(v)) return "–";
-        const sign = v > 0 ? "+" : "";
-        return sign + v.toFixed(1) + "%";
+        const num = typeof v === "string" ? Number(v) : v;
+        if (num === null || num === undefined || isNaN(num)) return "–";
+        const sign = num > 0 ? "+" : "";
+        return sign + num.toFixed(1) + "%";
       }
 
       function destroyChart() {
@@ -339,12 +384,116 @@
             td.className =
               "px-3 py-2 whitespace-nowrap " +
               (idx === 0 ? "text-left text-gray-800" : "text-right text-gray-700");
+
+            // Colour-code gap columns based on pay_vs_ons_pct
+            if (idx === 4 || idx === 5) {
+              const pct = typeof r.pay_vs_ons_pct === "string"
+                ? Number(r.pay_vs_ons_pct)
+                : r.pay_vs_ons_pct;
+
+              td.className += " font-semibold";
+              if (pct > 0) {
+                td.className += " text-green-600";
+              } else if (pct < 0) {
+                td.className += " text-red-600";
+              }
+            }
+
             td.textContent = value;
             tr.appendChild(td);
           });
 
           tableBody.appendChild(tr);
         });
+      }
+
+      function updateSummary(results) {
+        if (!results.length) {
+          summaryCard.classList.add("hidden");
+          summaryAreas.textContent = "–";
+          summaryAdv.textContent = "–";
+          summaryOns.textContent = "–";
+          summaryGap.textContent = "–";
+          return;
+        }
+
+        const n = results.length;
+
+        const advVals = results
+          .map(r => (typeof r.median_pay_rate === "string" ? Number(r.median_pay_rate) : r.median_pay_rate))
+          .filter(v => typeof v === "number" && !isNaN(v));
+
+        const onsVals = results
+          .map(r => (typeof r.ons_median_hourly === "string" ? Number(r.ons_median_hourly) : r.ons_median_hourly))
+          .filter(v => typeof v === "number" && !isNaN(v));
+
+        const gapVals = results
+          .map(r => (typeof r.pay_vs_ons === "string" ? Number(r.pay_vs_ons) : r.pay_vs_ons))
+          .filter(v => typeof v === "number" && !isNaN(v));
+
+        function mean(arr) {
+          if (!arr.length) return null;
+          return arr.reduce((a, b) => a + b, 0) / arr.length;
+        }
+
+        const avgAdv = mean(advVals);
+        const avgOns = mean(onsVals);
+        const avgGap = mean(gapVals);
+
+        summaryAreas.textContent = n.toString();
+        summaryAdv.textContent = formatMoney(avgAdv);
+        summaryOns.textContent = onsVals.length ? formatMoney(avgOns) : "–";
+
+        if (avgGap === null || avgGap === undefined || isNaN(avgGap)) {
+          summaryGap.textContent = "–";
+          summaryGap.className = "font-semibold";
+        } else {
+          const pct = avgOns && avgOns !== 0 ? (avgAdv - avgOns) / avgOns * 100 : null;
+          const sign = avgGap > 0 ? "+" : "";
+          summaryGap.textContent =
+            sign + avgGap.toFixed(2) + " £/hr" + (pct !== null && !isNaN(pct) ? " (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%)" : "");
+
+          summaryGap.className = "font-semibold";
+          if (avgGap > 0) {
+            summaryGap.className += " text-green-700";
+          } else if (avgGap < 0) {
+            summaryGap.className += " text-red-700";
+          }
+        }
+
+        summaryCard.classList.remove("hidden");
+      }
+
+      function sortResults(results) {
+        const sortBy = sortSelect ? sortSelect.value : "gap_desc";
+        const arr = results.slice(); // shallow copy
+
+        function num(v) {
+          const n = typeof v === "string" ? Number(v) : v;
+          return typeof n === "number" && !isNaN(n) ? n : null;
+        }
+
+        if (sortBy === "gap_desc") {
+          arr.sort((a, b) => (num(b.pay_vs_ons) ?? -Infinity) - (num(a.pay_vs_ons) ?? -Infinity));
+        } else if (sortBy === "gap_asc") {
+          arr.sort((a, b) => (num(a.pay_vs_ons) ?? Infinity) - (num(b.pay_vs_ons) ?? Infinity));
+        } else if (sortBy === "adv_desc") {
+          arr.sort((a, b) => (num(b.median_pay_rate) ?? -Infinity) - (num(a.median_pay_rate) ?? -Infinity));
+        } else if (sortBy === "adv_asc") {
+          arr.sort((a, b) => (num(a.median_pay_rate) ?? Infinity) - (num(b.median_pay_rate) ?? Infinity));
+        } else if (sortBy === "adverts_desc") {
+          arr.sort((a, b) => (num(b.adverts_count) ?? -Infinity) - (num(a.adverts_count) ?? -Infinity));
+        } else if (sortBy === "alpha") {
+          arr.sort((a, b) => {
+            const la = (a.county || a.sector || "").toLowerCase();
+            const lb = (b.county || b.sector || "").toLowerCase();
+            if (la < lb) return -1;
+            if (la > lb) return 1;
+            return 0;
+          });
+        }
+
+        return arr;
       }
 
       async function loadData() {
@@ -358,7 +507,7 @@
           }
           const data = await resp.json();
 
-          const results = data.results || [];
+          const rawResults = data.results || [];
           const onsAvailable = !!data.ons_available;
           const onsYear = data.ons_year;
 
@@ -371,8 +520,11 @@
             onsYearLabel.textContent = "";
           }
 
+          const results = sortResults(rawResults);
+
           renderChart(results, groupBy);
           renderTable(results, groupBy);
+          updateSummary(results);
         } catch (err) {
           console.error("Failed to load pay compare data", err);
           destroyChart();
@@ -382,6 +534,7 @@
           rowCount.textContent = "";
           onsMeta.classList.add("hidden");
           onsYearLabel.textContent = "";
+          summaryCard.classList.add("hidden");
         }
       }
 
@@ -396,8 +549,17 @@
         document.getElementById("group_by").value = "county";
         document.getElementById("start_date").value = daysAgoIso(30);
         document.getElementById("end_date").value = todayIso();
+        sortSelect.value = "gap_desc";
         loadData();
       });
+
+      if (sortSelect) {
+        sortSelect.addEventListener("change", function () {
+          // Re-sort current data without re-hitting the API
+          // Easiest way: just call loadData again (filters already set)
+          loadData();
+        });
+      }
 
       initDefaults();
       loadData();

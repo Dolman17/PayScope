@@ -1,20 +1,20 @@
-# ons_loader.py
 from __future__ import annotations
 
 """
 Helpers for pulling ONS / Nomis earnings data (ASHE) via the REST API.
 
-This module is wired to the NM_99_1 dataset using the same parameters
-as your working CSV link, then filters down to:
+This module is deliberately lightweight:
 
-- A single year (requested year if available, otherwise latest)
-- Sex = "Total"
-- Item = "Median"
-- Pay = "Hourly pay - gross"
-- Measures = "20100" (Value, not Confidence)
+- Reads your Nomis Unique ID from the NOMIS_UID env var.
+- Fetches Annual Survey of Hours and Earnings (ASHE) data for a single year.
+- Returns a list of parsed rows ready to be stored / joined in the app.
 
-The function `import_ons_earnings_for_year(year)` returns a summary
-dict with a list of these rows; ons_importer.py handles DB upsert.
+At the moment this DOES NOT write to the database. The function
+`import_ons_earnings_for_year()` just downloads + parses and returns
+a summary dict so we can iterate on the schema safely.
+
+Once you're happy with the dataset & structure, we can add a simple
+OnsEarnings model and store these rows for fast joins in the UI.
 """
 
 import csv
@@ -35,39 +35,45 @@ load_dotenv()
 
 BASE_URL = "https://www.nomisweb.co.uk/api/v01"
 
-# Your Nomis Unique ID (from the Nomis account page)
+# Your Nomis Unique ID (from the page you screenshotted)
 # e.g. NOMIS_UID=0x2ebb06d0df0f3107c4cc4ea8211320cc306e94b
 NOMIS_UID = os.getenv("NOMIS_UID")
 
-# Dataset ID – from your URL this is NM_99_1
-ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID", "NM_99_1")
+# ------------------- IMPORTANT: DATASET CHOICES --------------------
+# Nomis has multiple ASHE datasets (workplace/residence, full/part-time etc).
+# Rather than hard-coding one, we make it configurable so you can point it
+# at exactly the query you build in the Nomis UI.
+#
+# Recommended approach:
+# 1) Use the Nomis web UI to build the query you want
+#    (ASHE earnings, "All employees", median gross hourly pay,
+#     geography = local authority / county).
+# 2) On the final "Format" page, choose "CSV" and copy the RESTful link.
+# 3) Take the dataset id (NM_xxx_x) and the key query parameters from that link
+#    and plug them into the constants below.
+#
+# Until you configure these, calls will raise a ValueError explaining what to set.
 
-# Geography – the huge list from your URL, stored in an env var
-# NOMIS_ASHE_GEOGRAPHY="1774190644,1774190725,...,1774190606"
-ASHE_GEOGRAPHY = os.getenv("NOMIS_ASHE_GEOGRAPHY")
+ASHE_DATASET_ID = os.getenv("NOMIS_ASHE_DATASET_ID")  # e.g. "NM_99_1"
 
-# Measures – from your URL: 20100 (Value) and 20701 (Confidence)
-# We will later filter to MEASURES="20100" only.
-ASHE_MEASURES = os.getenv("NOMIS_ASHE_MEASURES", "20100,20701")
+# Geography dimension: for your current link this is a long comma-separated
+# list of codes (including ranges like 1774190693...1774190698).
+ASHE_GEOGRAPHY = os.getenv("NOMIS_ASHE_GEOGRAPHY")  # that same geography=... string
 
-# Extra params straight from your URL, without geography / measures / date:
-#   sex=1...9&item=1...15&pay=5
-ASHE_EXTRA_PARAMS = os.getenv(
-    "NOMIS_ASHE_EXTRA_PARAMS",
-    "sex=1...9&item=1...15&pay=5",
-).strip()
+# Measures:
+#   20100 = Gross hourly pay (excluding overtime), median
+ASHE_MEASURES = os.getenv("NOMIS_ASHE_MEASURES")  # e.g. "20100"
 
-# The time dimension parameter name – your URL uses "date"
-ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")
+# Sex / full-time / occupation etc can also be constrained.
+# Copy these straight from the Nomis URL.
+ASHE_EXTRA_PARAMS = os.getenv("NOMIS_ASHE_EXTRA_PARAMS", "").strip()
+# Example:
+#   NOMIS_ASHE_EXTRA_PARAMS="sex=7&item=2&pay=5&freq=A"
+# These get appended to the query string as-is.
 
-# Date range expression – from your URL: latestMINUS3-latest
-ASHE_DATE_RANGE = os.getenv("NOMIS_ASHE_DATE_RANGE", "latestMINUS3-latest")
-
-# Target filters inside the dataset
-TARGET_ITEM_NAME = os.getenv("NOMIS_TARGET_ITEM_NAME", "Median")
-TARGET_SEX_NAME = os.getenv("NOMIS_TARGET_SEX_NAME", "Total")
-TARGET_PAY_NAME = os.getenv("NOMIS_TARGET_PAY_NAME", "Hourly pay - gross")
-TARGET_VALUE_MEASURE = os.getenv("NOMIS_TARGET_VALUE_MEASURE", "20100")
+# Some datasets use TIME, others DATE as the dimension id.
+# NM_99_1 uses DATE in the query string, even though the concept is TIME.
+ASHE_DATE_PARAM = os.getenv("NOMIS_ASHE_DATE_PARAM", "date")  # <-- KEY BIT
 
 
 # -------------------------------------------------------------------
@@ -101,7 +107,11 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
     Fetch raw CSV from a Nomis dataset.
 
     `dataset_id` is something like "NM_99_1".
-    `params` is the querystring dict (geography, date, measures, etc).
+    `params` is the querystring dict (geography, time/date, measures, etc).
+
+    IMPORTANT: We deliberately do NOT set `select`, `rows` or `cols` here.
+    The default CSV layout from your working Nomis URL is the "long" shape
+    with columns like DATE, GEOGRAPHY_CODE, MEASURES, OBS_VALUE.
     """
     if not dataset_id:
         raise ValueError(
@@ -111,24 +121,25 @@ def _nomis_get_csv(dataset_id: str, params: Dict[str, Any]) -> str:
 
     url = f"{BASE_URL}/dataset/{dataset_id}.data.csv"
 
-    # Inject UID if available
+    send_params = dict(params)
     if NOMIS_UID:
-        params = dict(params)
-        params["uid"] = NOMIS_UID
+        send_params["uid"] = NOMIS_UID
 
-    resp = requests.get(url, params=params, timeout=60)
+    print(f"[ONS] Requesting Nomis CSV: dataset={dataset_id}, params={send_params}")
 
+    resp = requests.get(url, params=send_params, timeout=60)
     try:
         resp.raise_for_status()
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(
-            f"Nomis request failed: {e!r} for dataset '{dataset_id}' "
-            f"with params {params}. "
-            f"This often means the dataset id or parameter combination "
-            f"is not valid. | URL={resp.url} | status={resp.status_code}"
+            f"Nomis request failed: {e!r} | URL={resp.url} | status={resp.status_code}"
         ) from e
 
-    return resp.text
+    text = resp.text or ""
+    first_line = text.splitlines()[0] if text else ""
+    print(f"[ONS] Raw CSV first line: {first_line[:400]!r}")
+
+    return text
 
 
 # -------------------------------------------------------------------
@@ -141,9 +152,9 @@ def _ensure_config():
     if not ASHE_DATASET_ID:
         missing.append("NOMIS_ASHE_DATASET_ID (e.g. NM_99_1)")
     if not ASHE_GEOGRAPHY:
-        missing.append("NOMIS_ASHE_GEOGRAPHY (huge geography list from your URL)")
+        missing.append("NOMIS_ASHE_GEOGRAPHY (full geography=... string)")
     if not ASHE_MEASURES:
-        missing.append("NOMIS_ASHE_MEASURES (e.g. 20100,20701)")
+        missing.append("NOMIS_ASHE_MEASURES (e.g. 20100 for median hourly)")
 
     if missing:
         raise ValueError(
@@ -155,43 +166,34 @@ def _ensure_config():
         )
 
 
-def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
+def import_ons_earnings_for_year(requested_year: int) -> Dict[str, Any]:
     """
-    Fetch ASHE earnings for a single *logical* year.
+    Fetch ASHE earnings for a single year from Nomis.
 
-    Behaviour:
+    Returns a summary dict:
 
-    - Always queries NM_99_1 with:
-        date=latestMINUS3-latest
-        geography=<your big list>
-        measures=20100,20701
-        sex=1...9
-        item=1...15
-        pay=5
-    - Parses the CSV.
-    - Finds all distinct years present in the DATE column.
-    - If `year` is present, we use that.
-      Otherwise we fall back to the latest year available.
-    - Then we filter to rows where:
-        DATE == effective_year
-        SEX_NAME == "Total"
-        PAY_NAME == "Hourly pay - gross"
-        ITEM_NAME == "Median"
-        MEASURES == "20100"
-    - Returns those rows as OnsEarningsRow dicts.
-
-    The returned `summary["year"]` is the *effective* year actually used.
+      {
+        "requested_year": 2024,
+        "effective_year": 2024,
+        "available_years": [2022, 2023, 2024],
+        "dataset_id": "...",
+        "measure_code": "...",
+        "row_count": 152,
+        "rows": [OnsEarningsRow.as_dict(), ...],
+      }
     """
     _ensure_config()
 
-    # Build params following your working URL structure
+    # Build core params for the CSV call.
+    # We use the DATE/TIME dimension from ASHE_DATE_PARAM.
     params: Dict[str, Any] = {
-        ASHE_DATE_PARAM: ASHE_DATE_RANGE,  # e.g. "date": "latestMINUS3-latest"
+        ASHE_DATE_PARAM: str(requested_year),
         "geography": ASHE_GEOGRAPHY,
         "measures": ASHE_MEASURES,
     }
 
-    # Extra params from NOMIS_ASHE_EXTRA_PARAMS, e.g. "sex=1...9&item=1...15&pay=5"
+    # Allow you to tack on extra params straight from your Nomis URL,
+    # e.g. "sex=7&item=2&pay=5&freq=A".
     if ASHE_EXTRA_PARAMS:
         for part in ASHE_EXTRA_PARAMS.split("&"):
             part = part.strip()
@@ -203,130 +205,95 @@ def import_ons_earnings_for_year(year: int) -> Dict[str, Any]:
 
     csv_text = _nomis_get_csv(ASHE_DATASET_ID, params)
 
-    # Tiny debug aid: show the first non-empty line
-    first_line = next((ln for ln in csv_text.splitlines() if ln.strip()), "")
-    print(f"[ONS] Raw CSV first line: {first_line[:200]}")
+    if not csv_text.strip():
+        print(
+            f"[ONS] WARNING: empty CSV returned for params {params}. Nothing to import."
+        )
+        return {
+            "requested_year": requested_year,
+            "effective_year": requested_year,
+            "dataset_id": ASHE_DATASET_ID,
+            "measure_code": ASHE_MEASURES,
+            "row_count": 0,
+            "available_years": [],
+            "rows": [],
+            "fetched_at": date.today().isoformat(),
+        }
 
     f = io.StringIO(csv_text)
     reader = csv.DictReader(f)
 
-    all_rows: List[Dict[str, Any]] = list(reader)
-    if not all_rows:
-        print(
-            f"[ONS] WARNING: 0 raw rows returned for params {params}. "
-            f"Nothing to import."
-        )
-        return {
-            "year": year,
-            "dataset_id": ASHE_DATASET_ID,
-            "measure_code": TARGET_VALUE_MEASURE,
-            "row_count": 0,
-            "rows": [],
-            "fetched_at": date.today().isoformat(),
-            "available_years": [],
-        }
+    rows: List[OnsEarningsRow] = []
+    available_years: set[int] = set()
 
-    # Determine which years exist in the data
-    raw_years = sorted({
-        (row.get("DATE") or "").strip()
-        for row in all_rows
-        if (row.get("DATE") or "").strip()
-    })
-    available_years = [int(y) for y in raw_years if y.isdigit()]
-
-    print(f"[ONS] Available ASHE years in response: {available_years}")
-
-    target_year_str = str(year)
-    if available_years and year in available_years:
-        effective_year = year
-    elif available_years:
-        effective_year = max(available_years)
-        print(
-            f"[ONS] Requested year {year} not in dataset; "
-            f"falling back to latest available year {effective_year}."
-        )
-    else:
-        # No parsable years at all; bail out
-        print("[ONS] No parsable DATE values found in CSV.")
-        return {
-            "year": year,
-            "dataset_id": ASHE_DATASET_ID,
-            "measure_code": TARGET_VALUE_MEASURE,
-            "row_count": 0,
-            "rows": [],
-            "fetched_at": date.today().isoformat(),
-            "available_years": [],
-        }
-
-    effective_year_str = str(effective_year)
-
-    # Filter rows down to the specific combination we care about
-    filtered: List[OnsEarningsRow] = []
-
-    for raw in all_rows:
-        if (raw.get("DATE") or "").strip() != effective_year_str:
-            continue
-
-        if (raw.get("MEASURES") or "").strip() != TARGET_VALUE_MEASURE:
-            continue
-
-        if (raw.get("PAY_NAME") or "").strip() != TARGET_PAY_NAME:
-            continue
-
-        if (raw.get("ITEM_NAME") or "").strip() != TARGET_ITEM_NAME:
-            continue
-
-        if (raw.get("SEX_NAME") or "").strip() != TARGET_SEX_NAME:
-            continue
-
+    for raw in reader:
+        # Nomis column names from your saved CSV:
+        # DATE, GEOGRAPHY_CODE, GEOGRAPHY_NAME, MEASURES, OBS_VALUE, ...
         geo_code = (raw.get("GEOGRAPHY_CODE") or "").strip()
         geo_name = (raw.get("GEOGRAPHY_NAME") or "").strip()
+        measure = (raw.get("MEASURES") or raw.get("MEASURES_NAME") or "").strip()
         val_raw = (raw.get("OBS_VALUE") or "").strip()
+        date_raw = (raw.get("DATE") or "").strip()
 
         if not geo_code and not geo_name:
+            # header / rubbish
             continue
+
+        # Track which years actually appear in the CSV
+        year_for_row: Optional[int] = None
+        if date_raw:
+            try:
+                year_for_row = int(date_raw)
+                available_years.add(year_for_row)
+            except ValueError:
+                year_for_row = None
 
         try:
             value = float(val_raw) if val_raw not in ("", ".", ":", None) else None
         except ValueError:
             value = None
 
-        filtered.append(
+        rows.append(
             OnsEarningsRow(
-                year=effective_year,
+                year=year_for_row or requested_year,
                 geography_code=geo_code,
                 geography_name=geo_name,
-                measure_code=TARGET_VALUE_MEASURE,
+                measure_code=measure,
                 value=value,
             )
         )
 
+    # Work out which year we're effectively getting
+    effective_year: int = requested_year
+    if available_years:
+        if requested_year in available_years:
+            effective_year = requested_year
+        else:
+            # Fallback to the max year in the CSV
+            effective_year = max(available_years)
+
     summary = {
-        "year": effective_year,  # actual dataset year used
+        "requested_year": requested_year,
+        "effective_year": effective_year,
         "dataset_id": ASHE_DATASET_ID,
-        "measure_code": TARGET_VALUE_MEASURE,
-        "row_count": len(filtered),
-        "rows": [r.as_dict() for r in filtered],
+        "measure_code": ASHE_MEASURES,
+        "row_count": len(rows),
+        "available_years": sorted(available_years),
+        "rows": [r.as_dict() for r in rows],
         "fetched_at": date.today().isoformat(),
-        "available_years": available_years,
     }
 
     print(
-        f"[ONS] Imported ASHE (NM_99_1) for {effective_year}: "
-        f"{summary['row_count']} rows (requested {year}) "
-        f"for {TARGET_SEX_NAME} / {TARGET_PAY_NAME} / {TARGET_ITEM_NAME} "
-        f"measure={TARGET_VALUE_MEASURE}"
+        f"[ONS] Imported ASHE earnings (requested {requested_year}, "
+        f"effective {effective_year}): {summary['row_count']} rows from "
+        f"dataset {ASHE_DATASET_ID}, available_years={summary['available_years']}"
     )
 
     if summary["row_count"] == 0:
         print(
-            "[ONS] WARNING: 0 filtered rows after applying "
-            f"SEX_NAME={TARGET_SEX_NAME!r}, PAY_NAME={TARGET_PAY_NAME!r}, "
-            f"ITEM_NAME={TARGET_ITEM_NAME!r}, MEASURES={TARGET_VALUE_MEASURE!r}. "
-            "Check that these match the values in the CSV."
+            f"[ONS] WARNING: 0 rows returned for params {params}. "
+            "This usually means the year is not yet available for this "
+            "dataset/measure, or the measure code / extra params are incompatible."
         )
 
     return summary
-
-
-

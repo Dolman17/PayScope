@@ -293,19 +293,32 @@ def backfill_counties():
 # -------------------------------------------------------------------
 # ONS IMPORT – BUTTON 1 (legacy route)
 # -------------------------------------------------------------------
+from sqlalchemy import func  # make sure this import is present near the top
+
 @bp.route("/admin/ons-import", methods=["POST"])
 @login_required
 def run_ons_import():
-    """
-    Legacy ONS import endpoint (kept so any existing form posting here still works).
-
-    Uses "previous year" logic directly via import_ons_earnings_to_db.
-    """
     if getattr(current_user, "admin_level", 0) != 1:
         abort(403)
 
+    from models import OnsEarnings  # local import to avoid cycles
+
+    # Which DB are we actually connected to?
+    db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI")
+    print("🔎 ONS IMPORT using DB URI:", db_uri)
+
+    # Target ASHE year (last completed year)
     year = date.today().year - 1
 
+    # Count rows for that year *before* the import
+    before_count = (
+        db.session.query(func.count())
+        .filter(OnsEarnings.year == year)
+        .scalar()
+    )
+    print(f"🔢 Before import: OnsEarnings rows for {year} = {before_count}")
+
+    # Run the importer INSIDE THIS APP CONTEXT
     result = import_ons_earnings_to_db(
         year,
         trigger="admin_button",
@@ -313,6 +326,15 @@ def run_ons_import():
         use_app_context=True,
     )
 
+    # Count rows for that year *after* the import
+    after_count = (
+        db.session.query(func.count())
+        .filter(OnsEarnings.year == year)
+        .scalar()
+    )
+    print(f"🔢 After import: OnsEarnings rows for {year} = {after_count}")
+
+    # Normal flash message logic
     if result.get("error"):
         flash(f"ONS import FAILED for {year}: {result['error']}", "error")
     else:
@@ -321,11 +343,13 @@ def run_ons_import():
         updated = result.get("updated", 0)
         flash(
             f"Imported ONS ASHE for {year}: "
-            f"fetched {fetched}, created {created}, updated {updated}.",
+            f"fetched {fetched}, created {created}, updated {updated}. "
+            f"(Before: {before_count}, after: {after_count})",
             "success",
         )
 
     return redirect(url_for("admin.admin_tools"))
+
 
 
 # -------------------------------------------------------------------
