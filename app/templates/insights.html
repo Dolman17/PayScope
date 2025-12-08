@@ -37,7 +37,7 @@
           Dataset snapshot
         </h2>
         <p class="mt-1 text-2xl font-semibold text-gray-900">
-          {{ records|length }}
+          {{ stats.total_count or records|length }}
         </p>
         <p class="mt-1 text-xs text-gray-500">
           records currently in view after filters are applied.
@@ -163,11 +163,10 @@
           <button type="submit" class="btn btn-primary flex-1 sm:flex-none">
             Apply Filters
           </button>
-          <!-- Optional: simple "reset" link back to base insights route -->
+          <!-- Reset back to the same route without query params -->
           <a href="{{ request.path }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
             Reset
           </a>
-
         </div>
       </div>
     </form>
