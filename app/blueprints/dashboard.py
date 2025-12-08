@@ -298,7 +298,9 @@ def insights():
         .limit(10)
         .all()
     )
-    top_counties = [{"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows]
+    top_counties = [
+        {"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows
+    ]
 
     # Top roles
     top_roles_rows = (
@@ -311,7 +313,7 @@ def insights():
     )
     top_roles = [{"role": r or "—", "count": int(n or 0)} for r, n in top_roles_rows]
 
-    # Sector breakdown (count + avg pay per sector)
+    # Sector breakdown (count + avg/min/max pay per sector)
     sector_rows = (
         db.session.query(
             sq.c.sector,
@@ -616,7 +618,15 @@ def insights():
 def admin_job_roles():
     """
     Admin view to see distinct job_role values and map them to canonical roles.
+    Self-healing: ensures job_role_mappings table exists before querying.
     """
+    # Make sure the mapping table exists (safe if already created)
+    try:
+        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        # If this somehow fails, we still try to render with empty mappings below
+        pass
+
     search = request.args.get("q", "").strip()
 
     q = db.session.query(
@@ -635,10 +645,13 @@ def admin_job_roles():
         .all()
     )
 
-    # Existing mappings keyed by raw_value
-    mappings = {
-        m.raw_value: m for m in JobRoleMapping.query.order_by(JobRoleMapping.raw_value).all()
-    }
+    # Existing mappings keyed by raw_value; if table is still missing for some reason,
+    # fall back to an empty dict rather than crashing.
+    try:
+        mapping_rows = JobRoleMapping.query.order_by(JobRoleMapping.raw_value).all()
+        mappings = {m.raw_value: m for m in mapping_rows}
+    except Exception:
+        mappings = {}
 
     uncategorised_roles_count = (
         db.session.query(func.count(JobRecord.id))
@@ -669,7 +682,15 @@ def admin_job_roles_map():
 
     if not raw_value or not canonical_role:
         flash("Raw value and canonical role are required.", "error")
-        return redirect(url_for("dashboard.admin_job_roles", q=request.args.get("q", "")))
+        return redirect(
+            url_for("dashboard.admin_job_roles", q=request.args.get("q", ""))
+        )
+
+    # Ensure table exists here as well, in case this endpoint is hit first.
+    try:
+        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        pass
 
     mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
     if mapping is None:
@@ -687,5 +708,8 @@ def admin_job_roles_map():
 
     db.session.commit()
     flash(f"Mapping saved for role '{raw_value}' → '{canonical_role}'.", "success")
-    return redirect(url_for("dashboard.admin_job_roles", q=request.args.get("q", "")))
+    return redirect(
+        url_for("dashboard.admin_job_roles", q=request.args.get("q", ""))
+    )
+
 
