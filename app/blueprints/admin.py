@@ -364,30 +364,71 @@ def run_ons_import_manual():
 # -------------------------------------------------------------------
 # Simple ONS inspection helper
 # -------------------------------------------------------------------
-@bp.route("/inspect/ons")
+@bp.route("/admin/inspect/ons")
 @superuser_required
 def inspect_ons():
-    rows = (
+    """
+    Quick JSON debug view of OnsEarnings:
+
+    - summary: counts per (year, measure_code)
+    - latest_rows: a few sample rows from the newest year in the table
+    """
+    from sqlalchemy import func
+    from models import OnsEarnings, db
+
+    # 1) Grouped summary: how many rows per (year, measure)
+    grouped = (
         db.session.query(
             OnsEarnings.year.label("year"),
             OnsEarnings.measure_code.label("measure_code"),
             func.count().label("count"),
         )
         .group_by(OnsEarnings.year, OnsEarnings.measure_code)
-        .order_by(OnsEarnings.year.desc(), OnsEarnings.measure_code)
+        .order_by(OnsEarnings.year.asc(), OnsEarnings.measure_code.asc())
         .all()
     )
 
-    payload = [
+    summary = [
         {
-            "year": int(r.year),
-            "measure_code": r.measure_code,
-            "count": int(r.count),
+            "year": int(row.year) if row.year is not None else None,
+            "measure_code": row.measure_code,
+            "count": int(row.count),
         }
-        for r in rows
+        for row in grouped
     ]
 
-    return jsonify({"ons_summary": payload})
+    # 2) Find the latest year actually present in the table
+    latest_year = db.session.query(func.max(OnsEarnings.year)).scalar()
+
+    latest_rows: list[dict] = []
+    if latest_year is not None:
+        # Grab a few sample rows from that latest year so we can see what's really there
+        samples = (
+            OnsEarnings.query
+            .filter(OnsEarnings.year == latest_year)
+            .order_by(OnsEarnings.geography_name.asc())
+            .limit(10)
+            .all()
+        )
+        latest_rows = [
+            {
+                "year": int(r.year) if r.year is not None else None,
+                "geography_code": r.geography_code,
+                "geography_name": r.geography_name,
+                "measure_code": r.measure_code,
+                "value": float(r.value) if r.value is not None else None,
+            }
+            for r in samples
+        ]
+
+    return jsonify(
+        {
+            "summary": summary,
+            "latest_year": int(latest_year) if latest_year is not None else None,
+            "latest_rows": latest_rows,
+        }
+    )
+
 
 
 
