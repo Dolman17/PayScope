@@ -243,7 +243,7 @@
     </div>
   </section>
 
-  <!-- Core charts (existing ones) -->
+  <!-- Core charts -->
   <section class="grid gap-6 xl:grid-cols-2 mb-8">
 
     <!-- Avg Pay by Sector -->
@@ -256,11 +256,22 @@
               Compare typical hourly rates across sectors in the filtered dataset.
             </p>
           </div>
-          <button type="button"
-                  onclick="downloadChart('sectorChart')"
-                  class="btn btn-secondary text-xs sm:text-sm">
-            Download PNG
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="text-gray-400 hover:text-gray-600"
+                    data-chart-info
+                    data-title="Average Pay by Sector"
+                    data-body="This chart shows the average hourly pay rate for each sector in the filtered dataset. Higher bars indicate sectors that pay more on average. Use this to compare how attractive each sector is from a pay perspective.">
+              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+              </svg>
+            </button>
+            <button type="button"
+                    onclick="downloadChart('sectorChart')"
+                    class="btn btn-secondary text-xs sm:text-sm">
+              Download PNG
+            </button>
+          </div>
         </div>
         <div class="resizable">
           <canvas id="sectorChart"></canvas>
@@ -278,11 +289,22 @@
               See how pay varies between roles within your chosen filters.
             </p>
           </div>
-          <button type="button"
-                  onclick="downloadChart('roleChart')"
-                  class="btn btn-secondary text-xs sm:text-sm">
-            Download PNG
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="text-gray-400 hover:text-gray-600"
+                    data-chart-info
+                    data-title="Average Pay by Role"
+                    data-body="This chart shows the average hourly pay for each job role in the filtered dataset. It is useful for comparing pay for frontline and leadership roles within the same market.">
+              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+              </svg>
+            </button>
+            <button type="button"
+                    onclick="downloadChart('roleChart')"
+                    class="btn btn-secondary text-xs sm:text-sm">
+              Download PNG
+            </button>
+          </div>
         </div>
         <div class="resizable">
           <canvas id="roleChart"></canvas>
@@ -300,11 +322,22 @@
               Distribution of records across counties for the current filter set.
             </p>
           </div>
-          <button type="button"
-                  onclick="downloadChart('countyPieChart')"
-                  class="btn btn-secondary text-xs sm:text-sm">
-            Download PNG
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="text-gray-400 hover:text-gray-600"
+                    data-chart-info
+                    data-title="Records by County"
+                    data-body="This chart shows how many records fall into each county. It is a proxy for sample size and activity level in each location, so low bars may indicate sparse data for that area.">
+              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+              </svg>
+            </button>
+            <button type="button"
+                    onclick="downloadChart('countyPieChart')"
+                    class="btn btn-secondary text-xs sm:text-sm">
+              Download PNG
+            </button>
+          </div>
         </div>
         <div class="resizable">
           <canvas id="countyPieChart"></canvas>
@@ -322,11 +355,22 @@
               Volume of records per sector to understand sample size.
             </p>
           </div>
-          <button type="button"
-                  onclick="downloadChart('sectorPieChart')"
-                  class="btn btn-secondary text-xs sm:text-sm">
-            Download PNG
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="text-gray-400 hover:text-gray-600"
+                    data-chart-info
+                    data-title="Records by Sector"
+                    data-body="This chart shows how many records you have in each sector. It highlights where the dataset is strongest and where conclusions should be treated with caution because of low volume.">
+              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+              </svg>
+            </button>
+            <button type="button"
+                    onclick="downloadChart('sectorPieChart')"
+                    class="btn btn-secondary text-xs sm:text-sm">
+              Download PNG
+            </button>
+          </div>
         </div>
         <div class="resizable">
           <canvas id="sectorPieChart"></canvas>
@@ -344,6 +388,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Pay distribution (bands)</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Pay distribution"
+                  data-body="This chart groups hourly pay into bands and shows how many records fall into each band. It gives a sense of the overall shape of the market, and whether pay is clustered around a narrow band or spread across a wide range.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="payHistogram"></canvas>
@@ -356,6 +409,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Pay range by sector</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Pay range by sector"
+                  data-body="This chart shows the minimum, average and maximum pay rates seen in each sector. A wide range indicates more volatility and variation in pay within that sector.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="sectorRangeChart"></canvas>
@@ -368,6 +430,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Average pay over time</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Average pay over time"
+                  data-body="This line chart shows how the average hourly pay in the filtered dataset changes over time by upload month. It is useful for spotting pay rises, squeezes and seasonal spikes.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="payTrendChart"></canvas>
@@ -380,6 +451,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Volatility by sector</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Volatility by sector"
+                  data-body="This chart uses standard deviation of pay to show how volatile each sector is. High values mean pay rates vary a lot inside that sector, which may indicate an unsettled or highly competitive market.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="sectorVolatilityChart"></canvas>
@@ -392,6 +472,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Sector × county pay</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Sector by county pay"
+                  data-body="This stacked chart compares average pay for different sectors inside each county. It helps identify geographic hot spots where certain sectors pay more than others.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="sectorCountyHeatChart"></canvas>
@@ -404,6 +493,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Top 10 companies by average pay</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Top companies by pay"
+                  data-body="This chart lists the employers that pay the highest average rates in the filtered dataset. It helps identify pay leaders and potential competitors when benchmarking your own rates.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="topCompaniesChart"></canvas>
@@ -416,6 +514,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Pay outliers over time</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Pay outliers over time"
+                  data-body="This scatter plot highlights pay rates that sit far above or below the typical range for the filtered dataset. These points can represent unusually cheap roles, premium rates or data quality issues.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="outlierScatterChart"></canvas>
@@ -428,6 +535,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Role mix by sector</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Role mix by sector"
+                  data-body="This stacked chart shows the mix of job roles inside each sector. It helps you understand workforce composition and whether the data you are viewing is mainly frontline, leadership or specialist roles.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="roleMixChart"></canvas>
@@ -440,6 +556,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Top counties – pay trend</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Top counties pay trend"
+                  data-body="This chart tracks average pay over time for the busiest counties in your filtered dataset. It shows which areas are inflating fastest and where pay has remained flat.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="countyTrendChart"></canvas>
@@ -452,6 +577,15 @@
       <div class="p-5 sm:p-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-gray-800">Role × sector pay matrix</h2>
+          <button type="button"
+                  class="text-gray-400 hover:text-gray-600"
+                  data-chart-info
+                  data-title="Role by sector pay matrix"
+                  data-body="This matrix compares average pay for each role across different sectors. It highlights where the same role is paid differently depending on the sector it sits in.">
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
+            </svg>
+          </button>
         </div>
         <div class="resizable">
           <canvas id="roleSectorMatrixChart"></canvas>
@@ -462,7 +596,7 @@
   </section>
 </div>
 
-<!-- Confirm modal -->
+<!-- AI confirm modal -->
 <div id="aiConfirmModal" class="fixed inset-0 z-[1000] hidden" aria-hidden="true">
   <div class="absolute inset-0 bg-black/40"></div>
   <div class="absolute inset-0 flex items-center justify-center p-4">
@@ -477,6 +611,40 @@
         <div class="mt-5 flex flex-col sm:flex-row gap-3 sm:justify-end">
           <button id="cancelAi" class="btn btn-secondary w-full sm:w-auto">Cancel</button>
           <button id="confirmAi" class="btn btn-primary w-full sm:w-auto">Yes, analyse</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart info modal -->
+<div id="chartInfoModal" class="fixed inset-0 z-[1000] hidden" aria-hidden="true">
+  <div class="absolute inset-0 bg-black/40"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="chartInfoTitle" class="text-lg font-semibold text-gray-900">
+              Chart information
+            </h3>
+            <p id="chartInfoBody" class="mt-2 text-sm text-gray-600">
+              <!-- filled by JS -->
+            </p>
+          </div>
+          <button type="button"
+                  id="closeChartInfo"
+                  class="ml-2 text-gray-400 hover:text-gray-600">
+            <span class="sr-only">Close</span>
+            <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M4.22 4.22a.75.75 0 0 1 1.06 0L10 8.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L11.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 0 1-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+            </svg>
+          </button>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <button type="button" class="btn btn-secondary text-sm" id="chartInfoOk">
+            Got it
+          </button>
         </div>
       </div>
     </div>
@@ -530,7 +698,7 @@
   <script src="{{ url_for('static', filename='insights_charts.js') }}"></script>
 
   <script>
-    // --- Modal controls ---
+    // --- AI modal ---
     const modal = document.getElementById('aiConfirmModal');
     const openBtn = document.getElementById('openAiConfirm');
     const cancelBtn = document.getElementById('cancelAi');
@@ -624,7 +792,39 @@
     }
 
     confirmBtn?.addEventListener('click', runAIAnalysis);
+
+    // --- Chart info modal ---
+    const chartInfoModal = document.getElementById('chartInfoModal');
+    const chartInfoTitle = document.getElementById('chartInfoTitle');
+    const chartInfoBody = document.getElementById('chartInfoBody');
+    const chartInfoClose = document.getElementById('closeChartInfo');
+    const chartInfoOk = document.getElementById('chartInfoOk');
+
+    function openChartInfo(title, body) {
+      chartInfoTitle.textContent = title || 'Chart information';
+      chartInfoBody.textContent = body || '';
+      chartInfoModal.classList.remove('hidden');
+    }
+
+    function closeChartInfo() {
+      chartInfoModal.classList.add('hidden');
+    }
+
+    chartInfoClose?.addEventListener('click', closeChartInfo);
+    chartInfoOk?.addEventListener('click', closeChartInfo);
+    chartInfoModal?.addEventListener('click', (e) => {
+      if (e.target === chartInfoModal) closeChartInfo();
+    });
+
+    document.querySelectorAll('[data-chart-info]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const title = btn.getAttribute('data-title') || '';
+        const body = btn.getAttribute('data-body') || '';
+        openChartInfo(title, body);
+      });
+    });
   </script>
 {% endblock %}
+
 
 
