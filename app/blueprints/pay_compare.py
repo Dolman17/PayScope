@@ -164,7 +164,6 @@ def _ensure_ons_index() -> Optional[int]:
         f"[PAY_COMPARE] Built ONS index for year {year}: "
         f"{len(ONS_GEOG_LIST)} geographies"
     )
-    # Sample a few for sanity
     sample = ONS_GEOG_LIST[:15]
     print("[PAY_COMPARE] Sample ONS geographies:", sample)
 
@@ -184,7 +183,6 @@ def _hint_for_area(raw_name: str) -> str:
         print(f"[PAY_COMPARE] HINT (dict): '{raw_name}' -> '{hint}'")
         return hint
 
-    # Mild normalisation for things like "UK", "Scotland", etc can be added here if needed.
     return s
 
 
@@ -208,12 +206,12 @@ def _match_to_ons_geography(raw_name: Optional[str]) -> Optional[str]:
     # Try an exact-ish match first, case-insensitive
     for g in candidates:
         if g.lower() == hint.lower():
-            print(f"[PAY_COMPARE] ONS GEO EXACT: '{raw_name}' -> '{g}'")
+            print(f"[PAY_COMPARE] ONS GEO EXACT: raw='{raw_name}' -> '{g}' (via hint)")
             return g
 
     for g in candidates:
         if g.lower() == raw_name.strip().lower():
-            print(f"[PAY_COMPARE] ONS GEO EXACT RAW: '{raw_name}' -> '{g}'")
+            print(f"[PAY_COMPARE] ONS GEO EXACT: raw='{raw_name}' -> '{g}'")
             return g
 
     # Step 2: fuzzy-match using RapidFuzz or difflib
@@ -230,12 +228,10 @@ def _match_to_ons_geography(raw_name: Optional[str]) -> Optional[str]:
             name, score, _ = match
             best_name, best_score = name, float(score)
     else:
-        # difflib returns score conceptually; we use cutoff 0.6 (60%)
         matches = get_close_matches(hint, candidates, n=1, cutoff=0.6)
         if matches:
             best_name = matches[0]
-            # we don't get a numeric score easily here; fake one for logging
-            best_score = 80.0
+            best_score = 80.0  # arbitrary "good enough" score for difflib
 
     if best_name:
         print(
@@ -271,6 +267,9 @@ def _match_to_ons_geography(raw_name: Optional[str]) -> Optional[str]:
     return None
 
 
+# ------------------------------------------------------------------
+# MAIN: Pay Explorer data
+# ------------------------------------------------------------------
 def get_pay_explorer_data(
     start_date_str: str | None,
     end_date_str: str | None,
@@ -351,15 +350,15 @@ def get_pay_explorer_data(
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
             ons_val = None
-            ons_geo = _match_to_ons_geography(raw_name) if raw_name and ONS_VALUES else None
-            if ons_geo:
-                ons_val = ONS_VALUES.get(ons_geo)
-
-            if raw_name and ons_val is None:
-                print(
-                    f"[PAY_COMPARE] NO ONS VALUE: "
-                    f"raw='{raw_name}', matched_geo='{ons_geo}'"
-                )
+            if raw_name and ONS_VALUES:
+                matched_geo = _match_to_ons_geography(raw_name)
+                if matched_geo:
+                    ons_val = ONS_VALUES.get(matched_geo)
+                if matched_geo and ons_val is None:
+                    print(
+                        f"[PAY_COMPARE] NO ONS VALUE: "
+                        f"raw='{raw_name}', matched_geo='{matched_geo}'"
+                    )
 
             pay_vs_ons = None
             pay_vs_ons_pct = None
@@ -453,15 +452,15 @@ def get_pay_explorer_data(
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
             ons_val = None
-            ons_geo = _match_to_ons_geography(raw_name) if raw_name and ONS_VALUES else None
-            if ons_geo:
-                ons_val = ONS_VALUES.get(ons_geo)
-
-            if raw_name and ons_val is None:
-                print(
-                    f"[PAY_COMPARE] NO ONS VALUE (sector_county): "
-                    f"raw='{raw_name}', matched_geo='{ons_geo}'"
-                )
+            if raw_name and ONS_VALUES:
+                matched_geo = _match_to_ons_geography(raw_name)
+                if matched_geo:
+                    ons_val = ONS_VALUES.get(matched_geo)
+                if matched_geo and ons_val is None:
+                    print(
+                        f"[PAY_COMPARE] NO ONS VALUE (sector_county): "
+                        f"raw='{raw_name}', matched_geo='{matched_geo}'"
+                    )
 
             pay_vs_ons = None
             pay_vs_ons_pct = None
@@ -499,8 +498,9 @@ def get_pay_explorer_data(
         },
     }
 
+
 # ------------------------------------------------------------------
-# DEBUG HELPERS – surface mapping in a browser instead of logs
+# DEBUG HELPERS – used by /admin/debug/pay-explorer-mapping
 # ------------------------------------------------------------------
 
 def _debug_match_to_ons_geography(raw_name: Optional[str]):
@@ -646,4 +646,5 @@ def build_pay_explorer_debug_snapshot(
     debug_rows.sort(key=lambda x: x["raw_county"])
 
     return debug_rows, ons_year
+
 
