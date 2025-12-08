@@ -200,12 +200,12 @@ class JobRoleMapping(db.Model):
     __tablename__ = "job_role_mappings"
 
     id = db.Column(db.Integer, primary_key=True)
-    raw_value = db.Column(db.Text, unique=True, nullable=False)  # full raw title
-    canonical_role = db.Column(db.String(255), nullable=False)   # e.g. "Support Worker"
-    source = db.Column(db.String(50))                            # optional: "adzuna", "indeed" etc
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    raw_value = db.Column(db.Text, unique=True, nullable=False)
+    canonical_role = db.Column(db.String(255), nullable=False)
+    source = db.Column(db.String(50))  # optional: e.g. "adzuna", "indeed"
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
 
