@@ -498,3 +498,152 @@ def get_pay_explorer_data(
             "group_by": group_by,
         },
     }
+
+# ------------------------------------------------------------------
+# DEBUG HELPERS – surface mapping in a browser instead of logs
+# ------------------------------------------------------------------
+
+def _debug_match_to_ons_geography(raw_name: Optional[str]):
+    """
+    Same idea as _match_to_ons_geography, but returns debug metadata:
+    (matched_geo, method, score).
+
+    method is one of:
+      - 'NO_INDEX'     : no ONS index loaded
+      - 'EMPTY'        : raw_name was empty
+      - 'EXACT_HINT'   : case-insensitive exact match on hint
+      - 'EXACT_RAW'    : case-insensitive exact match on raw name
+      - 'FUZZY_HINT'   : fuzzy match using hint string
+      - 'FUZZY_RAW'    : fuzzy match using raw string
+      - 'NONE'         : nothing suitable found
+    score is a numeric similarity score where we can compute one, else None.
+    """
+    if not raw_name:
+        return None, "EMPTY", None
+    if not ONS_GEOG_LIST:
+        return None, "NO_INDEX", None
+
+    hint = _hint_for_area(raw_name)
+    candidates = ONS_GEOG_LIST
+
+    # 1) Exact-ish on hint
+    for g in candidates:
+        if g.lower() == hint.lower():
+            return g, "EXACT_HINT", 100.0
+
+    # 2) Exact-ish on raw
+    for g in candidates:
+        if g.lower() == raw_name.strip().lower():
+            return g, "EXACT_RAW", 100.0
+
+    # 3) Fuzzy on hint
+    best_name = None
+    best_score = None
+
+    if _HAS_RAPIDFUZZ:
+        match = process.extractOne(
+            hint,
+            candidates,
+            scorer=fuzz.token_set_ratio,
+        )
+        if match:
+            name, score, _ = match
+            best_name, best_score = name, float(score)
+    else:
+        matches = get_close_matches(hint, candidates, n=1, cutoff=0.6)
+        if matches:
+            best_name = matches[0]
+            best_score = 80.0  # arbitrary "good enough" score for difflib
+
+    if best_name is not None:
+        return best_name, "FUZZY_HINT", best_score
+
+    # 4) Fuzzy on raw if hint failed
+    if _HAS_RAPIDFUZZ:
+        match = process.extractOne(
+            raw_name,
+            candidates,
+            scorer=fuzz.token_set_ratio,
+        )
+        if match:
+            name, score, _ = match
+            return name, "FUZZY_RAW", float(score)
+    else:
+        matches = get_close_matches(raw_name, candidates, n=1, cutoff=0.6)
+        if matches:
+            name = matches[0]
+            return name, "FUZZY_RAW", 80.0
+
+    return None, "NONE", None
+
+
+def build_pay_explorer_debug_snapshot(
+    days: int = 30,
+) -> Tuple[List[dict], Optional[int]]:
+    """
+    Build a debug snapshot of how Pay Explorer is mapping counties to ONS:
+
+    Returns (rows, ons_year) where rows is a list of dicts:
+      {
+        "raw_county": "West London",
+        "adverts": 111,
+        "adv_median": 17.65,
+        "matched_geo": "London Borough of Hounslow",
+        "match_method": "FUZZY_HINT",
+        "match_score": 92.0,
+        "ons_median": 19.02,
+      }
+    """
+
+    # Ensure ONS index is ready
+    ons_year = _ensure_ons_index()
+
+    today = date.today()
+    start = today - timedelta(days=days)
+    end = today
+
+    base_filters = [
+        JobSummaryDaily.date >= start,
+        JobSummaryDaily.date <= end,
+    ]
+
+    q = (
+        db.session.query(
+            JobSummaryDaily.county.label("county"),
+            func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
+            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
+        )
+        .filter(*base_filters)
+        .group_by(JobSummaryDaily.county)
+    )
+
+    rows = q.all()
+
+    debug_rows: List[dict] = []
+
+    for r in rows:
+        raw_name = r.county.strip() if r.county else None
+        adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
+
+        matched_geo, method, score = _debug_match_to_ons_geography(raw_name)
+        ons_val = None
+        if matched_geo and ONS_VALUES:
+            ons_val = ONS_VALUES.get(matched_geo)
+
+        debug_rows.append(
+            {
+                "raw_county": raw_name or "Unknown",
+                "adverts": int(r.adverts_count or 0),
+                "adv_median": adv_med,
+                "matched_geo": matched_geo,
+                "match_method": method,
+                "match_score": score,
+                "ons_median": ons_val,
+            }
+        )
+
+    # Sort for readability
+    debug_rows.sort(key=lambda x: x["raw_county"])
+
+    return debug_rows, ons_year
+
