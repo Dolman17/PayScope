@@ -6,7 +6,10 @@
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Pay Explorer</h1>
+      <h1 class="text-2xl font-bold text-gray-900">
+        Pay Explorer
+        <span class="text-xs font-medium text-gray-400 align-middle">(v3)</span>
+      </h1>
       <p class="text-sm text-gray-600">
         Compare live advertised pay against ONS median earnings by county.
       </p>
@@ -359,6 +362,9 @@
         tableEmpty.classList.add("hidden");
         rowCount.textContent = `${results.length} rows`;
 
+        // Debug: confirm ons_median_hourly values reaching the table renderer
+        console.log("Pay Explorer results (first 10 rows):", results.slice(0, 10));
+
         results.forEach(r => {
           const tr = document.createElement("tr");
 
@@ -482,7 +488,7 @@
         } else if (sortBy === "adv_asc") {
           arr.sort((a, b) => (num(a.median_pay_rate) ?? Infinity) - (num(b.median_pay_rate) ?? Infinity));
         } else if (sortBy === "adverts_desc") {
-          arr.sort((a, b) => (num(b.adverts_count) ?? -Infinity) - (num(a.adverts_count) ?? -Infinity));
+          arr.sort((a, b) => (num(b.adverts_count) ?? -Infinity) - (num(a.adverts_count) ?? Infinity));
         } else if (sortBy === "alpha") {
           arr.sort((a, b) => {
             const la = (a.county || a.sector || "").toLowerCase();
@@ -510,6 +516,8 @@
           const rawResults = data.results || [];
           const onsAvailable = !!data.ons_available;
           const onsYear = data.ons_year;
+
+          console.log("Pay Explorer API data:", data);
 
           // ONS meta badge
           if (onsAvailable && onsYear) {
@@ -566,3 +574,4 @@
     })();
   </script>
 {% endblock %}
+
