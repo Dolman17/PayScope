@@ -5,26 +5,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
-import logging
-from difflib import get_close_matches
-
 from sqlalchemy import func
 
 from models import db, JobSummaryDaily, OnsEarnings
 
 print("=== pay_compare.py loaded (Pay Explorer) ===")
-logger = logging.getLogger(__name__)
-
-# Try to use RapidFuzz if available for better fuzzy matching
-try:
-    from rapidfuzz import fuzz, process  # type: ignore
-
-    _HAS_RAPIDFUZZ = True
-    print("[PAY_COMPARE] RapidFuzz detected – using for ONS geography fuzzy matching.")
-except Exception:
-    _HAS_RAPIDFUZZ = False
-    print("[PAY_COMPARE] RapidFuzz not available – falling back to difflib.")
-
 
 # ONS measure code for:
 # "Gross hourly pay (excluding overtime), median"
@@ -33,11 +18,10 @@ ONS_MEDIAN_HOURLY_MEASURE_CODE = "20100"
 
 
 # ------------------------------------------------------------------
-# Fuzzy county → canonical ONS geography name mapping
+# Explicit area → ONS local authority mapping
 # ------------------------------------------------------------------
 # Keys are UPPERCASED JobSummaryDaily.county labels.
-# Values should map to *some* valid OnsEarnings.geography_name,
-# but we now also sanity-check & fuzzy-match against actual ONS names.
+# Values must be valid OnsEarnings.geography_name values for the ONS year.
 FUZZY_TO_CANONICAL_2024: Dict[str, str] = {
     # London macro labels → representative boroughs
     "WEST LONDON": "Hounslow",
@@ -88,84 +72,6 @@ FUZZY_TO_CANONICAL_2024: Dict[str, str] = {
     "ALVECHURCH": "Bromsgrove",
 }
 
-# ------------------------------------------------------------------
-# Cache of available ONS geography names for the latest year
-# ------------------------------------------------------------------
-
-ONS_GEOG_CACHE_YEAR: Optional[int] = None
-ONS_GEOG_NAMES: Set[str] = set()
-
-
-def _ensure_ons_geog_cache(year: int) -> None:
-    """
-    Populate the global ONS_GEOG_NAMES with the distinct geography_name
-    values we actually have in OnsEarnings for the given year.
-    """
-    global ONS_GEOG_CACHE_YEAR, ONS_GEOG_NAMES
-
-    if year and ONS_GEOG_CACHE_YEAR == year and ONS_GEOG_NAMES:
-        return
-
-    rows = (
-        db.session.query(OnsEarnings.geography_name)
-        .filter(
-            OnsEarnings.year == year,
-            OnsEarnings.measure_code == ONS_MEDIAN_HOURLY_MEASURE_CODE,
-        )
-        .distinct()
-        .all()
-    )
-
-    names: Set[str] = set()
-    for (name,) in rows:
-        if name:
-            names.add(name.strip())
-
-    ONS_GEOG_CACHE_YEAR = year
-    ONS_GEOG_NAMES = names
-
-    print(f"[PAY_COMPARE] Cached {len(ONS_GEOG_NAMES)} ONS geography names for year {year}")
-
-
-def _fuzzy_match_geography(name: str) -> Optional[str]:
-    """
-    Fuzzy match an arbitrary county/area name to the closest ONS geography_name.
-    Uses RapidFuzz if installed, otherwise difflib.get_close_matches.
-    """
-    if not name:
-        return None
-    if not ONS_GEOG_NAMES:
-        # Nothing to match against; bail out
-        return None
-
-    candidates = list(ONS_GEOG_NAMES)
-
-    # Try exact-ish first (case-insensitive)
-    for g in candidates:
-        if g.lower() == name.lower():
-            return g
-
-    if _HAS_RAPIDFUZZ:
-        # token_set_ratio copes well with extra words / order changes
-        match = process.extractOne(
-            name,
-            candidates,
-            scorer=fuzz.token_set_ratio,
-            score_cutoff=80,  # tweak if needed
-        )
-        if match:
-            best_name, score, _ = match
-            print(f"[PAY_COMPARE] FUZZY ONS GEO: '{name}' -> '{best_name}' (score={score})")
-            return best_name
-    else:
-        best = get_close_matches(name, candidates, n=1, cutoff=0.8)
-        if best:
-            best_name = best[0]
-            print(f"[PAY_COMPARE] FUZZY ONS GEO (difflib): '{name}' -> '{best_name}'")
-            return best_name
-
-    return None
-
 
 def _parse_date(value: str | None, default: date) -> date:
     if not value:
@@ -178,91 +84,84 @@ def _parse_date(value: str | None, default: date) -> date:
 
 def _get_latest_ons_year() -> Optional[int]:
     """
-    Return the newest ONS ASHE year we have in the DB, or None if empty.
+    Return the newest ONS ASHE year we have in the DB for the
+    median measure we actually use.
     """
-    return db.session.query(func.max(OnsEarnings.year)).scalar()
+    latest_year = (
+        db.session.query(func.max(OnsEarnings.year))
+        .filter(OnsEarnings.measure_code == ONS_MEDIAN_HOURLY_MEASURE_CODE)
+        .scalar()
+    )
+    print(
+        f"[PAY_COMPARE] _get_latest_ons_year (measure={ONS_MEDIAN_HOURLY_MEASURE_CODE}) -> "
+        f"{latest_year}"
+    )
+    return latest_year
 
 
-def _canonicalise_county_name(name: Optional[str]) -> Optional[str]:
+def _map_to_canonical_geography(raw: Optional[str]) -> Optional[str]:
     """
-    Normalise JobSummaryDaily.county into something that should exist
-    in OnsEarnings.geography_name.
+    Map a raw JobSummaryDaily.county label to a canonical ONS geography_name.
 
-    Steps (in order):
-    - Trim whitespace
-    - Handle explicit FUZZY_TO_CANONICAL_2024 dictionary overrides
-    - Handle specific London-region heuristics
-    - If we have an ONS geography cache, check for direct matches
-    - Otherwise fuzzy-match against ONS geography_name values
+    This does NOT look in the DB – it just applies our explicit rules.
     """
-    if not name:
+    if not raw:
         return None
 
-    raw = name.strip()
-    upper = raw.upper()
-    candidate = raw  # default if nothing smarter kicks in
+    s = raw.strip()
+    upper = s.upper()
 
-    # Explicit dictionary mapping
-    dict_match = FUZZY_TO_CANONICAL_2024.get(upper)
-    if dict_match:
-        print(f"[PAY_COMPARE] FUZZY MAP (dict): '{raw}' -> '{dict_match}'")
-        candidate = dict_match
-    else:
-        # Heuristic fallbacks (deal with weird spacing / punctuation)
-        if "WEST LONDON" in upper:
-            candidate = "Hounslow"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif "NORTH LONDON" in upper:
-            candidate = "Enfield"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif "EAST LONDON" in upper:
-            candidate = "Tower Hamlets"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif "SOUTH EAST LONDON" in upper:
-            candidate = "Lewisham"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif "SOUTH WEST LONDON" in upper:
-            candidate = "Wandsworth"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif "CENTRAL LONDON" in upper:
-            candidate = "Westminster"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
-        elif upper == "LONDON":
-            candidate = "Westminster"
-            print(f"[PAY_COMPARE] HEURISTIC MAP: '{raw}' -> '{candidate}'")
+    mapped = FUZZY_TO_CANONICAL_2024.get(upper)
+    if mapped:
+        print(f"[PAY_COMPARE] MAP (dict): '{raw}' -> '{mapped}'")
+        return mapped
 
-    # If we don't yet have an ONS geography cache, we can't validate/fuzzy,
-    # so return the best candidate we have.
-    if not ONS_GEOG_NAMES:
-        return candidate
+    # Heuristic fallbacks (for safety)
+    if "WEST LONDON" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Hounslow'")
+        return "Hounslow"
+    if "NORTH LONDON" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Enfield'")
+        return "Enfield"
+    if "EAST LONDON" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Tower Hamlets'")
+        return "Tower Hamlets"
+    if "SOUTH EAST LONDON" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Lewisham'")
+        return "Lewisham"
+    if "SOUTH WEST LONDON" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Wandsworth'")
+        return "Wandsworth"
+    if "CENTRAL LONDON" in upper or upper == "LONDON":
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Westminster'")
+        return "Westminster"
+    if "SCOTLAND" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Glasgow City'")
+        return "Glasgow City"
+    if "WEST YORKSHIRE" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Leeds'")
+        return "Leeds"
+    if "WEST MIDLANDS" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Birmingham'")
+        return "Birmingham"
+    if "GREATER MANCHESTER" in upper:
+        print(f"[PAY_COMPARE] MAP (heuristic): '{raw}' -> 'Manchester'")
+        return "Manchester"
 
-    # If candidate is already a valid ONS geography_name, we're done.
-    if candidate in ONS_GEOG_NAMES:
-        return candidate
-
-    # Try fuzzy against ONS geography names
-    fuzzy = _fuzzy_match_geography(candidate)
-    if fuzzy:
-        print(f"[PAY_COMPARE] FINAL CANONICAL (fuzzy): '{raw}' / '{candidate}' -> '{fuzzy}'")
-        return fuzzy
-
-    # As a last resort, try fuzzy on the raw input
-    raw_fuzzy = _fuzzy_match_geography(raw)
-    if raw_fuzzy:
-        print(f"[PAY_COMPARE] FINAL CANONICAL (raw fuzzy): '{raw}' -> '{raw_fuzzy}'")
-        return raw_fuzzy
-
-    # Default – keep the candidate name as-is (may not match any ONS row)
-    return candidate
+    # Default – treat raw label as the geography name
+    return s
 
 
 def _build_ons_map(counties: Set[str]) -> Tuple[Dict[str, float], Optional[int]]:
     """
-    Return (map of canonical_name -> median value, year).
+    Return (map of geography_name -> median value, year).
 
-    - Only uses rows for the latest available ONS year.
-    - Filters to measure_code=ONS_MEDIAN_HOURLY_MEASURE_CODE.
-    - Only used when grouping includes county.
+    Strategy:
+    - Determine latest ONS year that has the right measure_code.
+    - Build a set of all geography names we want ONS for:
+        - every raw county label
+        - plus any canonical mappings from FUZZY_TO_CANONICAL_2024/_map_to_canonical_geography.
+    - Query OnsEarnings for all of those names.
     """
     if not counties:
         return {}, None
@@ -272,19 +171,24 @@ def _build_ons_map(counties: Set[str]) -> Tuple[Dict[str, float], Optional[int]]
         print("[PAY_COMPARE] No ONS earnings data found in DB.")
         return {}, None
 
-    # Populate ONS_GEOG_NAMES so _canonicalise_county_name can use it
-    _ensure_ons_geog_cache(latest_year)
-
-    # Canonicalise all county labels into valid-ish ONS geography_name values
     canonical_names: Set[str] = set()
+
     for c in counties:
-        canon = _canonicalise_county_name(c)
-        if canon:
-            canonical_names.add(canon)
+        if not c:
+            continue
+        raw = c.strip()
+        canonical_names.add(raw)
+
+        mapped = _map_to_canonical_geography(raw)
+        if mapped:
+            canonical_names.add(mapped)
+
+    # Remove empties just in case
+    canonical_names = {n for n in canonical_names if n}
 
     print(
         f"[PAY_COMPARE] ONS lookup for year {latest_year}, "
-        f"canonical_names={sorted(canonical_names)}"
+        f"names={sorted(canonical_names)}"
     )
 
     if not canonical_names:
@@ -303,8 +207,8 @@ def _build_ons_map(counties: Set[str]) -> Tuple[Dict[str, float], Optional[int]]
     ons_map: Dict[str, float] = {}
     for r in rows:
         if r.value is not None and r.geography_name:
-            # Keyed by the ONS geography_name
-            ons_map[r.geography_name.strip()] = float(r.value)
+            key = r.geography_name.strip()
+            ons_map[key] = float(r.value)
 
     print(f"[PAY_COMPARE] Loaded {len(ons_map)} ONS rows for Pay Explorer")
 
@@ -386,30 +290,33 @@ def get_pay_explorer_data(
             ons_year = year
 
         for r in rows:
-            display_name = r.county or "Unknown county"
-            canonical_name = _canonicalise_county_name(r.county) if r.county else None
+            display_name = r.county or "Unknown"
+            raw_name = r.county.strip() if r.county else None
+            canonical_name = _map_to_canonical_geography(raw_name) if raw_name else None
 
-            if canonical_name and canonical_name != r.county:
-                print(f"[PAY_COMPARE] RESULT MAP: county='{r.county}' uses canonical='{canonical_name}'")
+            if canonical_name and canonical_name != raw_name:
+                print(
+                    f"[PAY_COMPARE] RESULT MAP: county='{raw_name}' "
+                    f"uses canonical='{canonical_name}'"
+                )
 
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
-            # ons_map is keyed by ONS geography_name
             ons_val = None
             if canonical_name:
-                # try direct; if not found, last-ditch fuzzy vs map keys
+                # Prefer canonical mapping (e.g. West London -> Hounslow)
                 ons_val = ons_map.get(canonical_name)
-                if ons_val is None and ons_map:
-                    fuzzy_geo = _fuzzy_match_geography(canonical_name)
-                    if fuzzy_geo and fuzzy_geo in ons_map:
-                        print(
-                            f"[PAY_COMPARE] LATE FUZZY MAP: canonical='{canonical_name}' -> '{fuzzy_geo}' "
-                            f"(county='{r.county}')"
-                        )
-                        ons_val = ons_map.get(fuzzy_geo)
+                # If that fails, fall back to raw
+                if ons_val is None and raw_name:
+                    ons_val = ons_map.get(raw_name)
+            elif raw_name:
+                ons_val = ons_map.get(raw_name)
 
-            if canonical_name and ons_val is None:
-                print(f"[PAY_COMPARE] NO ONS MATCH: canonical='{canonical_name}' (county='{r.county}')")
+            if raw_name and ons_val is None:
+                print(
+                    f"[PAY_COMPARE] NO ONS MATCH: "
+                    f"raw='{raw_name}', canonical='{canonical_name}'"
+                )
 
             pay_vs_ons = None
             pay_vs_ons_pct = None
@@ -503,13 +410,14 @@ def get_pay_explorer_data(
             ons_year = year
 
         for r in rows:
-            display_name = r.county or "Unknown county"
-            canonical_name = _canonicalise_county_name(r.county) if r.county else None
+            display_name = r.county or "Unknown"
+            raw_name = r.county.strip() if r.county else None
+            canonical_name = _map_to_canonical_geography(raw_name) if raw_name else None
 
-            if canonical_name and canonical_name != r.county:
+            if canonical_name and canonical_name != raw_name:
                 print(
                     f"[PAY_COMPARE] RESULT MAP (sector_county): "
-                    f"county='{r.county}' uses canonical='{canonical_name}'"
+                    f"county='{raw_name}' uses canonical='{canonical_name}'"
                 )
 
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
@@ -517,19 +425,15 @@ def get_pay_explorer_data(
             ons_val = None
             if canonical_name:
                 ons_val = ons_map.get(canonical_name)
-                if ons_val is None and ons_map:
-                    fuzzy_geo = _fuzzy_match_geography(canonical_name)
-                    if fuzzy_geo and fuzzy_geo in ons_map:
-                        print(
-                            f"[PAY_COMPARE] LATE FUZZY MAP (sector_county): canonical='{canonical_name}' "
-                            f"-> '{fuzzy_geo}' (county='{r.county}')"
-                        )
-                        ons_val = ons_map.get(fuzzy_geo)
+                if ons_val is None and raw_name:
+                    ons_val = ons_map.get(raw_name)
+            elif raw_name:
+                ons_val = ons_map.get(raw_name)
 
-            if canonical_name and ons_val is None:
+            if raw_name and ons_val is None:
                 print(
                     f"[PAY_COMPARE] NO ONS MATCH (sector_county): "
-                    f"canonical='{canonical_name}' (county='{r.county}')"
+                    f"raw='{raw_name}', canonical='{canonical_name}'"
                 )
 
             pay_vs_ons = None
@@ -567,4 +471,3 @@ def get_pay_explorer_data(
             "group_by": group_by,
         },
     }
-
