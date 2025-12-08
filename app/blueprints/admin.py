@@ -1112,7 +1112,7 @@ def backfill_company_ids():
 
     return redirect(url_for("admin.admin_companies"))
 
-@bp.route("/admin/utils/create-job-role-mapping-table")
+@bp.route("/utils/create-job-role-mapping-table")
 @login_required
 def create_job_role_mapping_table():
     """
@@ -1125,7 +1125,7 @@ def create_job_role_mapping_table():
     JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
     flash("JobRoleMapping table has been created (or already existed).", "success")
 
-    # This assumes you've added admin_job_roles() on the dashboard blueprint
+    # After creation, send you to the Job Role Cleaner admin view
     return redirect(url_for("dashboard.admin_job_roles"))
 
 
