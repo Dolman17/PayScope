@@ -323,7 +323,7 @@ def _canonicalise_job_roles_with_ai(
     trigger: str = "scheduled",
     triggered_by: str | None = None,
     day_label: str | None = None,
-    max_roles: int = 200,
+    max_roles: int = 500,
     chunk_size: int = 25,
 ) -> dict:
     """
@@ -730,7 +730,7 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
 def run_job_role_canonicaliser(
     trigger: str = "manual",
     triggered_by: str | None = None,
-    max_roles: int = 500,
+    max_roles: int = 5000,
 ) -> dict:
     """
     One-off entry point to canonicalise job roles on demand.
