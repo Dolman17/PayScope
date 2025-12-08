@@ -164,9 +164,10 @@
             Apply Filters
           </button>
           <!-- Optional: simple "reset" link back to base insights route -->
-          <a href="{{ url_for('insights') }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
+          <a href="{{ request.path }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
             Reset
           </a>
+
         </div>
       </div>
     </form>
