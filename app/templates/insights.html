@@ -19,7 +19,6 @@
     <button id="openAiConfirm"
             class="btn btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-2">
       <span>
-        <!-- Simple sparkles icon -->
         <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M10 2.5 11.3 6l3.7 1.3L11.3 8.7 10 12.2 8.7 8.7 5 7.3 8.7 6 10 2.5Zm-5 8.5.8 2.2L8 14l-2.2.8L5 17l-.8-2.2L2 14l2.2-.8L5 11Z" />
         </svg>
@@ -207,7 +206,6 @@
           <button type="submit" class="btn btn-primary flex-1 sm:flex-none">
             Apply Filters
           </button>
-          <!-- Reset back to the same route without query params -->
           <a href="{{ request.path }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
             Reset
           </a>
@@ -245,8 +243,8 @@
     </div>
   </section>
 
-  <!-- Charts -->
-  <section class="grid gap-6 xl:grid-cols-2">
+  <!-- Core charts (existing ones) -->
+  <section class="grid gap-6 xl:grid-cols-2 mb-8">
 
     <!-- Avg Pay by Sector -->
     <div class="card">
@@ -337,6 +335,131 @@
     </div>
 
   </section>
+
+  <!-- Advanced insights: new charts -->
+  <section class="grid gap-6 xl:grid-cols-2">
+
+    <!-- 1. Pay distribution histogram -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Pay distribution (bands)</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="payHistogram"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Pay range by sector -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Pay range by sector</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="sectorRangeChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Pay trend over time -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Average pay over time</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="payTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Sector volatility (std dev) -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Volatility by sector</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="sectorVolatilityChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Sector × county pay -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Sector × county pay</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="sectorCountyHeatChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Top companies by pay -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Top 10 companies by average pay</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="topCompaniesChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Pay outlier scatter -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Pay outliers over time</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="outlierScatterChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Role mix by sector -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Role mix by sector</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="roleMixChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9. County pay trends -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Top counties – pay trend</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="countyTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. Role × sector matrix -->
+    <div class="card">
+      <div class="p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-800">Role × sector pay matrix</h2>
+        </div>
+        <div class="resizable">
+          <canvas id="roleSectorMatrixChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </section>
 </div>
 
 <!-- Confirm modal -->
@@ -398,7 +521,6 @@
 
 {% block scripts %}
   <script>
-    // Records already reflect the current filters for this page
     const records = {{ records|tojson }};
     const currentFilters = {{ filters|tojson }};
     const stats = {{ stats|tojson }};
@@ -504,4 +626,5 @@
     confirmBtn?.addEventListener('click', runAIAnalysis);
   </script>
 {% endblock %}
+
 
