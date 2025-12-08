@@ -28,6 +28,7 @@ from models import (
     Company,
     CronRunLog,
     OnsEarnings,
+    JobRoleMapping,
 )
 from .utils import (
     commit_or_rollback,
@@ -1110,6 +1111,14 @@ def backfill_company_ids():
         print("Backfill error:", e)
 
     return redirect(url_for("admin.admin_companies"))
+
+@bp.route("/admin/utils/create-job-role-mapping-table")
+@login_required  # ideally wrap with your superuser decorator if you have one
+def create_job_role_mapping_table():
+    # This is idempotent: if the table already exists, nothing happens.
+    JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    flash("JobRoleMapping table has been created (or already existed).", "success")
+    return redirect(url_for("dashboard.admin_job_roles"))
 
 
 # -------------------------------------------------------------------
