@@ -311,7 +311,7 @@ function buildTopCompaniesChart() {
   });
 }
 
-// 7. Pay outlier scatter (from records sample)
+// 7. Pay outlier scatter (from records sample) – FIXED: no time scale
 function buildOutlierScatterChart() {
   const ctx = getCanvas("outlierScatterChart");
   if (!ctx || !records || !records.length) return;
@@ -319,6 +319,7 @@ function buildOutlierScatterChart() {
   const points = records
     .filter((r) => r.pay_rate != null && r.imported_year && r.imported_month)
     .map((r) => ({
+      // numeric timestamp for linear scale
       x: new Date(r.imported_year, (r.imported_month || 1) - 1).getTime(),
       y: r.pay_rate,
     }));
@@ -326,8 +327,7 @@ function buildOutlierScatterChart() {
   if (!points.length) return;
 
   const ys = points.map((p) => p.y);
-  const mean =
-    ys.reduce((acc, v) => acc + v, 0) / (ys.length || 1);
+  const mean = ys.reduce((acc, v) => acc + v, 0) / (ys.length || 1);
   const variance =
     ys.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (ys.length || 1);
   const stddev = Math.sqrt(variance);
@@ -345,9 +345,8 @@ function buildOutlierScatterChart() {
     }
   });
 
-  // Convert timestamps to Date for time scale
-  const normalData = normal.map((p) => ({ x: new Date(p.x), y: p.y }));
-  const outlierData = outliers.map((p) => ({ x: new Date(p.x), y: p.y }));
+  const normalData = normal.map((p) => ({ x: p.x, y: p.y }));
+  const outlierData = outliers.map((p) => ({ x: p.x, y: p.y }));
 
   new Chart(ctx, {
     type: "scatter",
@@ -367,8 +366,16 @@ function buildOutlierScatterChart() {
       responsive: true,
       scales: {
         x: {
-          type: "time",
-          time: { unit: "month" },
+          type: "linear",
+          ticks: {
+            callback: function (value) {
+              const d = new Date(value);
+              if (Number.isNaN(d.getTime())) return "";
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, "0");
+              return `${y}-${m}`;
+            },
+          },
         },
         y: {
           beginAtZero: false,
@@ -425,7 +432,6 @@ function buildCountyTrendChart() {
   const entries = Object.entries(stats.county_trends);
   if (!entries.length) return;
 
-  // Build union of all month labels
   const allPoints = [];
   entries.forEach(([county, rows]) => {
     rows.forEach((r) => allPoints.push(toMonthLabel(r.year, r.month)));
