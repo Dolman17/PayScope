@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Data • PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-16">
+
+    <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white mb-6">
+        Data Sources
+    </h1>
+
+    <p class="text-gray-600 dark:text-gray-300 text-lg mb-10">
+        PayScope blends multiple data feeds to create a real-time picture of the labour market.
+    </p>
+
+    <div class="space-y-4">
+
+        <div class="card p-6">
+            <h2 class="text-xl font-semibold mb-2">Live Job Adverts</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+                Scraped daily from major job boards, deduplicated and normalised.
+            </p>
+        </div>
+
+        <div class="card p-6">
+            <h2 class="text-xl font-semibold mb-2">ONS Earnings</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+                Compare real-time pay with official UK median and percentile earnings.
+            </p>
+        </div>
+
+        <div class="card p-6">
+            <h2 class="text-xl font-semibold mb-2">Public Labour-Market Data</h2>
+            <p class="text-gray-600 dark:text-gray-300">
+                Apprenticeships, vacancies, region demand, NAO datasets and more.
+            </p>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
