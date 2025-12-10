@@ -29,6 +29,7 @@ from models import (
     CronRunLog,
     OnsEarnings,
     JobRoleMapping,
+    ensure_default_organisation
 )
 from .utils import (
     commit_or_rollback,
@@ -241,6 +242,34 @@ def manage_users():
 
     users = User.query.all()
     return render_template("manage_users.html", users=users)
+
+@admin_bp.route("/admin/seed-default-org")
+@login_required
+def seed_default_org():
+    # Only admins/superusers
+    if getattr(current_user, "admin_level", 0) not in (1, 2):
+        abort(403)
+
+    org = ensure_default_organisation()
+
+    # Attach all users without an organisation
+    users = User.query.filter(User.organisation_id.is_(None)).all()
+    for u in users:
+        u.organisation_id = org.id
+        # Safety: if somehow org_role is null/empty, make them owners
+        if not u.org_role:
+            u.org_role = "owner"
+    db.session.commit()
+
+    flash(
+        f"Seeded default organisation '{org.name}'. "
+        f"Attached {len(users)} users.",
+        "success",
+    )
+    return redirect(url_for("records.records"))
+
+
+
 
 
 # -------------------------------------------------------------------
