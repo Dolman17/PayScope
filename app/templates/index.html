@@ -2,97 +2,84 @@
 {% block title %}PayScope • Real-Time Pay Insights{% endblock %}
 
 {% block content %}
-<div class="flex flex-col">
-
-  <!-- HERO – premium dark -->
-  <section class="bg-slate-900 text-slate-100">
-    <div class="max-w-6xl mx-auto py-16 lg:py-20 px-4 grid lg:grid-cols-2 gap-10 items-center fade-in-on-scroll">
-
-      <!-- Left -->
-      <div>
-        <div class="inline-flex items-center gap-2 rounded-full bg-slate-800/80 border border-slate-700 px-3 py-1 mb-4 text-[11px] text-slate-300">
-          <span class="inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
-          <span>UK-first pay benchmarking, built for HR</span>
-        </div>
-
-        <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight mb-4">
-          Real-time pay benchmarking - [DEBUG]
-          <span style="color: var(--brand-light);">your exec team can trust.</span>
-        </h1>
-
-        <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-6 max-w-xl">
-          PayScope blends live job adverts with ONS earnings so you can see exactly how your pay
-          compares – by role, region and sector – without wrestling spreadsheet monsters.
-        </p>
-
-        <div class="flex flex-col sm:flex-row gap-3 mb-6">
-          <a href="{{ url_for('maps.map_sector_select') }}"
-             class="btn btn-primary w-full sm:w-auto justify-center">
-            Explore Pay Rates
-          </a>
-
-          {% if not current_user.is_authenticated %}
-          <a href="{{ url_for('auth.login') }}"
-             class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
-            Log in to Dashboard
-          </a>
-          {% else %}
-          <a href="{{ url_for('dashboard.dashboard') }}"
-             class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
-            Open Dashboard
-          </a>
-          {% endif %}
-        </div>
-
-        <p class="text-[11px] text-slate-400">
-          Data sources: live job boards • ONS • apprenticeship data • public UK labour-market datasets.
-        </p>
+<section class="bg-slate-900 text-slate-100 py-16">
+  <div class="max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-10 items-center">
+    <div>
+      <div class="inline-flex items-center gap-2 rounded-full bg-slate-800/80 border border-slate-700 px-3 py-1 mb-4 text-[11px] text-slate-300">
+        <span class="inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+        <span>UK-first pay benchmarking, built for HR</span>
       </div>
 
-      <!-- Right – “product” snapshot -->
-      <div class="relative">
-        <div class="absolute inset-0 blur-3xl bg-gradient-to-br from-[var(--brand)]/25 via-sky-400/10 to-transparent pointer-events-none"></div>
+      <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight mb-4">
+        Real-time pay benchmarking
+        <span style="color: var(--brand-light);">your exec team can trust.</span>
+      </h1>
 
-        <div class="relative bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-soft space-y-4 card-hover">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-              <span class="text-[11px] font-medium text-slate-300">PayScope • Market View</span>
-            </div>
-            <span class="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 font-semibold">
-              Benchmark ready
-            </span>
-          </div>
+      <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-6 max-w-xl">
+        PayScope blends live job adverts with ONS earnings so you can see exactly how your pay
+        compares – by role, region and sector – without wrestling spreadsheet monsters.
+      </p>
 
-          <div class="bg-slate-950 rounded-xl p-4 border border-slate-700 mb-4">
-            <p class="text-[11px] text-slate-400 uppercase">Median hourly pay</p>
-            <p class="text-3xl font-bold text-white">£13.42</p>
-            <p class="text-[11px] text-slate-500">ONS + live adverts • UK</p>
-          </div>
+      <div class="flex flex-col sm:flex-row gap-3 mb-6">
+        <a href="{{ url_for('maps.map_sector_select') }}"
+           class="btn btn-primary w-full sm:w-auto justify-center">
+          Explore Pay Rates
+        </a>
 
-          <div class="grid grid-cols-3 gap-2 text-sm text-slate-200 mb-3">
-            <div class="bg-slate-950 border border-slate-700 rounded-lg p-3">
-              <p class="text-[10px] text-slate-500 uppercase mb-1">Coverage</p>
-              <p class="font-semibold">UK-wide</p>
-            </div>
-            <div class="bg-slate-950 border border-slate-700 rounded-lg p-3">
-              <p class="text-[10px] text-slate-500 uppercase mb-1">Data feeds</p>
-              <p class="font-semibold">Live + ONS</p>
-            </div>
-            <div class="bg-slate-950 border border-slate-700 rounded-lg p-3">
-              <p class="text-[10px] text-slate-500 uppercase mb-1">Refresh</p>
-              <p class="font-semibold">Daily scrape</p>
-            </div>
-          </div>
+        {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('auth.login') }}"
+           class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
+          Log in to Dashboard
+        </a>
+        {% else %}
+        <a href="{{ url_for('dashboard.dashboard') }}"
+           class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
+          Open Dashboard
+        </a>
+        {% endif %}
+      </div>
 
-          <div class="flex items-center justify-between text-[11px] text-slate-500">
-            <span>Region: West Midlands</span>
-            <span>Updated: {{ benchmark_updated_at or "Today" }}</span>
-          </div>
+      <p class="text-[11px] text-slate-400">
+        Data sources: live job boards • ONS • apprenticeship data • public UK labour-market datasets.
+      </p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <p class="text-[11px] text-slate-300">PayScope • Market View</p>
+        <span class="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 font-semibold">
+          Benchmark ready
+        </span>
+      </div>
+
+      <div class="bg-slate-900 rounded-xl p-4 border border-slate-700 mb-4">
+        <p class="text-[11px] text-slate-400 uppercase">Median hourly pay</p>
+        <p class="text-3xl font-bold text-white">£13.42</p>
+        <p class="text-[11px] text-slate-500">ONS + live adverts • UK</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 text-sm text-slate-200 mb-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
+          <p class="text-[10px] text-slate-500 uppercase mb-1">Coverage</p>
+          <p class="font-semibold">UK-wide</p>
         </div>
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
+          <p class="text-[10px] text-slate-500 uppercase mb-1">Data feeds</p>
+          <p class="font-semibold">Live + ONS</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
+          <p class="text-[10px] text-slate-500 uppercase mb-1">Refresh</p>
+          <p class="font-semibold">Daily scrape</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-[11px] text-slate-400">
+        <span>Region: West Midlands</span>
+        <span>Updated: {{ benchmark_updated_at or "Today" }}</span>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
   <!-- “Trusted by / segments” strip -->
   <section class="bg-slate-800 border-b border-slate-700">
