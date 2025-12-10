@@ -278,3 +278,25 @@ class Organisation(db.Model):
         return f"<Organisation {self.id} {self.slug}>"
 
 
+from datetime import datetime
+
+def ensure_default_organisation():
+    """
+    Idempotent helper: ensure there's a 'Default Organisation' row and return it.
+    Safe to call multiple times.
+    """
+    from app import db  # avoid circulars at import time
+    org = Organisation.query.filter_by(slug="default").first()
+    if not org:
+        org = Organisation(
+            name="Default Organisation",
+            slug="default",
+            is_active=True,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(org)
+        db.session.commit()
+    return org
+
+
+
