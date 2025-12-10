@@ -49,6 +49,8 @@
     html, body { height: 100%; }
     body {
       font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background-color: #f9fafb;
+      color: #111827;
     }
 
     .btn{
@@ -70,6 +72,7 @@
     .btn-primary:hover{
       background: var(--brand-600);
       transform: translateY(-1px);
+      box-shadow: 0 14px 35px rgba(15,23,42,0.45);
     }
     .btn-secondary{
       background:#fff;
@@ -79,6 +82,7 @@
     .btn-secondary:hover{
       background: rgba(0,91,90,0.06);
       transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(15,23,42,0.35);
     }
 
     .card{
@@ -151,14 +155,21 @@
       z-index:40;
     }
 
-    /* Hover motion utility for cards */
+    /* Hover motion + glow for cards */
     .card-hover{
-      transition: transform 180ms ease-out, box-shadow 180ms ease-out, border-color 180ms ease-out;
+      transition:
+        transform 180ms ease-out,
+        box-shadow 220ms ease-out,
+        border-color 220ms ease-out,
+        background-color 220ms ease-out;
     }
     .card-hover:hover{
       transform: translateY(-2px);
-      box-shadow: 0 20px 35px rgba(15,23,42,0.16);
-      border-color: rgba(1, 96, 177, 0.35);
+      box-shadow:
+        0 18px 45px rgba(15,23,42,0.75),
+        0 0 0 1px rgba(45,212,191,0.35);
+      border-color: rgba(45,212,191,0.5);
+      background-color: rgba(15,23,42,0.98);
     }
 
     /* Fade-in-on-scroll animation */
@@ -170,6 +181,86 @@
     .fade-in-on-scroll.is-visible{
       opacity: 1;
       transform: translateY(0);
+    }
+
+    /* Hero gradient shell + brand particles (used on index) */
+    .hero-shell{
+      position: relative;
+      overflow: hidden;
+      border-radius: 1.5rem;
+      background:
+        radial-gradient(circle at top left, rgba(45,212,191,0.18), transparent 55%),
+        radial-gradient(circle at bottom right, rgba(59,130,246,0.22), transparent 60%),
+        #020617;
+      border: 1px solid rgba(148,163,184,0.4);
+      box-shadow: 0 28px 80px rgba(15,23,42,0.95);
+    }
+    .hero-shell::before{
+      content:"";
+      position:absolute;
+      inset:-1px;
+      border-radius: inherit;
+      border:1px solid rgba(15,23,42,0.9);
+      pointer-events:none;
+    }
+    .hero-orbit{
+      position: absolute;
+      border-radius: 9999px;
+      pointer-events: none;
+      opacity: 0.55;
+      filter: blur(0);
+    }
+    .hero-orbit--teal{
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(45,212,191,0.8), transparent 60%);
+      top:-40px;
+      right:-40px;
+    }
+    .hero-orbit--blue{
+      width: 260px;
+      height: 260px;
+      background: radial-gradient(circle, rgba(59,130,246,0.8), transparent 60%);
+      bottom:-80px;
+      left:-80px;
+      opacity:0.5;
+    }
+    .hero-orbit--amber{
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(251,191,36,0.7), transparent 60%);
+      top:32%;
+      left:46%;
+      opacity:0.25;
+    }
+
+    /* Dark-mode overrides */
+    @media (prefers-color-scheme: dark){
+      body{
+        background-color:#020617;
+        color:#e5e7eb;
+      }
+      .card{
+        background-color:#020617;
+        border-color:#1f2937;
+        box-shadow: 0 10px 40px rgba(15,23,42,0.9);
+      }
+      .flash-success{
+        background:#022c22;
+        color:#6ee7b7;
+      }
+      .flash-info{
+        background:#1e293b;
+        color:#bfdbfe;
+      }
+      .flash-error{
+        background:#450a0a;
+        color:#fecaca;
+      }
+      footer{
+        background-color:#020617;
+        border-top-color:#020617;
+      }
     }
   </style>
 
@@ -394,5 +485,6 @@
 
 </body>
 </html>
+
 
 
