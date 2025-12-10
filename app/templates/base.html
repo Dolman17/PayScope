@@ -28,7 +28,7 @@
     :root{
       /* Core brand tokens */
       --brand: #005b5a;
-      --brand-light: #60A5FA;   /* tweak if you want a different light accent */
+      --brand-light: #60A5FA;
       --brand-dark: #013462;
 
       /* Existing design tokens */
@@ -152,7 +152,7 @@
       backdrop-filter: saturate(180%) blur(6px);
     }
 
-    /* New: hover motion utility for cards */
+    /* Hover motion utility for cards */
     .card-hover{
       transition: transform 180ms ease-out, box-shadow 180ms ease-out, border-color 180ms ease-out;
     }
@@ -162,7 +162,7 @@
       border-color: rgba(1, 96, 177, 0.35);
     }
 
-    /* New: fade-in-on-scroll animation */
+    /* Fade-in-on-scroll animation */
     .fade-in-on-scroll{
       opacity: 0;
       transform: translateY(8px);
@@ -203,7 +203,6 @@
           <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
           <a href="{{ url_for('upload.upload') }}" class="nav-chip">Upload</a>
           <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
-          <!-- Pay Explorer link -->
           <a href="{{ url_for('maps.pay_explorer') }}" class="nav-chip">Pay Explorer</a>
           <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
 
@@ -236,8 +235,8 @@
     {% endwith %}
   </div>
 
-  <!-- Main Content -->
-  <main class="flex-grow max-w-7xl mx-auto px-4 py-6">
+  <!-- Main Content (now full-width; pages manage their own max-width) -->
+  <main class="flex-grow w-full">
     {% block content %}{% endblock %}
   </main>
 
@@ -287,4 +286,5 @@
 
 </body>
 </html>
+
 
