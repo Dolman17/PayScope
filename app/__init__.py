@@ -67,7 +67,7 @@ def create_app():
     from .blueprints.upload import bp as upload_bp
     from .blueprints.main import bp as main_bp
     from .blueprints.api import bp as api_bp      # ⬅️ NEW IMPORT
-    from blueprints.marketing import marketing_bp
+    from .blueprints.marketing import marketing_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
