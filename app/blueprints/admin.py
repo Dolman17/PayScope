@@ -181,6 +181,9 @@ def manage_users():
     if request.method == "POST":
         action = request.form.get("action")
 
+        # ----------------------------------------------------
+        # ADD USER
+        # ----------------------------------------------------
         if action == "add":
             from werkzeug.security import generate_password_hash
 
@@ -193,18 +196,44 @@ def manage_users():
             elif db.session.query(User).filter_by(username=username).first():
                 flash("Username already exists.", "error")
             else:
+                # Attach new user to the same organisation as the current user,
+                # or fall back to the default org.
+                org = getattr(current_user, "organisation", None)
+                if org is None:
+                    org = ensure_default_organisation()
+
+                # Derive org_role from admin_level:
+                #  - superuser (1)  -> owner
+                #  - admin (2)      -> admin
+                #  - normal (0)     -> member
+                if admin_level == 1:
+                    org_role = "owner"
+                elif admin_level == 2:
+                    org_role = "admin"
+                else:
+                    org_role = "member"
+
                 new_user = User(
                     username=username,
                     password=generate_password_hash(password),
                     admin_level=admin_level,
+                    organisation_id=org.id,
+                    org_role=org_role,
                 )
                 db.session.add(new_user)
                 try:
                     commit_or_rollback()
-                    flash(f"User '{username}' added.", "success")
+                    flash(
+                        f"User '{username}' added "
+                        f"(org={org.slug}, role={org_role}, admin_level={admin_level}).",
+                        "success",
+                    )
                 except Exception:
                     flash("Failed to add user.", "error")
 
+        # ----------------------------------------------------
+        # DELETE USER
+        # ----------------------------------------------------
         elif action == "delete":
             user_id = request.form.get("user_id")
             if not user_id:
@@ -223,6 +252,9 @@ def manage_users():
                 else:
                     flash("User not found.", "error")
 
+        # ----------------------------------------------------
+        # UPDATE USER (admin_level only for now)
+        # ----------------------------------------------------
         elif action == "update":
             user_id = request.form.get("user_id")
             admin_level = request.form.get("admin_level")
@@ -232,6 +264,18 @@ def manage_users():
                 user = db.session.get(User, int(user_id))
                 if user:
                     user.admin_level = int(admin_level)
+
+                    # Optionally keep org_role roughly in sync:
+                    if user.admin_level == 1:
+                        user.org_role = "owner"
+                    elif user.admin_level == 2:
+                        user.org_role = "admin"
+                    else:
+                        # Don't auto-downgrade owners if you ever want to keep them;
+                        # here we keep it simple and treat level 0 as member.
+                        if user.org_role != "owner":
+                            user.org_role = "member"
+
                     try:
                         commit_or_rollback()
                         flash("User updated.", "success")
@@ -242,6 +286,7 @@ def manage_users():
 
     users = User.query.all()
     return render_template("manage_users.html", users=users)
+
 
 @bp.route("/seed-default-org")
 @login_required
