@@ -2,12 +2,14 @@
 {% block title %}PayScope • Real-Time Pay Insights{% endblock %}
 
 {% block content %}
-<section class="bg-slate-900 text-slate-100 py-16">
+<section class="bg-gray-900 text-gray-50 py-16">
   <div class="max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-10 items-center">
+
+    <!-- LEFT: HERO COPY -->
     <div>
-      <div class="inline-flex items-center gap-2 rounded-full bg-slate-800/80 border border-slate-700 px-3 py-1 mb-4 text-[11px] text-slate-300">
-        <span class="inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
-        <span>UK-first pay benchmarking, built for HR</span>
+      <div class="inline-flex items-center gap-2 rounded-full bg-gray-800 border border-gray-600 px-3 py-1 mb-4 text-[11px] text-gray-200">
+        <span class="inline-flex h-2 w-2 rounded-full bg-green-400"></span>
+        <span>UK-first pay benchmarking, built for HR [DARK DEBUG]</span>
       </div>
 
       <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight mb-4">
@@ -15,7 +17,7 @@
         <span style="color: var(--brand-light);">your exec team can trust.</span>
       </h1>
 
-      <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-6 max-w-xl">
+      <p class="text-gray-300 text-sm sm:text-base leading-relaxed mb-6 max-w-xl">
         PayScope blends live job adverts with ONS earnings so you can see exactly how your pay
         compares – by role, region and sector – without wrestling spreadsheet monsters.
       </p>
@@ -28,200 +30,59 @@
 
         {% if not current_user.is_authenticated %}
         <a href="{{ url_for('auth.login') }}"
-           class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
+           class="btn btn-secondary w-full sm:w-auto justify-center bg-gray-800 border-gray-600 hover:bg-gray-700">
           Log in to Dashboard
         </a>
         {% else %}
         <a href="{{ url_for('dashboard.dashboard') }}"
-           class="btn btn-secondary w-full sm:w-auto justify-center bg-slate-800 border-slate-600 hover:bg-slate-700">
+           class="btn btn-secondary w-full sm:w-auto justify-center bg-gray-800 border-gray-600 hover:bg-gray-700">
           Open Dashboard
         </a>
         {% endif %}
       </div>
 
-      <p class="text-[11px] text-slate-400">
+      <p class="text-[11px] text-gray-400">
         Data sources: live job boards • ONS • apprenticeship data • public UK labour-market datasets.
       </p>
     </div>
 
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+    <!-- RIGHT: SNAPSHOT CARD -->
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl p-6 card-hover">
       <div class="flex items-center justify-between mb-4">
-        <p class="text-[11px] text-slate-300">PayScope • Market View</p>
-        <span class="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 font-semibold">
+        <p class="text-[11px] text-gray-200">PayScope • Market View</p>
+        <span class="text-[10px] px-2 py-1 rounded-full bg-green-500/10 text-green-300 font-semibold">
           Benchmark ready
         </span>
       </div>
 
-      <div class="bg-slate-900 rounded-xl p-4 border border-slate-700 mb-4">
-        <p class="text-[11px] text-slate-400 uppercase">Median hourly pay</p>
+      <div class="bg-gray-900 rounded-xl p-4 border border-gray-700 mb-4">
+        <p class="text-[11px] text-gray-400 uppercase">Median hourly pay</p>
         <p class="text-3xl font-bold text-white">£13.42</p>
-        <p class="text-[11px] text-slate-500">ONS + live adverts • UK</p>
+        <p class="text-[11px] text-gray-500">ONS + live adverts • UK</p>
       </div>
 
-      <div class="grid grid-cols-3 gap-2 text-sm text-slate-200 mb-3">
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
-          <p class="text-[10px] text-slate-500 uppercase mb-1">Coverage</p>
+      <div class="grid grid-cols-3 gap-2 text-sm text-gray-100 mb-3">
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3">
+          <p class="text-[10px] text-gray-500 uppercase mb-1">Coverage</p>
           <p class="font-semibold">UK-wide</p>
         </div>
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
-          <p class="text-[10px] text-slate-500 uppercase mb-1">Data feeds</p>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3">
+          <p class="text-[10px] text-gray-500 uppercase mb-1">Data feeds</p>
           <p class="font-semibold">Live + ONS</p>
         </div>
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
-          <p class="text-[10px] text-slate-500 uppercase mb-1">Refresh</p>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3">
+          <p class="text-[10px] text-gray-500 uppercase mb-1">Refresh</p>
           <p class="font-semibold">Daily scrape</p>
         </div>
       </div>
 
-      <div class="flex items-center justify-between text-[11px] text-slate-400">
+      <div class="flex items-center justify-between text-[11px] text-gray-400">
         <span>Region: West Midlands</span>
         <span>Updated: {{ benchmark_updated_at or "Today" }}</span>
       </div>
     </div>
   </div>
 </section>
-
-  <!-- “Trusted by / segments” strip -->
-  <section class="bg-slate-800 border-b border-slate-700">
-    <div class="max-w-6xl mx-auto py-4 px-4 fade-in-on-scroll">
-      <p class="text-[11px] text-slate-400 mb-3">
-        Designed for organisations who need a clear, defensible pay story:
-      </p>
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-400">
-        <div class="text-center">Multi-site employers</div>
-        <div class="text-center">Care & support</div>
-        <div class="text-center">Charities</div>
-        <div class="text-center">Education</div>
-        <div class="text-center">NHS partners</div>
-        <div class="text-center">Local gov</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- WHAT YOU CAN DO -->
-  <section class="bg-slate-100 border-b border-slate-200">
-    <div class="max-w-6xl mx-auto py-12 px-4 fade-in-on-scroll">
-      <div class="card p-5 sm:p-6 card-hover">
-        <h2 class="text-xl font-semibold mb-3" style="color: var(--brand);">
-          What You Can Do With PayScope
-        </h2>
-        <div class="grid sm:grid-cols-2 gap-4 text-sm text-gray-700">
-          <ul class="space-y-2 list-disc list-inside">
-            <li>Search live pay rates by role, sector, or postcode</li>
-            <li>Compare salaries across regions, industries, and employers</li>
-            <li>Track hiring demand and job-ad volumes over time</li>
-            <li>See how advertised pay compares to ONS earnings</li>
-          </ul>
-          <ul class="space-y-2 list-disc list-inside">
-            <li>Identify pay pressure and competition in any location</li>
-            <li>Monitor trends in remote work, seniority, and skill requirements</li>
-            <li>Export reports for planning, budgeting, or recruitment strategy</li>
-            <li>Access historical data to understand shifts in the market</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- WHO IT'S FOR – dark band with white cards -->
-  <section class="bg-slate-900 border-b border-slate-800">
-    <div class="max-w-6xl mx-auto py-12 px-4 fade-in-on-scroll">
-      <h2 class="text-2xl font-semibold mb-6" style="color: var(--brand-light);">
-        Who It’s For
-      </h2>
-      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 text-sm">
-        <div class="card bg-white text-slate-900 rounded-xl p-5 card-hover">
-          <h3 class="font-semibold mb-1">SMEs & Local Businesses</h3>
-          <p class="text-slate-600">
-            Set competitive pay without enterprise-tool price tags.
-          </p>
-        </div>
-        <div class="card bg-white text-slate-900 rounded-xl p-5 card-hover">
-          <h3 class="font-semibold mb-1">HR & Recruitment Teams</h3>
-          <p class="text-slate-600">
-            Benchmark offers, defend budgets, and spot market hot spots.
-          </p>
-        </div>
-        <div class="card bg-white text-slate-900 rounded-xl p-5 card-hover">
-          <h3 class="font-semibold mb-1">Jobseekers & Career Changers</h3>
-          <p class="text-slate-600">
-            Understand what roles pay in your area and where demand is highest.
-          </p>
-        </div>
-        <div class="card bg-white text-slate-900 rounded-xl p-5 card-hover">
-          <h3 class="font-semibold mb-1">Councils, Colleges & Community</h3>
-          <p class="text-slate-600">
-            Support local planning, skills and labour-market insight work.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- TESTIMONIAL STRIP -->
-  <section class="bg-slate-800 text-slate-50 border-b border-slate-700">
-    <div class="max-w-6xl mx-auto py-12 px-4 grid lg:grid-cols-2 gap-8 items-center fade-in-on-scroll">
-      <div>
-        <p class="text-xs font-semibold text-sky-300 uppercase tracking-wide">
-          Confident pay decisions in action
-        </p>
-        <h2 class="mt-3 text-2xl sm:text-3xl font-semibold">
-          Turn messy pay data into a simple story leaders actually use.
-        </h2>
-        <p class="mt-3 text-sm sm:text-base text-slate-200">
-          HR and finance teams use PayScope to cut through noise, fix inconsistent pay and build
-          ranges that feel fair to colleagues and credible to the Board.
-        </p>
-      </div>
-      <div class="card bg-slate-900/80 border border-slate-700 p-5 sm:p-6 text-sm card-hover">
-        <p class="italic text-slate-100 text-sm">
-          “We went from ‘we think we’re broadly okay’ to a data-backed view of where we were under-
-          and over-paying across key roles. It changed how we talk about pay at exec level.”
-        </p>
-        <p class="mt-3 text-xs text-slate-300 font-medium">
-          HR Director, UK organisation (placeholder quote – swap for real client when ready)
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <!-- FINAL CTA -->
-  <section class="bg-slate-100">
-    <div class="max-w-6xl mx-auto py-12 px-4 fade-in-on-scroll">
-      <div class="card p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 card-hover">
-        <div>
-          <h2 class="text-lg font-semibold mb-2" style="color: var(--brand);">
-            Pay transparency shouldn’t be expensive
-          </h2>
-          <p class="text-sm text-gray-700 mb-2">
-            Good pay data should be available to everyone, not just large organisations with deep pockets.
-            PayScope delivers high-quality labour-market intelligence at low cost, with transparent
-            subscription options and room for a free tier — no locked gates, no inflated pricing.
-          </p>
-          <p class="text-xs text-gray-500">
-            Share a list of roles and locations and we’ll show you exactly how you compare to the market
-            in one simple PayScope report.
-          </p>
-        </div>
-        <div class="flex flex-col gap-2 min-w-[180px]">
-          <a href="{{ url_for('maps.map_sector_select') }}" class="btn btn-primary w-full">
-            Start Exploring
-          </a>
-          {% if not current_user.is_authenticated %}
-          <a href="{{ url_for('auth.login') }}" class="btn btn-secondary w-full">
-            Sign In for Full Access
-          </a>
-          {% else %}
-          <a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-secondary w-full">
-            Open Dashboard
-          </a>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </section>
-
-</div>
 {% endblock %}
 
 
