@@ -2,6 +2,8 @@
 from datetime import datetime
 from flask_login import UserMixin
 from extensions import db  # shared db from extensions.py
+from datetime import datetime
+from app import db  # adjust import if needed
 
 
 class JobRecord(db.Model):
@@ -63,6 +65,20 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     admin_level = db.Column(db.Integer, default=0)  # 0=user, 1=admin, 2=superuser
+    org_role = db.Column(db.String(20), default="member", nullable=False)
+
+    organisation_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organisations.id"),
+        nullable=True  # temporarily nullable for migration
+    )
+    organisation = db.relationship(
+        "Organisation",
+        backref=db.backref("users", lazy="dynamic")
+    )
+
+    
+
 
     def is_admin(self) -> bool:
         return self.admin_level in (1, 2)
@@ -243,5 +259,22 @@ class OnsEarnings(db.Model):
             name="uq_ons_year_geo_measure",
         ),
     )
+
+
+
+class Organisation(db.Model):
+    __tablename__ = "organisations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    slug = db.Column(db.String(255), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # optional: default plan placeholder (Epic 2)
+    # default_plan_id = db.Column(db.Integer, nullable=True)
+
+    def __repr__(self):
+        return f"<Organisation {self.id} {self.slug}>"
 
 
