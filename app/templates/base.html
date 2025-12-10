@@ -248,7 +248,7 @@
                       <p>• New site or service planning</p>
                     </div>
                     <div class="mt-4">
-                      <a href="#" class="text-xs font-semibold text-[var(--brand)] hover:underline">
+                      <a href="{{ url_for('marketing.solutions') }}" class="text-xs font-semibold text-[var(--brand)] hover:underline">
                         Explore all solutions →
                       </a>
                     </div>
@@ -258,12 +258,12 @@
             </div>
           </div>
 
-          <!-- Other top-level links (dummy for now) -->
-          <a href="#" class="hover:text-white">Data</a>
-          <a href="#" class="hover:text-white">Customer Success</a>
-          <a href="#" class="hover:text-white">Pricing</a>
-          <a href="#" class="hover:text-white">Resources</a>
-          <a href="#" class="hover:text-white">Company</a>
+          <!-- Other top-level links -->
+          <a href="{{ url_for('marketing.data_page') }}" class="hover:text-white">Data</a>
+          <a href="{{ url_for('marketing.customer_success') }}" class="hover:text-white">Customer Success</a>
+          <a href="{{ url_for('marketing.pricing') }}" class="hover:text-white">Pricing</a>
+          <a href="{{ url_for('marketing.resources_page') }}" class="hover:text-white">Resources</a>
+          <a href="{{ url_for('marketing.company') }}" class="hover:text-white">Company</a>
         </nav>
 
         <!-- Right-side: login + CTAs -->
