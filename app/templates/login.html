@@ -5,45 +5,32 @@
 {% block content %}
 <div class="max-w-md mx-auto">
 
-  <div class="card p-6 sm:p-8 mt-6">
+  <div class="card p-6 sm:p-8">
     <h1 class="text-2xl font-bold text-center mb-6" style="color: var(--brand);">
       Login to Pay Rate Map
     </h1>
 
-    <form method="POST"
-          action="{{ url_for('auth.login') }}"
-          class="space-y-5"
-          autocomplete="on">
-
-      {{ csrf_token() }}
+    <form method="POST" action="{{ url_for('auth.login') }}" class="space-y-5">
+      {# Optional CSRF hidden field – only if csrf_token is available #}
+      {% if csrf_token is defined %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% endif %}
 
       <!-- Username -->
       <div>
         <label for="username" class="label">Username</label>
-        <input id="username"
-               type="text"
-               name="username"
-               required
-               class="input"
-               autocomplete="username">
+        <input id="username" type="text" name="username" required class="input" />
       </div>
 
       <!-- Password -->
       <div>
         <label for="password" class="label">Password</label>
-        <input id="password"
-               type="password"
-               name="password"
-               required
-               class="input"
-               autocomplete="current-password">
+        <input id="password" type="password" name="password" required class="input" />
       </div>
 
       <!-- Remember Me -->
       <div class="flex items-center">
-        <input type="checkbox"
-               id="remember"
-               name="remember"
+        <input type="checkbox" id="remember" name="remember"
                class="h-4 w-4 text-[var(--brand)] border-gray-300 rounded focus:ring-[var(--brand)]">
         <label for="remember" class="ml-2 text-sm text-gray-700">Remember Me</label>
       </div>
@@ -57,4 +44,3 @@
 
 </div>
 {% endblock %}
-
