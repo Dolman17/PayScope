@@ -26,7 +26,12 @@
 
   <style>
     :root{
+      /* Core brand tokens */
       --brand: #005b5a;
+      --brand-light: #60A5FA;   /* tweak if you want a different light accent */
+      --brand-dark: #013462;
+
+      /* Existing design tokens */
       --brand-600: #0b6b6a;
       --ink: #1f2937;
       --ink-2: #4b5563;
@@ -42,47 +47,131 @@
     }
 
     html, body { height: 100%; }
-    body { font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body {
+      font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
 
     .btn{
-      display:inline-flex; align-items:center; justify-content:center;
-      padding: 0.55rem 0.9rem; border-radius: 0.75rem; font-weight:600;
-      line-height:1; transition: all .15s ease; border:1px solid transparent;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding: 0.55rem 0.9rem;
+      border-radius: 0.75rem;
+      font-weight:600;
+      line-height:1;
+      transition: all .15s ease;
+      border:1px solid transparent;
+      cursor: pointer;
     }
-    .btn-primary{ background: var(--brand); color:#fff; }
-    .btn-primary:hover{ background: var(--brand-600); transform: translateY(-1px); }
-    .btn-secondary{ background:#fff; color:var(--brand); border-color: var(--brand); }
-    .btn-secondary:hover{ background: rgba(0,91,90,0.06); }
+    .btn-primary{
+      background: var(--brand);
+      color:#fff;
+    }
+    .btn-primary:hover{
+      background: var(--brand-600);
+      transform: translateY(-1px);
+    }
+    .btn-secondary{
+      background:#fff;
+      color:var(--brand);
+      border-color: var(--brand);
+    }
+    .btn-secondary:hover{
+      background: rgba(0,91,90,0.06);
+      transform: translateY(-1px);
+    }
 
     .card{
-      background: var(--card); border-radius: 1rem; box-shadow: 0 1px 2px rgba(16,24,40,0.06);
+      background: var(--card);
+      border-radius: 1rem;
+      box-shadow: 0 1px 2px rgba(16,24,40,0.06);
       border: 1px solid #e5e7eb;
     }
 
     .input{
-      width: 100%; border:1px solid #e5e7eb; background:#fff; color:var(--ink);
-      padding: .6rem .75rem; border-radius:.75rem; outline: none;
+      width: 100%;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      color:var(--ink);
+      padding: .6rem .75rem;
+      border-radius:.75rem;
+      outline: none;
       transition: box-shadow .15s ease, border-color .15s ease;
     }
     .input:focus{
-      border-color: var(--brand); box-shadow: 0 0 0 4px var(--ring);
+      border-color: var(--brand);
+      box-shadow: 0 0 0 4px var(--ring);
     }
-    .label{ display:block; font-weight:600; color: var(--ink-2); margin-bottom:.35rem; }
+    .label{
+      display:block;
+      font-weight:600;
+      color: var(--ink-2);
+      margin-bottom:.35rem;
+    }
 
     .nav-chip{
-      display:inline-flex; align-items:center; height: 2.25rem;
-      padding: 0 .8rem; border-radius: 9999px; font-weight:600;
-      color: var(--brand); border:1px solid rgba(0,91,90,0.35); background:#fff;
+      display:inline-flex;
+      align-items:center;
+      height: 2.25rem;
+      padding: 0 .8rem;
+      border-radius: 9999px;
+      font-weight:600;
+      color: var(--brand);
+      border:1px solid rgba(0,91,90,0.35);
+      background:#fff;
       transition: all .15s ease;
     }
-    .nav-chip:hover{ background: rgba(0,91,90,0.06); transform: translateY(-1px); }
+    .nav-chip:hover{
+      background: rgba(0,91,90,0.06);
+      transform: translateY(-1px);
+    }
 
-    .flash{ padding:.75rem 1rem; border-radius:.75rem; font-weight:600; }
-    .flash-success{ background: var(--success-bg); color: var(--success-fg); }
-    .flash-info{ background: var(--info-bg); color: var(--info-fg); }
-    .flash-error{ background: var(--error-bg); color: var(--error-fg); }
+    .flash{
+      padding:.75rem 1rem;
+      border-radius:.75rem;
+      font-weight:600;
+    }
+    .flash-success{
+      background: var(--success-bg);
+      color: var(--success-fg);
+    }
+    .flash-info{
+      background: var(--info-bg);
+      color: var(--info-fg);
+    }
+    .flash-error{
+      background: var(--error-bg);
+      color: var(--error-fg);
+    }
 
-    .app-header{ position: sticky; top:0; z-index:40; background: #ffffffcc; backdrop-filter: saturate(180%) blur(6px); }
+    .app-header{
+      position: sticky;
+      top:0;
+      z-index:40;
+      background: #ffffffcc;
+      backdrop-filter: saturate(180%) blur(6px);
+    }
+
+    /* New: hover motion utility for cards */
+    .card-hover{
+      transition: transform 180ms ease-out, box-shadow 180ms ease-out, border-color 180ms ease-out;
+    }
+    .card-hover:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 20px 35px rgba(15,23,42,0.16);
+      border-color: rgba(1, 96, 177, 0.35);
+    }
+
+    /* New: fade-in-on-scroll animation */
+    .fade-in-on-scroll{
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 220ms ease-out, transform 220ms ease-out;
+    }
+    .fade-in-on-scroll.is-visible{
+      opacity: 1;
+      transform: translateY(0);
+    }
   </style>
 
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
@@ -167,13 +256,35 @@
     function getCsrfToken() {
       return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     }
+
     async function fetchWithCsrf(url, options={}) {
       const headers = options.headers || {};
       const token = getCsrfToken();
       if (token) headers['X-CSRFToken'] = token;
       return fetch(url, { ...options, headers });
     }
+
+    // Fade-in-on-scroll behaviour
+    document.addEventListener("DOMContentLoaded", function () {
+      const els = document.querySelectorAll(".fade-in-on-scroll");
+      if (!("IntersectionObserver" in window) || !els.length) return;
+
+      const observer = new IntersectionObserver(
+        entries => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.15 }
+      );
+
+      els.forEach(el => observer.observe(el));
+    });
   </script>
 
 </body>
 </html>
+
