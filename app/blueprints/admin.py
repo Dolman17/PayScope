@@ -243,7 +243,7 @@ def manage_users():
     users = User.query.all()
     return render_template("manage_users.html", users=users)
 
-@admin_bp.route("/admin/seed-default-org")
+@bp.route("/seed-default-org")
 @login_required
 def seed_default_org():
     # Only admins/superusers
@@ -252,13 +252,12 @@ def seed_default_org():
 
     org = ensure_default_organisation()
 
-    # Attach all users without an organisation
     users = User.query.filter(User.organisation_id.is_(None)).all()
     for u in users:
         u.organisation_id = org.id
-        # Safety: if somehow org_role is null/empty, make them owners
         if not u.org_role:
             u.org_role = "owner"
+
     db.session.commit()
 
     flash(
@@ -267,6 +266,7 @@ def seed_default_org():
         "success",
     )
     return redirect(url_for("records.records"))
+
 
 
 
