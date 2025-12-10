@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Pricing • PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-16">
+
+    <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white mb-6">
+        Pricing
+    </h1>
+
+    <p class="text-gray-600 dark:text-gray-300 text-lg mb-10">
+        Transparent, simple pricing for teams of all sizes.
+    </p>
+
+    <div class="grid gap-6 md:grid-cols-3">
+
+        <div class="card p-6 text-center">
+            <h2 class="text-xl font-semibold mb-1">Starter</h2>
+            <p class="text-gray-500 mb-4">For individuals & small teams</p>
+            <p class="text-3xl font-bold mb-4">£49<span class="text-lg font-normal">/mo</span></p>
+            <p class="text-xs text-gray-600">Live pay data<br>ONS overlays<br>Core insights</p>
+        </div>
+
+        <div class="card p-6 text-center border-teal-400 shadow-lg">
+            <h2 class="text-xl font-semibold mb-1">Professional</h2>
+            <p class="text-gray-500 mb-4">Most popular</p>
+            <p class="text-3xl font-bold mb-4">£99<span class="text-lg font-normal">/mo</span></p>
+            <p class="text-xs text-gray-600">Compare regions<br>Historical data<br>Export tools</p>
+        </div>
+
+        <div class="card p-6 text-center">
+            <h2 class="text-xl font-semibold mb-1">Enterprise</h2>
+            <p class="text-gray-500 mb-4">Larger orgs</p>
+            <p class="text-3xl font-bold mb-4">Custom</p>
+            <p class="text-xs text-gray-600">Support<br>Integrations<br>Guaranteed SLAs</p>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
