@@ -5,7 +5,12 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
 
-  <h1 class="text-2xl sm:text-3xl font-bold text-center mb-6" style="color: var(--brand);">Uploaded Records</h1>
+  <h1 class="text-2xl sm:text-3xl font-bold text-center mb-2" style="color: var(--brand);">
+    Uploaded Records
+  </h1>
+  <p class="text-center text-xs sm:text-sm text-gray-500 mb-6">
+    Browse, filter, and export the job records currently powering your PayScope insights.
+  </p>
 
   {% if current_user.admin_level in [1, 2] %}
   <form action="{{ url_for('admin.backfill_counties') }}" method="get" class="mb-4">
@@ -23,13 +28,12 @@
       {# Optional: limit how many records to process in one click #}
       <input type="hidden" name="limit" value="200">
       <button type="submit"
-              class="inline-flex items-center px-3 py-2 rounded-md text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-100">
+              class="btn btn-secondary text-sm">
         🔄 Geocode Records
       </button>
     </form>
   </div>
-{% endif %}
-
+  {% endif %}
 
   <!-- Filters -->
   <section class="card mb-5">
@@ -141,16 +145,16 @@
           <td class="p-3">{{ record.company_id }}</td>
           <td class="p-3">
             {% if record.company_id %}
-  <a href="{{ url_for('records.company_profile', company_id=record.company_id) }}"
-     class="text-brand underline">
-    {{ record.company_name }}
-  </a>
-{% else %}
-  <span class="text-gray-800">
-    {{ record.company_name }}
-  </span>
-{% endif %}
-
+              <a href="{{ url_for('records.company_profile', company_id=record.company_id) }}"
+                 class="hover:underline"
+                 style="color: var(--brand);">
+                {{ record.company_name }}
+              </a>
+            {% else %}
+              <span class="text-gray-800">
+                {{ record.company_name }}
+              </span>
+            {% endif %}
           </td>
           <td class="p-3">{{ record.sector }}</td>
           <td class="p-3">{{ record.job_role }}</td>
@@ -159,8 +163,15 @@
           <td class="p-3">£{{ "%.2f"|format(record.pay_rate) }}</td>
           <td class="p-3">{{ record.imported_month }} {{ record.imported_year }}</td>
           <td class="p-3">
-            <button onclick="openEditModal({{ record.id }})" class="hover:underline mr-2" style="color: var(--brand);">Edit</button>
-            <form method="POST" action="{{ url_for('records.delete_record', record_id=record.id) }}" style="display:inline;" onsubmit="return confirm('Delete this record?');">
+            <button onclick="openEditModal({{ record.id }})"
+                    class="hover:underline mr-2"
+                    style="color: var(--brand);">
+              Edit
+            </button>
+            <form method="POST"
+                  action="{{ url_for('records.delete_record', record_id=record.id) }}"
+                  style="display:inline;"
+                  onsubmit="return confirm('Delete this record?');">
               <button type="submit" class="hover:underline" style="color:#ef4444;">Delete</button>
             </form>
           </td>
@@ -296,3 +307,4 @@
   };
 </script>
 {% endblock %}
+

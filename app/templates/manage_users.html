@@ -1,25 +1,44 @@
 {% extends "base.html" %}
 
+{% block title %}User Management | PayScope{% endblock %}
+
 {% block content %}
 <div class="max-w-5xl mx-auto px-2 sm:px-4 py-8">
 
-  <h2 class="text-2xl sm:text-3xl font-bold mb-6" style="color: var(--brand);">User Management</h2>
+  <h2 class="text-2xl sm:text-3xl font-bold mb-6" style="color: var(--brand);">
+    User Management
+  </h2>
 
   <!-- Add New User -->
   <section class="card p-5 sm:p-6 mb-8">
-    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add New User</h3>
+    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">
+      Add New User
+    </h3>
     <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <input type="hidden" name="action" value="add" />
-      <!-- Optional CSRF from meta tag, only if present -->
+      <!-- CSRF token (filled from meta tag via JS) -->
       <input type="hidden" name="csrf_token" id="csrf_add" value="">
+
       <div>
         <label class="label" for="username">Username</label>
-        <input id="username" type="text" name="username" required class="input" placeholder="Username" />
+        <input id="username"
+               type="text"
+               name="username"
+               required
+               class="input"
+               placeholder="Username" />
       </div>
+
       <div>
         <label class="label" for="password">Password</label>
-        <input id="password" type="password" name="password" required class="input" placeholder="Password" />
+        <input id="password"
+               type="password"
+               name="password"
+               required
+               class="input"
+               placeholder="Password" />
       </div>
+
       <div>
         <label class="label" for="admin_level_add">Admin Level</label>
         <select id="admin_level_add" name="admin_level" class="input">
@@ -28,15 +47,20 @@
           <option value="1">Superuser</option>
         </select>
       </div>
+
       <div class="sm:col-span-3">
-        <button type="submit" class="btn btn-primary">Add User</button>
+        <button type="submit" class="btn btn-primary">
+          Add User
+        </button>
       </div>
     </form>
   </section>
 
   <!-- Existing Users -->
   <section class="card p-5 sm:p-6">
-    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Existing Users</h3>
+    <h3 class="text-lg sm:text-xl font-semibold text-gray-800 mb-4">
+      Existing Users
+    </h3>
 
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
@@ -68,7 +92,9 @@
               </td>
               <td class="py-3 px-4 align-middle">
                 <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-                  <button type="submit" class="btn btn-primary">Update</button>
+                  <button type="submit" class="btn btn-primary">
+                    Update
+                  </button>
             </form>
 
             {% if current_user.id != user.id %}
@@ -77,7 +103,11 @@
                 <input type="hidden" name="action" value="delete" />
                 <input type="hidden" name="user_id" value="{{ user.id }}" />
                 <input type="hidden" name="csrf_token" class="csrf_del" value="">
-                <button type="submit" class="btn" style="border-color:#ef4444; color:#ef4444;">Delete</button>
+                <button type="submit"
+                        class="btn"
+                        style="border-color:#ef4444; color:#ef4444;">
+                  Delete
+                </button>
               </form>
             {% else %}
               <span class="text-gray-500 italic">Can't delete self</span>
@@ -92,18 +122,20 @@
   </section>
 
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // If a CSRF meta tag exists (from base.html), copy it into hidden inputs.
-  (function(){
+  // Copy CSRF token from <meta> into forms that expect "csrf_token" field
+  (function () {
     const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if (!token) return;
-    const single = document.getElementById('csrf_add'); if (single) single.value = token;
-    document.querySelectorAll('.csrf_upd').forEach(i => i.value = token);
-    document.querySelectorAll('.csrf_del').forEach(i => i.value = token);
+
+    const addField = document.getElementById('csrf_add');
+    if (addField) addField.value = token;
+
+    document.querySelectorAll('.csrf_upd').forEach(el => el.value = token);
+    document.querySelectorAll('.csrf_del').forEach(el => el.value = token);
   })();
 </script>
 {% endblock %}

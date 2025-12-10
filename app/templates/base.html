@@ -11,21 +11,34 @@
   <!-- Fonts: Open Sans for Ellipse HR styling -->
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 
+  <!-- Favicon & App Icons (PayScope branding) -->
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='branding/favicon-180.png') }}">
+  <link rel="shortcut icon" href="{{ url_for('static', filename='branding/favicon.ico') }}">
+
+  <!-- Meta: basic + social preview -->
+  <meta name="description" content="PayScope gives you real-time market pay, hiring difficulty, and competitor insights across roles, sectors, and regions.">
+  <meta property="og:title" content="PayScope – Real-Time Pay & Labour Market Intelligence">
+  <meta property="og:description" content="See live market pay, hiring difficulty, and competitor movements with PayScope’s interactive map and insights.">
+  <meta property="og:image" content="{{ url_for('static', filename='branding/payscope_logo.png') }}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+
   <style>
     :root{
-      --brand: #005b5a;        
+      --brand: #005b5a;
       --brand-600: #0b6b6a;
-      --ink: #1f2937;          
-      --ink-2: #4b5563;        
-      --muted: #f3f4f6;        
+      --ink: #1f2937;
+      --ink-2: #4b5563;
+      --muted: #f3f4f6;
       --card: #ffffff;
       --ring: rgba(0,91,90,0.3);
-      --success-bg: #ecfdf5;  
-      --success-fg: #065f46;  
-      --info-bg: #eff6ff;      
-      --info-fg: #1e40af;     
-      --error-bg: #fef2f2;     
-      --error-fg: #991b1b;     
+      --success-bg: #ecfdf5;
+      --success-fg: #065f46;
+      --info-bg: #eff6ff;
+      --info-fg: #1e40af;
+      --error-bg: #fef2f2;
+      --error-fg: #991b1b;
     }
 
     html, body { height: 100%; }
@@ -82,10 +95,15 @@
   <header class="app-header border-b">
     <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
       <div class="flex items-center space-x-3">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Pay Rate Map Logo" class="h-10 w-auto rounded-lg border border-gray-200"
-             onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';">
+        <img
+          src="{{ url_for('static', filename='branding/payscope_logo.svg') }}"
+          alt="PayScope Logo"
+          class="h-10 w-auto rounded-lg border border-gray-200 bg-white p-1"
+          onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';"
+        >
         <div>
-          <h1 class="text-lg sm:text-xl font-bold" style="color: var(--brand);">Pay Rate Map</h1>
+          <h1 class="text-lg sm:text-xl font-bold" style="color: var(--brand);">PayScope</h1>
+          <p class="text-xs sm:text-sm text-gray-500">Real-time pay & labour market intelligence</p>
         </div>
       </div>
 
@@ -96,7 +114,7 @@
           <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
           <a href="{{ url_for('upload.upload') }}" class="nav-chip">Upload</a>
           <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
-          <!-- NEW: Pay Explorer link -->
+          <!-- Pay Explorer link -->
           <a href="{{ url_for('maps.pay_explorer') }}" class="nav-chip">Pay Explorer</a>
           <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
 
@@ -138,7 +156,7 @@
   <footer class="bg-white text-center text-sm text-gray-500 py-5 border-t">
     <div class="max-w-7xl mx-auto px-4">
       <div class="card p-4">
-        <p>&copy; {{ current_year }} Pay Rate Map • Built for clarity in care workforce data</p>
+        <p>&copy; {{ current_year }} PayScope • Real-time pay & labour market intelligence</p>
       </div>
     </div>
   </footer>

@@ -8,9 +8,10 @@
   <!-- Header + Back -->
   <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
     <div>
-      <h1 class="text-2xl font-bold" style="color: var(--brand);">Pay Rate Map: {{ sector }}</h1>
+      <h1 class="text-2xl font-bold" style="color: var(--brand);">PayScope Map: {{ sector }}</h1>
       <p class="mt-1 text-sm text-gray-600">
-        Explore pay rates for {{ sector }} roles. Each teal £ marker is a single job record; bubble sizes show how many jobs are in that area.
+        Explore current pay for {{ sector }} roles across the UK. Each teal £ marker is a single job record; larger bubbles
+        show areas with more jobs clustered together.
       </p>
     </div>
     <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip w-full sm:w-auto text-center">← Back to Sectors</a>
@@ -104,14 +105,14 @@
 
 </div>
 
-<!-- Visible providers modal -->
+<!-- Visible jobs modal -->
 <div id="visibleProvidersModal"
      class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-40"
      style="z-index: 9999;">
   <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col border border-slate-200">
     <div class="px-4 py-3 border-b flex items-center justify-between">
       <div>
-        <h2 class="text-sm font-semibold text-slate-800">Visible providers on map</h2>
+        <h2 class="text-sm font-semibold text-slate-800">Visible jobs on map</h2>
         <p class="text-[11px] text-slate-500">
           These are the job records currently within your map view and filters.
         </p>
@@ -125,7 +126,7 @@
     <div id="visibleProvidersTable" class="px-4 py-3 overflow-auto text-sm text-slate-700">
       <!-- Filled dynamically -->
       <div class="py-4 text-center text-slate-400 text-xs">
-        Loading visible providers…
+        Loading visible jobs…
       </div>
     </div>
   </div>
@@ -139,7 +140,7 @@
 
   <!-- MarkerCluster plugin -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.Default.css" />
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
@@ -373,7 +374,7 @@
         if (!stats || !el) return;
         if (!stats.total) {
           el.innerHTML = `
-            <div class="py-2">No providers currently visible.</div>
+            <div class="py-2">No jobs currently visible.</div>
             <div class="text-xs text-slate-500">Pan/zoom or apply filters to see insights.</div>
           `;
           return;
@@ -385,7 +386,7 @@
                     id="visibleProvidersCard"
                     class="rounded-xl border border-slate-200 p-3 text-left cursor-pointer hover:bg-slate-50 transition">
               <div class="text-xs text-slate-500 flex items-center justify-between">
-                <span>Visible providers</span>
+                <span>Visible jobs</span>
                 <span class="text-[10px] text-slate-400">Tap to view list →</span>
               </div>
               <div class="text-xl font-semibold mt-0.5">${stats.total}</div>
@@ -474,7 +475,7 @@
         if (!rows.length) {
           tableWrap.innerHTML = `
             <div class="py-6 text-center text-slate-400 text-sm">
-              There are no providers currently visible on the map.
+              There are no jobs currently visible on the map.
             </div>
           `;
         } else {

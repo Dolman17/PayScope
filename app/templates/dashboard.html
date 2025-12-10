@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard Summary{% endblock %}
+{% block title %}PayScope • Dashboard{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
@@ -7,7 +7,7 @@
   <!-- Page Heading -->
   <div class="mb-6">
     <h2 class="text-2xl sm:text-3xl font-bold" style="color: var(--brand);">Dashboard Summary</h2>
-    <p class="text-sm text-gray-500 mt-1">High-level overview with sector, county, and role filters.</p>
+    <p class="text-sm text-gray-500 mt-1">A high-level snapshot of recent activity, data coverage, and job-market patterns.</p>
   </div>
 
   <!-- Scrape Activity (Cron / Adzuna) -->
@@ -18,7 +18,7 @@
         <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
           {{ today_jobs_total or 0 }}
         </p>
-        <p class="mt-1 text-xs text-gray-400">From scheduled Adzuna cron runs</p>
+        <p class="mt-1 text-xs text-gray-400">From automated scheduled scrapers</p>
       </div>
 
       <div class="card p-4">
@@ -26,7 +26,7 @@
         <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (today_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
           {{ today_error_runs or 0 }}
         </p>
-        <p class="mt-1 text-xs text-gray-400">Cron runs with non-success status</p>
+        <p class="mt-1 text-xs text-gray-400">Scrapes reporting error status</p>
       </div>
 
       <div class="card p-4">
@@ -34,7 +34,7 @@
         <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
           {{ week_jobs_total or 0 }}
         </p>
-        <p class="mt-1 text-xs text-gray-400">Total rows scraped into JobPosting</p>
+        <p class="mt-1 text-xs text-gray-400">Total postings ingested</p>
       </div>
 
       <div class="card p-4">
@@ -42,7 +42,7 @@
         <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (week_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
           {{ week_error_runs or 0 }}
         </p>
-        <p class="mt-1 text-xs text-gray-400">Cron runs not marked as success</p>
+        <p class="mt-1 text-xs text-gray-400">Cron runs with non-success status</p>
       </div>
     </div>
   </section>

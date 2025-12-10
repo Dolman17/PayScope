@@ -1,11 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}Upload Pay Data{% endblock %}
+{% block title %}Upload Pay Data | PayScope{% endblock %}
 
 {% block content %}
 <div class="max-w-xl mx-auto px-2 sm:px-4 py-10">
 
-  <div class="card bg-white rounded-xl p-6 sm:p-8">
+  <!-- Brand header -->
+  <div class="flex flex-col items-center mb-6">
+    <img
+      src="{{ url_for('static', filename='logos/payscope-logo-horizontal.svg') }}"
+      alt="PayScope"
+      class="h-8 sm:h-9 w-auto mb-2"
+      onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/payscope-mark.svg') }}';"
+    >
+    <p class="text-[11px] tracking-[0.18em] uppercase text-gray-400">
+      Pay data upload
+    </p>
+  </div>
+
+  <div class="card p-6 sm:p-8">
     <h1 class="text-2xl sm:text-3xl font-bold text-center mb-2" style="color: var(--brand);">
       Upload Pay Rate File
     </h1>
@@ -30,7 +43,8 @@
           aria-describedby="fileHelp fileName"
         />
         <p id="fileHelp" class="text-xs text-gray-500 mt-2">
-          File must include columns: <code>company_id</code>, <code>company_name</code>, <code>sector</code>,
+          File must include columns:
+          <code>company_id</code>, <code>company_name</code>, <code>sector</code>,
           <code>postcode</code>, <code>job_role</code>, <code>pay_rate</code>.
         </p>
         <p id="fileName" class="text-xs text-gray-600 mt-1 hidden" aria-live="polite"></p>
@@ -47,7 +61,13 @@
           Preview &amp; Validate
         </button>
         <!-- Optional direct commit: server will still show preview if errors exist -->
-        <button name="action" value="commit" class="btn btn-secondary w-full" type="submit" title="Imports immediately if no critical errors">
+        <button
+          name="action"
+          value="commit"
+          class="btn btn-secondary w-full"
+          type="submit"
+          title="Imports immediately if no critical errors"
+        >
           Commit Now
         </button>
       </div>

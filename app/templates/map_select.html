@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Select a Sector | Pay Rate Map{% endblock %}
+{% block title %}Select a Sector | PayScope{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto py-10 px-4 text-center">
 
   <h1 class="text-2xl sm:text-3xl font-bold mb-3" style="color: var(--brand);">
-    Explore Pay Rate Map by Sector
+    Explore PayScope by Sector
   </h1>
   <p class="text-sm sm:text-base text-gray-600 mb-8">
-    Select a sector to explore a live, mapped view of pay rates submitted by providers across the UK.
+    Choose a sector to open a live, mapped view of current job adverts and pay levels across the UK.
+    Filter by role, region, and employer to see how the market compares.
   </p>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 text-left">
@@ -23,7 +24,7 @@
             ➜
           </span>
         </div>
-        <p class="mt-2 text-xs text-gray-500">Open interactive map</p>
+        <p class="mt-2 text-xs text-gray-500">Open interactive market map</p>
       </a>
     {% endfor %}
   </div>
