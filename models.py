@@ -1,9 +1,10 @@
 # models.py
-from datetime import datetime
+from datetime import datetime, date
+
 from flask_login import UserMixin
-from extensions import db  # shared db from extensions.py
-from datetime import datetime
-from app import db  # adjust import if needed
+from sqlalchemy import Index, CheckConstraint, UniqueConstraint
+
+from extensions import db
 
 
 class JobRecord(db.Model):
@@ -14,8 +15,8 @@ class JobRecord(db.Model):
     company_name = db.Column(db.String(100))
     sector = db.Column(db.String(50), index=True)
     job_role = db.Column(db.String(100), index=True)
-    # NEW: canonical / grouped job role (e.g. "Care & Support Worker")
-    job_role_group = db.Column(db.String(120), index=True)  # <--- NEW
+    # canonical / grouped job role (e.g. "Care & Support Worker")
+    job_role_group = db.Column(db.String(120), index=True)
     postcode = db.Column(db.String(20))
     county = db.Column(db.String(50), index=True)
     pay_rate = db.Column(db.Float)
@@ -47,9 +48,6 @@ class JobSummaryDaily(db.Model):
     sector = db.Column(db.String(50), index=True)
     job_role_group = db.Column(db.String(120), index=True)
 
-    # you can add job_role if you want more granularity
-    # job_role = db.Column(db.String(100), index=True)
-
     adverts_count = db.Column(db.Integer)
 
     median_pay_rate = db.Column(db.Float)
@@ -60,31 +58,61 @@ class JobSummaryDaily(db.Model):
     max_pay_rate = db.Column(db.Float)
 
 
+class Organisation(db.Model):
+    __tablename__ = "organisations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    slug = db.Column(db.String(255), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # optional: default plan placeholder (Epic 2)
+    # default_plan_id = db.Column(db.Integer, nullable=True)
+
+    def __repr__(self):
+        return f"<Organisation {self.id} {self.slug}>"
+
+
 class User(UserMixin, db.Model):
+    __tablename__ = "user"
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    admin_level = db.Column(db.Integer, default=0)  # 0=user, 1=admin, 2=superuser
-    org_role = db.Column(db.String(20), default="member", nullable=False)
+
+    # 0 = normal user, 1 = superuser, 2 = admin
+    # (matches usage in code: admin_level == 1 => superuser)
+    admin_level = db.Column(db.Integer, default=0, nullable=False)
+
+    # Organisation / multi-tenant fields
+    org_role = db.Column(
+        db.String(20),
+        default="member",
+        nullable=False,
+    )  # member | admin | owner
 
     organisation_id = db.Column(
         db.Integer,
         db.ForeignKey("organisations.id"),
-        nullable=True  # temporarily nullable for migration
+        nullable=True,  # can be backfilled & then tightened later
     )
     organisation = db.relationship(
         "Organisation",
-        backref=db.backref("users", lazy="dynamic")
+        backref=db.backref("users", lazy="dynamic"),
     )
 
-    
-
+    def is_superuser(self) -> bool:
+        """True if this user is the platform superuser (admin_level == 1)."""
+        return self.admin_level == 1
 
     def is_admin(self) -> bool:
+        """True if this user is an org-level admin or superuser."""
         return self.admin_level in (1, 2)
 
-    def is_superuser(self) -> bool:
-        return self.admin_level == 1
+    def is_member(self) -> bool:
+        """True if this is a normal (non-admin) user."""
+        return self.admin_level == 0
 
 
 class AIAnalysisLog(db.Model):
@@ -92,7 +120,7 @@ class AIAnalysisLog(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    filters = db.Column(db.Text)      # JSON string of filters applied
+    filters = db.Column(db.Text)  # JSON string of filters applied
     record_count = db.Column(db.Integer)
     output_html = db.Column(db.Text)  # store AI output so you can review it later
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -100,14 +128,9 @@ class AIAnalysisLog(db.Model):
     user = db.relationship("User", backref="ai_logs")
 
 
-# models_payrate.py (or wherever you keep models)
-from datetime import datetime
-from sqlalchemy import Index, CheckConstraint, UniqueConstraint
-from extensions import db
-
-
 class UploadBatch(db.Model):
     __tablename__ = "upload_batches"
+
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     created_by = db.Column(db.String(120), nullable=True)  # username/email if available
@@ -116,11 +139,12 @@ class UploadBatch(db.Model):
     inserted_rows = db.Column(db.Integer, default=0, nullable=False)
     updated_rows = db.Column(db.Integer, default=0, nullable=False)
     skipped_rows = db.Column(db.Integer, default=0, nullable=False)
-    errors_json = db.Column(db.Text, nullable=True)  # store aggregated errors per row
+    errors_json = db.Column(db.Text, nullable=True)  # aggregated errors per row
 
 
 class PayRate(db.Model):
     __tablename__ = "pay_rates"
+
     id = db.Column(db.Integer, primary_key=True)
 
     employer_name = db.Column(db.String(200), nullable=False)
@@ -155,7 +179,7 @@ class PayRate(db.Model):
         # Natural key to prevent duplicates per employer/role/place/date
         UniqueConstraint(
             "employer_name", "role", "contract_type", "postcode", "effective_from",
-            name="uq_payrate_employer_role_contract_postcode_date"
+            name="uq_payrate_employer_role_contract_postcode_date",
         ),
         CheckConstraint("base_rate >= 0", name="chk_payrate_base_rate_nonneg"),
         Index("ix_payrate_org", "organisation"),
@@ -175,7 +199,7 @@ class JobPosting(db.Model):
     location_text = db.Column(db.String(255), nullable=True)
     postcode = db.Column(db.String(20), nullable=True)
 
-    # NEW: high-level sector classification, e.g. "Social Care", "Nursing", "HR"
+    # high-level sector classification, e.g. "Social Care", "Nursing", "HR"
     sector = db.Column(db.String(100), nullable=True, index=True)
 
     min_rate = db.Column(db.Numeric(10, 2), nullable=True)
@@ -212,6 +236,7 @@ class Company(db.Model):
     sector = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
 class JobRoleMapping(db.Model):
     __tablename__ = "job_role_mappings"
 
@@ -237,7 +262,7 @@ class CronRunLog(db.Model):
     rows_scraped = db.Column(db.Integer, nullable=True)
     records_created = db.Column(db.Integer, nullable=True)
     triggered_by = db.Column(db.String(150), nullable=True)
-    trigger = db.Column(db.String(50), nullable=True)  # <-- ADD THIS
+    trigger = db.Column(db.String(50), nullable=True)  # manual/cron/etc
     day_label = db.Column(db.String(20))
 
 
@@ -261,31 +286,11 @@ class OnsEarnings(db.Model):
     )
 
 
-
-class Organisation(db.Model):
-    __tablename__ = "organisations"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False, unique=True)
-    slug = db.Column(db.String(255), nullable=False, unique=True)
-    is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-    # optional: default plan placeholder (Epic 2)
-    # default_plan_id = db.Column(db.Integer, nullable=True)
-
-    def __repr__(self):
-        return f"<Organisation {self.id} {self.slug}>"
-
-
-from datetime import datetime
-
-def ensure_default_organisation():
+def ensure_default_organisation() -> Organisation:
     """
     Idempotent helper: ensure there's a 'Default Organisation' row and return it.
     Safe to call multiple times.
     """
-    from app import db  # avoid circulars at import time
     org = Organisation.query.filter_by(slug="default").first()
     if not org:
         org = Organisation(
@@ -297,6 +302,4 @@ def ensure_default_organisation():
         db.session.add(org)
         db.session.commit()
     return org
-
-
 
