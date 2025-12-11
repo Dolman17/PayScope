@@ -3,6 +3,7 @@ from datetime import datetime, date
 
 from flask_login import UserMixin
 from sqlalchemy import Index, CheckConstraint, UniqueConstraint
+from sqlalchemy.exc import IntegrityError
 
 from extensions import db
 
@@ -194,20 +195,22 @@ class JobPosting(db.Model):
     __tablename__ = "job_postings"
 
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(255), nullable=False)
-    company_name = db.Column(db.String(255), nullable=True)
-    location_text = db.Column(db.String(255), nullable=True)
+
+    # External/API text fields → Text to avoid varchar overflow
+    title = db.Column(db.Text, nullable=False)
+    company_name = db.Column(db.Text, nullable=True)
+    location_text = db.Column(db.Text, nullable=True)
     postcode = db.Column(db.String(20), nullable=True)
 
     # high-level sector classification, e.g. "Social Care", "Nursing", "HR"
-    sector = db.Column(db.String(100), nullable=True, index=True)
+    sector = db.Column(db.Text, nullable=True, index=True)
 
     min_rate = db.Column(db.Numeric(10, 2), nullable=True)
     max_rate = db.Column(db.Numeric(10, 2), nullable=True)
     rate_type = db.Column(db.String(50), nullable=True)      # hourly, annual, etc.
     contract_type = db.Column(db.String(50), nullable=True)
 
-    source_site = db.Column(db.String(100), nullable=False)
+    source_site = db.Column(db.Text, nullable=False)
     external_id = db.Column(db.String(255), nullable=True)
     url = db.Column(db.Text, nullable=True)
 
@@ -218,8 +221,8 @@ class JobPosting(db.Model):
 
     raw_json = db.Column(db.Text, nullable=True)
 
-    search_role = db.Column(db.String(255), nullable=True)
-    search_location = db.Column(db.String(255), nullable=True)
+    search_role = db.Column(db.Text, nullable=True)
+    search_location = db.Column(db.Text, nullable=True)
 
     __table_args__ = (
         db.Index("ix_job_postings_source_ext", "source_site", "external_id"),
@@ -303,3 +306,49 @@ def ensure_default_organisation() -> Organisation:
         db.session.commit()
     return org
 
+
+def get_or_create_role_mapping(raw_value: str | None, canonical_role: str | None, source: str | None = None):
+    """
+    Safely get or create a JobRoleMapping without triggering duplicate-key errors.
+
+    - raw_value: the original job role text from the scraper (unique)
+    - canonical_role: the normalised / grouped role (e.g. "Care Assistant")
+    - source: optional origin label (e.g. "adzuna", "indeed")
+
+    Returns:
+        JobRoleMapping instance, or None if raw_value is empty.
+    """
+    if not raw_value:
+        return None
+
+    raw_value = raw_value.strip()
+    if not raw_value:
+        return None
+
+    # 1) Try to find existing mapping
+    mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
+    if mapping:
+        # Optionally keep canonical_role fresh if it has changed
+        if canonical_role and mapping.canonical_role != canonical_role:
+            mapping.canonical_role = canonical_role
+            if source:
+                mapping.source = source
+            db.session.add(mapping)
+        return mapping
+
+    # 2) Create a new mapping
+    mapping = JobRoleMapping(
+        raw_value=raw_value,
+        canonical_role=canonical_role or raw_value,
+        source=source,
+    )
+    db.session.add(mapping)
+
+    try:
+        # Flush so we hit the DB and catch any unique violations here
+        db.session.flush()
+        return mapping
+    except IntegrityError:
+        # Another process/request inserted the same raw_value just before us.
+        db.session.rollback()
+        return JobRoleMapping.query.filter_by(raw_value=raw_value).first()

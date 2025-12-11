@@ -4,7 +4,7 @@ import re
 import json
 
 from app import db
-from models import JobPosting, JobRecord
+from models import JobPosting, JobRecord, get_or_create_role_mapping
 
 from app.blueprints.utils import (
     normalize_uk_postcode,
@@ -223,7 +223,8 @@ def _coords_from_raw_json(raw_json: str | None) -> tuple[float | None, float | N
 def import_posting_to_record(posting: JobPosting) -> JobRecord:
     """
     Safely import a JobPosting into a JobRecord.
-    Handles null dates, postcode normalisation, coords, company mapping.
+    Handles null dates, postcode normalisation, coords, company mapping,
+    and canonical job role mapping.
     """
 
     # Pay rate
@@ -257,12 +258,28 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
     # fall back to search_role for older data / safety.
     sector_value = posting.sector or posting.search_role
 
+    # Canonical job role mapping:
+    # - raw_value: the actual job title from the advert
+    # - canonical_role: prefer search_role if present, else title
+    canonical_role = posting.search_role or posting.title
+    role_mapping = get_or_create_role_mapping(
+        raw_value=posting.title,
+        canonical_role=canonical_role,
+        source=posting.source_site,
+    )
+
+    if role_mapping is not None:
+        job_role_group_value = role_mapping.canonical_role
+    else:
+        job_role_group_value = canonical_role
+
     # Build JobRecord
     record = JobRecord(
         company_id=company_id,
         company_name=posting.company_name,
         sector=sector_value,
         job_role=posting.title,
+        job_role_group=job_role_group_value,
         postcode=postcode,
         county=county,
         pay_rate=pay_rate,
