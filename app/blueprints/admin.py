@@ -29,7 +29,7 @@ from models import (
     CronRunLog,
     OnsEarnings,
     JobRoleMapping,
-    ensure_default_organisation
+    ensure_default_organisation,
 )
 from .utils import (
     commit_or_rollback,
@@ -477,7 +477,7 @@ def run_ons_import_manual():
 # -------------------------------------------------------------------
 # Simple ONS inspection helper
 # -------------------------------------------------------------------
-@bp.route("/inspect/ons")
+@bp.route("inspect/ons")
 @superuser_required
 def inspect_ons():
     """
@@ -1055,7 +1055,7 @@ def admin_import_job(posting_id):
 # -------------------------------------------------------------------
 # IMPORT ALL ACTIVE JOB POSTINGS → JobRecord
 # -------------------------------------------------------------------
-@bp.route("/jobs/import-all", methods=["POST"])
+@bp.route("/admin/jobs/import-all", methods=["POST"])
 @login_required
 def admin_import_all_jobs():
     """
@@ -1069,33 +1069,25 @@ def admin_import_all_jobs():
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    query = JobPosting.query.order_by(JobPosting.scraped_at.desc())
+    query = JobPosting.query
 
-    # Mirror the filters from admin_jobs so "Import All Visible" matches the list
-    source = (request.form.get("source") or request.args.get("source") or "").strip()
-    company = (request.form.get("company") or request.args.get("company") or "").strip()
-    title = (request.form.get("title") or request.args.get("title") or "").strip()
+    # Apply any filters from the request (role, company, source, active, etc.)
+    # This should mirror the listing view logic so "Import All Visible" means
+    # "import exactly what I'm currently looking at".
+    search = request.form.get("search") or request.args.get("search")
+    company = request.form.get("company") or request.args.get("company")
+    source = request.form.get("source") or request.args.get("source")
+    active_only = request.form.get("active_only") or request.args.get("active_only")
 
-    # Active flag – prefer the same 'active' param used in admin_jobs, but
-    # also accept 'active_only' for older forms/buttons.
-    active_param = (
-        request.form.get("active")
-        or request.args.get("active")
-        or request.form.get("active_only")
-        or request.args.get("active_only")
-    )
-    if active_param is None:
-        active_param = "1"
-
-    if source:
-        query = query.filter(JobPosting.source_site == source)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(JobPosting.title.ilike(like))
     if company:
         like = f"%{company}%"
         query = query.filter(JobPosting.company_name.ilike(like))
-    if title:
-        like = f"%{title}%"
-        query = query.filter(JobPosting.title.ilike(like))
-    if active_param in ("1", "true", "True", True):
+    if source:
+        query = query.filter(JobPosting.source_site == source)
+    if active_only in ("1", "true", "True", True):
         query = query.filter(JobPosting.is_active.is_(True))
 
     postings = query.all()
@@ -1122,6 +1114,20 @@ def admin_import_all_jobs():
     flash(" ".join(msg_parts), "success")
 
     return redirect(url_for("admin.admin_jobs"))
+
+
+@bp.route("/admin/jobs/import/<int:posting_id>", methods=["POST"])
+@login_required
+def import_job(posting_id):
+    posting = JobPosting.query.get_or_404(posting_id)
+
+    from app.job_importer import import_posting_to_record as legacy_import_posting_to_record
+
+    record = legacy_import_posting_to_record(posting)
+    db.session.commit()
+
+    flash("Job imported successfully.", "success")
+    return redirect(url_for("admin.jobs_page"))
 
 
 # -------------------------------------------------------------------
@@ -1304,3 +1310,4 @@ def cron_run_now():
 
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
+
