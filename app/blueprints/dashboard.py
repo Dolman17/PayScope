@@ -262,13 +262,22 @@ def insights():
     if extra_search is not None:
         base_q = extra_search(base_q)
 
-    # Subquery
-    sq = base_q.with_entities(
+    # Join to JobRoleMapping so we can display canonical roles where available
+    joined = base_q.outerjoin(
+        JobRoleMapping,
+        JobRecord.job_role == JobRoleMapping.raw_value,
+    )
+
+    # Subquery using canonical-or-raw job_role
+    sq = joined.with_entities(
         JobRecord.id.label("id"),
         JobRecord.company_id.label("company_id"),
         JobRecord.company_name.label("company_name"),
         JobRecord.sector.label("sector"),
-        JobRecord.job_role.label("job_role"),
+        func.coalesce(
+            JobRoleMapping.canonical_role,
+            JobRecord.job_role,
+        ).label("job_role"),
         JobRecord.postcode.label("postcode"),
         JobRecord.county.label("county"),
         JobRecord.pay_rate.label("pay_rate"),
@@ -302,7 +311,7 @@ def insights():
         {"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows
     ]
 
-    # Top roles
+    # Top roles (canonical when mapping exists)
     top_roles_rows = (
         db.session.query(sq.c.job_role, func.count(sq.c.id))
         .filter(sq.c.job_role.isnot(None))
@@ -455,7 +464,7 @@ def insights():
         for (cid, cname, a, n) in top_companies_rows
     ]
 
-    # Role mix by sector
+    # Role mix by sector (canonical where possible)
     role_mix_rows = (
         db.session.query(
             sq.c.sector,
@@ -512,7 +521,7 @@ def insights():
                 }
             )
 
-    # Role × sector matrix
+    # Role × sector matrix (canonical where possible)
     role_sector_rows = (
         db.session.query(
             sq.c.sector,
