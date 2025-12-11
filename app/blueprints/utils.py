@@ -9,9 +9,9 @@ from typing import Any, Mapping, Tuple, Callable, List, Optional
 
 import requests
 from flask import url_for, current_app
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from extensions import db
-from models import JobRecord, Company  # Company now used for canonical mapping
+from models import JobRecord, Company, JobRoleMapping  # Company + canonical role mapping
 
 
 # ---------- Small TTL cache (local, no external imports) ----------
@@ -20,6 +20,7 @@ def _ttl_cache(seconds: int = 120):
     Simple, process-local TTL cache decorator for zero-arg or any-arg functions.
     Cache key is (args, kwargs) so different calls don't collide.
     """
+
     def deco(fn):
         store = {}  # dict[(args_tuple, frozenset(kwargs.items()))] = (timestamp, value)
 
@@ -47,12 +48,40 @@ def _compute_filter_options():
             .all()
         ]
 
+    # Basic dimensions
+    sectors = col_distinct(JobRecord.sector)
+    counties = col_distinct(JobRecord.county)
+    months = col_distinct(JobRecord.imported_month)
+    years = col_distinct(JobRecord.imported_year)
+
+    # Roles: prefer canonical roles from JobRoleMapping, fall back to raw job_role
+    try:
+        roles_rows = (
+            db.session.query(
+                func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role)
+            )
+            .outerjoin(
+                JobRoleMapping,
+                JobRecord.job_role == JobRoleMapping.raw_value,
+            )
+            .filter(JobRecord.job_role.isnot(None))
+            .distinct()
+            .order_by(
+                func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role)
+            )
+            .all()
+        )
+        roles = [r[0] for r in roles_rows if r[0] is not None]
+    except Exception:
+        # If mapping table is missing / broken, fall back to raw roles
+        roles = col_distinct(JobRecord.job_role)
+
     return {
-        "sectors": col_distinct(JobRecord.sector),
-        "roles": col_distinct(JobRecord.job_role),
-        "counties": col_distinct(JobRecord.county),
-        "months": col_distinct(JobRecord.imported_month),
-        "years": col_distinct(JobRecord.imported_year),
+        "sectors": sectors,
+        "roles": roles,
+        "counties": counties,
+        "months": months,
+        "years": years,
     }
 
 
@@ -146,21 +175,59 @@ def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Option
       - 'sector', 'job_role', 'county', 'month', 'year'  (exact matches)
       - 'rate_min', 'rate_max' (floats)
       - 'q' free-text search across company_name, job_role, sector, county, postcode
-    Returns: (filters_list, extra_search_fn | None)
+
+    For 'job_role', the value(s) are treated as *canonical* role labels:
+      - We look up all JobRoleMapping.raw_value rows with that canonical_role
+      - plus include the label itself as a raw job_role
+      - and filter JobRecord.job_role IN (...) accordingly.
     """
     filters: List = []
 
-    # Exact filters
+    # Exact filters (simple columns)
     if mapping.get("sector"):
         filters.append(JobRecord.sector == mapping["sector"])
-    if mapping.get("job_role"):
-        filters.append(JobRecord.job_role == mapping["job_role"])
     if mapping.get("county"):
         filters.append(JobRecord.county == mapping["county"])
     if mapping.get("month"):
         filters.append(JobRecord.imported_month == mapping["month"])
     if mapping.get("year"):
         filters.append(JobRecord.imported_year == mapping["year"])
+
+    # Canonical job role filter
+    raw_job_role = mapping.get("job_role")
+    if raw_job_role:
+        # Normalise to list of labels
+        if isinstance(raw_job_role, (list, tuple, set)):
+            selected_labels = [(v or "").strip() for v in raw_job_role if (v or "").strip()]
+        else:
+            selected_labels = [str(raw_job_role).strip()]
+
+        if selected_labels:
+            # Resolve canonical label(s) back to the set of raw job_role values
+            # that should match, including the label itself.
+            raw_values_set: set[str] = set()
+
+            try:
+                mapping_rows = (
+                    db.session.query(JobRoleMapping.raw_value, JobRoleMapping.canonical_role)
+                    .filter(JobRoleMapping.canonical_role.in_(selected_labels))
+                    .all()
+                )
+                for raw, canon in mapping_rows:
+                    if raw:
+                        raw_values_set.add(raw.strip())
+                    if canon:
+                        raw_values_set.add(canon.strip())
+            except Exception:
+                # If mapping table is missing/broken, just fall back to matching
+                # directly on the selected labels.
+                raw_values_set.update(selected_labels)
+
+            # Always include the selected labels themselves
+            raw_values_set.update(selected_labels)
+
+            if raw_values_set:
+                filters.append(JobRecord.job_role.in_(sorted(raw_values_set)))
 
     # Pay range
     rate_min = mapping.get("rate_min")
