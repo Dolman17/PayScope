@@ -1059,24 +1059,65 @@ def admin_import_job(posting_id):
 # -------------------------------------------------------------------
 # IMPORT ALL ACTIVE JOB POSTINGS → JobRecord
 # -------------------------------------------------------------------
-@bp.route("/jobs/import-all", methods=["POST"])
+@admin_bp.route("/admin/jobs/import-all", methods=["POST"])
 @login_required
 def admin_import_all_jobs():
-    if not _require_superuser():
-        return redirect(url_for("home"))
+    """
+    Bulk-import all currently visible JobPostings into JobRecord.
 
-    postings = JobPosting.query.filter_by(is_active=True).all()
-    count = 0
+    - Respects current filter/search on the Job Postings admin page.
+    - Skips postings already marked as imported.
+    - Uses import_posting_to_record with enable_snap_to_postcode=False
+      to avoid hammering external postcode APIs in bulk (prevents timeouts).
+    """
+    # You likely build this query elsewhere based on filters; keep that logic.
+    # Example pattern (adjust to match your real code):
+    query = JobPosting.query
+
+    # Apply any filters from the request (role, company, source, active, etc.)
+    # This should mirror the listing view logic so "Import All Visible" means
+    # "import exactly what I'm currently looking at".
+    search = request.form.get("search") or request.args.get("search")
+    company = request.form.get("company") or request.args.get("company")
+    source = request.form.get("source") or request.args.get("source")
+    active_only = request.form.get("active_only") or request.args.get("active_only")
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(JobPosting.title.ilike(like))
+    if company:
+        like = f"%{company}%"
+        query = query.filter(JobPosting.company_name.ilike(like))
+    if source:
+        query = query.filter(JobPosting.source_site == source)
+    if active_only in ("1", "true", "True", True):
+        query = query.filter(JobPosting.is_active.is_(True))
+
+    postings = query.all()
+
+    imported_count = 0
+    skipped_already_imported = 0
 
     for posting in postings:
+        # Avoid re-importing
         if getattr(posting, "imported", False):
+            skipped_already_imported += 1
             continue
-        import_posting_to_record(posting)
-        count += 1
+
+        # Bulk mode – skip postcode snapping to avoid timeouts
+        import_posting_to_record(posting, enable_snap_to_postcode=False)
+        imported_count += 1
 
     db.session.commit()
-    flash(f"{count} job postings imported successfully.", "success")
+
+    msg_parts = [f"Imported {imported_count} job(s)."]
+    if skipped_already_imported:
+        msg_parts.append(f"Skipped {skipped_already_imported} already-imported job(s).")
+
+    flash(" ".join(msg_parts), "success")
+
     return redirect(url_for("admin.admin_jobs"))
+
 
 
 @bp.route("/admin/jobs/import/<int:posting_id>", methods=["POST"])

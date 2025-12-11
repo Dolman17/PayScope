@@ -220,11 +220,19 @@ def _coords_from_raw_json(raw_json: str | None) -> tuple[float | None, float | N
     return (lat, lon)
 
 
-def import_posting_to_record(posting: JobPosting) -> JobRecord:
+def import_posting_to_record(
+    posting: JobPosting,
+    *,
+    enable_snap_to_postcode: bool = True,
+) -> JobRecord:
     """
     Safely import a JobPosting into a JobRecord.
     Handles null dates, postcode normalisation, coords, company mapping,
     and canonical job role mapping.
+
+    enable_snap_to_postcode:
+        - True  => if lat/lon but no postcode, call snap_to_nearest_postcode (external API)
+        - False => skip postcode snapping (faster for bulk imports)
     """
 
     # Pay rate
@@ -233,7 +241,7 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
     # County
     county = _extract_county(posting.location_text)
 
-    # FIXED: scraped_at may be None (cron creates JobPosting before commit)
+    # scraped_at may be None (cron creates JobPosting before commit)
     scraped = posting.scraped_at or datetime.utcnow()
     imported_month = scraped.strftime("%B")
     imported_year = scraped.strftime("%Y")
@@ -244,7 +252,11 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
 
     lat, lon = _coords_from_raw_json(posting.raw_json)
 
-    if (not postcode) and (lat is not None and lon is not None):
+    if (
+        enable_snap_to_postcode
+        and (not postcode)
+        and (lat is not None and lon is not None)
+    ):
         inferred_pc, snapped_lat, snapped_lon = snap_to_nearest_postcode(lat, lon)
         if inferred_pc:
             postcode = inferred_pc
@@ -258,9 +270,7 @@ def import_posting_to_record(posting: JobPosting) -> JobRecord:
     # fall back to search_role for older data / safety.
     sector_value = posting.sector or posting.search_role
 
-    # Canonical job role mapping:
-    # - raw_value: the actual job title from the advert
-    # - canonical_role: prefer search_role if present, else title
+    # Canonical job role mapping
     canonical_role = posting.search_role or posting.title
     role_mapping = get_or_create_role_mapping(
         raw_value=posting.title,
