@@ -122,4 +122,3 @@ def import_posting_to_record(
 
     db.session.add(record)
     return record
-
