@@ -240,9 +240,9 @@ def dashboard():
 def insights():
     """
     Insights over JobRecord with filters.
-    - Unpacks (filters, extra_search) from build_filters_from_request
-    - Uses a subquery alias for aggregates to avoid cartesian products
-    - Supplies `records` for any client-side scripts in insights.html
+
+    Now uses JobRoleMapping to prefer canonical roles in all analytics:
+    job_role = COALESCE(JobRoleMapping.canonical_role, JobRecord.job_role)
     """
     filters_map = {
         "q": request.args.get("q"),
@@ -262,22 +262,21 @@ def insights():
     if extra_search is not None:
         base_q = extra_search(base_q)
 
-    # Join to JobRoleMapping so we can display canonical roles where available
-    joined = base_q.outerjoin(
+    # Join to JobRoleMapping so we can use canonical roles where available
+    base_q = base_q.outerjoin(
         JobRoleMapping,
         JobRecord.job_role == JobRoleMapping.raw_value,
     )
 
-    # Subquery using canonical-or-raw job_role
-    sq = joined.with_entities(
+    # Subquery with canonical job_role label
+    sq = base_q.with_entities(
         JobRecord.id.label("id"),
         JobRecord.company_id.label("company_id"),
         JobRecord.company_name.label("company_name"),
         JobRecord.sector.label("sector"),
-        func.coalesce(
-            JobRoleMapping.canonical_role,
-            JobRecord.job_role,
-        ).label("job_role"),
+        func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role).label(
+            "job_role"
+        ),
         JobRecord.postcode.label("postcode"),
         JobRecord.county.label("county"),
         JobRecord.pay_rate.label("pay_rate"),
@@ -311,7 +310,7 @@ def insights():
         {"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows
     ]
 
-    # Top roles (canonical when mapping exists)
+    # Top roles (now canonical where mapping exists)
     top_roles_rows = (
         db.session.query(sq.c.job_role, func.count(sq.c.id))
         .filter(sq.c.job_role.isnot(None))
@@ -464,7 +463,7 @@ def insights():
         for (cid, cname, a, n) in top_companies_rows
     ]
 
-    # Role mix by sector (canonical where possible)
+    # Role mix by sector (canonical where available)
     role_mix_rows = (
         db.session.query(
             sq.c.sector,
@@ -521,7 +520,7 @@ def insights():
                 }
             )
 
-    # Role × sector matrix (canonical where possible)
+    # Role × sector matrix (canonical where available)
     role_sector_rows = (
         db.session.query(
             sq.c.sector,
@@ -815,4 +814,3 @@ def admin_job_roles_bulk_map():
     return redirect(
         url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
     )
-
