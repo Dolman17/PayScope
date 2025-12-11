@@ -235,6 +235,53 @@
       left:46%;
       opacity:0.35;
     }
+
+    /* Global dark form controls */
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    select,
+    textarea {
+      background-color: #020617 !important;
+      color: #e5e7eb !important;
+      border: 1px solid #374151 !important;
+      border-radius: 0.75rem !important;
+      padding: 0.6rem 0.75rem !important;
+    }
+    select[multiple] {
+      padding: 0.4rem 0.5rem !important;
+    }
+    input::placeholder,
+    textarea::placeholder {
+      color: #64748b !important;
+    }
+    select option {
+      background-color: #020617 !important;
+      color: #e5e7eb !important;
+    }
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none !important;
+      border-color: var(--brand-light) !important;
+      box-shadow: 0 0 0 3px var(--ring) !important;
+    }
+
+    /* HARD OVERRIDES for Tailwind "light" utilities that are probably on your form containers */
+    .bg-white,
+    .bg-gray-50,
+    .bg-gray-100 {
+      background-color: #020617 !important;
+    }
+    .text-gray-900 {
+      color: #e5e7eb !important;
+    }
+    .border-gray-200,
+    .border-gray-300 {
+      border-color: #1f2937 !important;
+    }
   </style>
 
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
@@ -392,7 +439,7 @@
   </header>
 
   <!-- Flash Messages -->
-  <div class="max-w-7xl mx-auto px-4 mt-4 space-y-2">
+  <div class="max-w-7xl mx_auto px-4 mt-4 space-y-2">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -412,7 +459,7 @@
     {% block content %}{% endblock %}
   </main>
 
-    <!-- Footer -->
+  <!-- Footer -->
   <footer class="bg-gray-950 text-center text-sm text-gray-500 py-5 border-t border-gray-800">
     <div class="max-w-7xl mx-auto px-4">
       <p class="text-gray-500">
@@ -458,7 +505,3 @@
 
 </body>
 </html>
-
-
-
-

@@ -15,7 +15,8 @@
 
   <!-- Filters -->
   <form method="get" class="bg-white shadow-sm rounded-lg p-4 mb-6 border border-gray-100">
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+      <!-- Source -->
       <div>
         <label for="source" class="block text-sm font-medium text-gray-700">Source</label>
         <select id="source" name="source"
@@ -29,6 +30,7 @@
         </select>
       </div>
 
+      <!-- Company filter -->
       <div>
         <label for="company" class="block text-sm font-medium text-gray-700">Company contains</label>
         <input type="text" id="company" name="company"
@@ -37,6 +39,16 @@
                placeholder="e.g. Blue Ribbon">
       </div>
 
+      <!-- Job title / role filter -->
+      <div>
+        <label for="title" class="block text-sm font-medium text-gray-700">Job title contains</label>
+        <input type="text" id="title" name="title"
+               value="{{ title_filter }}"
+               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600 text-sm"
+               placeholder="e.g. Support Worker">
+      </div>
+
+      <!-- Active only -->
       <div class="flex items-center space-x-2 mt-4 md:mt-0">
         <input id="active" name="active" type="checkbox" value="1"
                class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-600"
@@ -44,6 +56,7 @@
         <label for="active" class="text-sm font-medium text-gray-700">Active only</label>
       </div>
 
+      <!-- Submit -->
       <div class="flex justify-end">
         <button type="submit"
                 class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-blue-600 text-white hover:bg-blue-700">
@@ -157,13 +170,12 @@
                 </span>
                 {% else %}
                 <form action="{{ url_for('admin.admin_import_job', posting_id=job.id) }}"
-      method="POST" class="inline">
-  <button type="submit"
-          class="text-blue-600 hover:text-blue-800 text-xs font-medium">
-    Import →
-  </button>
-</form>
-
+                      method="POST" class="inline">
+                  <button type="submit"
+                          class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                    Import →
+                  </button>
+                </form>
                 {% endif %}
               </td>
             </tr>
@@ -187,13 +199,23 @@
       </div>
       <div class="space-x-2">
         {% if pagination.has_prev %}
-        <a href="{{ url_for('admin.admin_jobs', page=pagination.prev_num, source=selected_source, company=company_filter, active=active_only) }}"
+        <a href="{{ url_for('admin.admin_jobs',
+                            page=pagination.prev_num,
+                            source=selected_source,
+                            company=company_filter,
+                            title=title_filter,
+                            active=active_only) }}"
            class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-100">
           Previous
         </a>
         {% endif %}
         {% if pagination.has_next %}
-        <a href="{{ url_for('admin.admin_jobs', page=pagination.next_num, source=selected_source, company=company_filter, active=active_only) }}"
+        <a href="{{ url_for('admin.admin_jobs',
+                            page=pagination.next_num,
+                            source=selected_source,
+                            company=company_filter,
+                            title=title_filter,
+                            active=active_only) }}"
            class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-100">
           Next
         </a>
