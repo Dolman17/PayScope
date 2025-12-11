@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, date
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+
 from app import create_app
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record, classify_sector
 from extensions import db
 from models import JobPosting, CronRunLog, JobRecord, JobRoleMapping
-from sqlalchemy.exc import IntegrityError
 from job_summaries import build_daily_job_summaries  # Daily summaries
 from ons_importer import import_ons_earnings_to_db   # ONS → DB upsert
 
@@ -154,6 +156,169 @@ DAY_CONFIG = {
 
 
 # -------------------------------------------------------------------
+# Gap-filling config: target coverage + mappings
+# -------------------------------------------------------------------
+SECTOR_TARGET_MIN = 1500       # desired minimum records per sector before we de-prioritise it
+COUNTY_TARGET_MIN = 800        # desired minimum records per county
+
+MAX_GAP_SECTOR_JOBS = 6        # max extra sector-focused scrapes per run
+MAX_GAP_COUNTY_JOBS = 6        # max extra county-focused scrapes per run
+
+# Map *canonical sector names* in JobRecord.sector → representative Adzuna keywords
+SECTOR_KEYWORDS = {
+    "Education & Training": [
+        "teacher",
+        "lecturer",
+        "trainer",
+        "tutor",
+    ],
+    "Legal": [
+        "solicitor",
+        "paralegal",
+        "legal assistant",
+    ],
+    "Sales & Marketing": [
+        "sales executive",
+        "sales manager",
+        "marketing manager",
+        "business development",
+    ],
+    "Customer Service": [
+        "customer service advisor",
+        "call centre advisor",
+        "contact centre",
+    ],
+    "Support Worker": [
+        "support worker",
+        "care support worker",
+    ],
+    "HR & Recruitment": [
+        "hr advisor",
+        "hr officer",
+        "recruitment consultant",
+    ],
+    "Finance & Accounting": [
+        "accountant",
+        "finance analyst",
+        "bookkeeper",
+    ],
+    "IT & Digital": [
+        "web developer",
+        "frontend developer",
+        "backend developer",
+        "python developer",
+    ],
+    # extend / tweak as your sector naming settles
+}
+
+# Map DB counties/pseudo-counties to Adzuna "where" values
+COUNTY_LOCATIONS = {
+    "Staffordshire": "Staffordshire",
+    "Cheshire": "Cheshire",
+    "Norfolk": "Norfolk",
+    "Lancashire": "Lancashire",
+    "Herefordshire": "Herefordshire",
+    "Shropshire": "Shropshire",
+    "Worcestershire": "Worcestershire",
+    "West Midlands": "West Midlands",
+    "Greater Manchester": "Greater Manchester",
+    "Bristol": "Bristol",
+    "Glasgow": "Glasgow",
+    "Edinburgh": "Edinburgh",
+    "London": "London",
+    "Leeds": "Leeds",
+    "Birmingham": "Birmingham",
+    # add more from your Records by County table as needed
+}
+
+
+def get_underrepresented_sectors(limit: int = 20) -> list[str]:
+    """
+    Return sector names that are below SECTOR_TARGET_MIN and that we know
+    how to query (present in SECTOR_KEYWORDS), ordered from lowest coverage.
+    """
+    rows = (
+        db.session.query(JobRecord.sector, func.count(JobRecord.id))
+        .filter(JobRecord.sector.isnot(None))
+        .group_by(JobRecord.sector)
+        .order_by(func.count(JobRecord.id).asc())
+        .limit(limit)
+        .all()
+    )
+
+    result: list[str] = []
+    for sector, count in rows:
+        if not sector:
+            continue
+        if sector in SECTOR_KEYWORDS and (count or 0) < SECTOR_TARGET_MIN:
+            result.append(sector)
+    return result
+
+
+def get_underrepresented_counties(limit: int = 50) -> list[str]:
+    """
+    Return county names that are below COUNTY_TARGET_MIN and present
+    in COUNTY_LOCATIONS, ordered from lowest coverage.
+    """
+    rows = (
+        db.session.query(JobRecord.county, func.count(JobRecord.id))
+        .filter(JobRecord.county.isnot(None))
+        .group_by(JobRecord.county)
+        .order_by(func.count(JobRecord.id).asc())
+        .limit(limit)
+        .all()
+    )
+
+    result: list[str] = []
+    for county, count in rows:
+        if not county:
+            continue
+        if county in COUNTY_LOCATIONS and (count or 0) < COUNTY_TARGET_MIN:
+            result.append(county)
+    return result
+
+
+def build_gap_fill_pairs() -> list[tuple[str, str]]:
+    """
+    Build a small list of (role_query, where_location) pairs that target
+    under-represented sectors and counties.
+
+    These are appended to the day's fixed role/location grid so each cron run
+    nudges the dataset toward a better spread.
+    """
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    # --- Sector-focused gap fill ------------------------------------------------
+    for sector in get_underrepresented_sectors():
+        keywords = SECTOR_KEYWORDS.get(sector) or []
+        for kw in keywords:
+            pair = (kw, "United Kingdom")
+            if pair in seen:
+                continue
+            pairs.append(pair)
+            seen.add(pair)
+            if len([p for p in pairs if p[0]]) >= MAX_GAP_SECTOR_JOBS:
+                break
+        if len([p for p in pairs if p[0]]) >= MAX_GAP_SECTOR_JOBS:
+            break
+
+    # --- County-focused gap fill ------------------------------------------------
+    for county in get_underrepresented_counties():
+        where = COUNTY_LOCATIONS[county]
+        # Use an empty 'what' to pull a cross-section of roles in that county.
+        pair = ("", where)
+        if pair in seen:
+            continue
+        pairs.append(pair)
+        seen.add(pair)
+        if len([p for p in pairs if p[0] == ""]) >= MAX_GAP_COUNTY_JOBS:
+            break
+
+    return pairs
+
+
+# -------------------------------------------------------------------
 # Core scrape logic
 # -------------------------------------------------------------------
 def _find_existing_posting(
@@ -175,10 +340,19 @@ def _find_existing_posting(
     return q.first() if q is not None else None
 
 
-def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
+def _run_for_config(
+    label: str,
+    roles: list[str],
+    locations: list[str],
+    extra_pairs: list[tuple[str, str]] | None = None,
+) -> dict:
     """
     Run Adzuna scrapes for the given roles/locations.
-    Returns a dict with counts and any error messages.
+
+    - Builds the cartesian product of (roles × locations)
+    - Optionally appends gap-filling (role, where) pairs
+    - Dedupes pairs
+    - Returns a dict with counts and any error messages.
     """
     rows_scraped = 0              # total items returned from Adzuna
     records_created = 0           # JobRecord rows created
@@ -187,98 +361,108 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
 
     errors: list[str] = []
 
+    # Build base grid
+    pairs: set[tuple[str, str]] = set()
     for role in roles:
         for loc in locations:
-            try:
-                scraper = AdzunaScraper(
-                    what=role,
-                    where=loc,
-                    max_pages=2,
-                    results_per_page=40,
+            pairs.add((role, loc))
+
+    # Add gap-fill pairs (sector/county driven)
+    if extra_pairs:
+        for r, l in extra_pairs:
+            pairs.add((r, l))
+
+    for role, loc in sorted(pairs):
+        try:
+            scraper = AdzunaScraper(
+                what=role,
+                where=loc,
+                max_pages=2,
+                results_per_page=40,
+            )
+            results = scraper.scrape()
+
+            for rec in results:
+                rows_scraped += 1
+
+                existing = _find_existing_posting(
+                    source_site=rec.source_site,
+                    external_id=rec.external_id,
+                    url=rec.url,
                 )
-                results = scraper.scrape()
 
-                for rec in results:
-                    rows_scraped += 1
+                now = datetime.utcnow()
 
-                    existing = _find_existing_posting(
-                        source_site=rec.source_site,
-                        external_id=rec.external_id,
+                # Sector is derived from the live title + search role
+                sector_value = classify_sector(rec.title, role)
+
+                # Safely truncate string fields to match DB column sizes
+                title = _truncate(rec.title, 255)
+                company_name = _truncate(rec.company_name, 255)
+                location_text = _truncate(rec.location_text, 255)
+                postcode = _truncate(rec.postcode, 20)
+                sector_val = _truncate(sector_value, 100)
+                rate_type = _truncate(rec.rate_type, 50)
+                contract_type = _truncate(rec.contract_type, 50)
+                source_site = _truncate(rec.source_site, 100)
+                external_id = _truncate(rec.external_id, 255)
+                search_role_val = _truncate(role, 255)
+                search_location_val = _truncate(loc, 255)
+
+                if existing:
+                    # Update existing posting with fresh data
+                    posting = existing
+                    posting.title = title
+                    posting.company_name = company_name
+                    posting.location_text = location_text
+                    posting.postcode = postcode
+                    posting.sector = sector_val
+                    posting.min_rate = rec.min_rate
+                    posting.max_rate = rec.max_rate
+                    posting.rate_type = rate_type
+                    posting.contract_type = contract_type
+                    posting.url = rec.url
+                    posting.posted_date = rec.posted_date
+                    posting.raw_json = json.dumps(rec.raw_json or {})
+                    posting.search_role = search_role_val
+                    posting.search_location = search_location_val
+                    posting.scraped_at = now  # treat as "last seen"
+                    posting.is_active = True
+                    postings_updated += 1
+                else:
+                    # Create new posting
+                    posting = JobPosting(
+                        title=title,
+                        company_name=company_name,
+                        location_text=location_text,
+                        postcode=postcode,
+                        sector=sector_val,
+                        min_rate=rec.min_rate,
+                        max_rate=rec.max_rate,
+                        rate_type=rate_type,
+                        contract_type=contract_type,
+                        source_site=source_site,
+                        external_id=external_id,
                         url=rec.url,
+                        posted_date=rec.posted_date,
+                        raw_json=json.dumps(rec.raw_json or {}),
+                        search_role=search_role_val,
+                        search_location=search_location_val,
                     )
+                    db.session.add(posting)
+                    postings_created += 1
 
-                    now = datetime.utcnow()
+                # Always import into JobRecord for time-series history
+                job_record = import_posting_to_record(posting)
+                db.session.add(job_record)
+                records_created += 1
 
-                    # Sector is derived from the live title + search role
-                    sector_value = classify_sector(rec.title, role)
-
-                    # Safely truncate string fields to match DB column sizes
-                    title = _truncate(rec.title, 255)
-                    company_name = _truncate(rec.company_name, 255)
-                    location_text = _truncate(rec.location_text, 255)
-                    postcode = _truncate(rec.postcode, 20)
-                    sector_val = _truncate(sector_value, 100)
-                    rate_type = _truncate(rec.rate_type, 50)
-                    contract_type = _truncate(rec.contract_type, 50)
-                    source_site = _truncate(rec.source_site, 100)
-                    external_id = _truncate(rec.external_id, 255)
-                    search_role_val = _truncate(role, 255)
-                    search_location_val = _truncate(loc, 255)
-
-                    if existing:
-                        # Update existing posting with fresh data
-                        posting = existing
-                        posting.title = title
-                        posting.company_name = company_name
-                        posting.location_text = location_text
-                        posting.postcode = postcode
-                        posting.sector = sector_val
-                        posting.min_rate = rec.min_rate
-                        posting.max_rate = rec.max_rate
-                        posting.rate_type = rate_type
-                        posting.contract_type = contract_type
-                        posting.url = rec.url
-                        posting.posted_date = rec.posted_date
-                        posting.raw_json = json.dumps(rec.raw_json or {})
-                        posting.search_role = search_role_val
-                        posting.search_location = search_location_val
-                        posting.scraped_at = now  # treat as "last seen"
-                        posting.is_active = True
-                        postings_updated += 1
-                    else:
-                        # Create new posting
-                        posting = JobPosting(
-                            title=title,
-                            company_name=company_name,
-                            location_text=location_text,
-                            postcode=postcode,
-                            sector=sector_val,
-                            min_rate=rec.min_rate,
-                            max_rate=rec.max_rate,
-                            rate_type=rate_type,
-                            contract_type=contract_type,
-                            source_site=source_site,
-                            external_id=external_id,
-                            url=rec.url,
-                            posted_date=rec.posted_date,
-                            raw_json=json.dumps(rec.raw_json or {}),
-                            search_role=search_role_val,
-                            search_location=search_location_val,
-                        )
-                        db.session.add(posting)
-                        postings_created += 1
-
-                    # Always import into JobRecord for time-series history
-                    job_record = import_posting_to_record(posting)
-                    db.session.add(job_record)
-                    records_created += 1
-
-                db.session.commit()
-            except Exception as e:  # noqa: BLE001
-                db.session.rollback()
-                msg = f"{label}: error scraping '{role}' @ '{loc}': {e!r}"
-                print("⚠", msg)
-                errors.append(msg)
+            db.session.commit()
+        except Exception as e:  # noqa: BLE001
+            db.session.rollback()
+            msg = f"{label}: error scraping '{role}' @ '{loc}': {e!r}"
+            print("⚠", msg)
+            errors.append(msg)
 
     return {
         "rows_scraped": rows_scraped,
@@ -405,8 +589,6 @@ def _canonicalise_job_roles_with_ai(
         # ------------------------------------------------------------------
         # 1) Fetch distinct raw roles that do NOT yet have a mapping
         # ------------------------------------------------------------------
-        from sqlalchemy import func
-
         roles_query = (
             db.session.query(
                 JobRecord.job_role.label("raw_value"),
@@ -659,7 +841,15 @@ def run_scheduled_jobs(
         db.session.commit()
 
         try:
-            result = _run_for_config(label, roles, locations)
+            # Build adaptive gap-fill queries based on current dataset coverage
+            gap_pairs = build_gap_fill_pairs()
+            if gap_pairs:
+                print(
+                    f"🎯 Gap-fill enabled: {len(gap_pairs)} extra "
+                    f"(role, location) pairs this run."
+                )
+
+            result = _run_for_config(label, roles, locations, extra_pairs=gap_pairs)
 
             log.finished_at = datetime.utcnow()
             log.rows_scraped = result["rows_scraped"]
@@ -808,3 +998,4 @@ def run_job_role_canonicaliser(
 if __name__ == "__main__":
     # When Railway runs: python cron_runner.py
     run_scheduled_jobs(trigger="railway")
+
