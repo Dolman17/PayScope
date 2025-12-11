@@ -9,8 +9,20 @@ from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record, classify_sector
 from extensions import db
 from models import JobPosting, CronRunLog, JobRecord, JobRoleMapping
+from sqlalchemy.exc import IntegrityError
 from job_summaries import build_daily_job_summaries  # Daily summaries
 from ons_importer import import_ons_earnings_to_db   # ONS → DB upsert
+
+
+def _truncate(value, max_len: int | None):
+    """Safely truncate strings for fixed-length VARCHAR columns."""
+    if value is None or max_len is None:
+        return value
+    s = str(value)
+    if len(s) <= max_len:
+        return s
+    return s[:max_len]
+
 
 # Optional OpenAI client for AI canonicalisation
 try:
@@ -144,7 +156,11 @@ DAY_CONFIG = {
 # -------------------------------------------------------------------
 # Core scrape logic
 # -------------------------------------------------------------------
-def _find_existing_posting(source_site: str, external_id: str | None, url: str | None):
+def _find_existing_posting(
+    source_site: str,
+    external_id: str | None,
+    url: str | None,
+):
     """
     Look up an existing JobPosting for dedup:
     - Prefer (source_site, external_id)
@@ -196,45 +212,58 @@ def _run_for_config(label: str, roles: list[str], locations: list[str]) -> dict:
                     # Sector is derived from the live title + search role
                     sector_value = classify_sector(rec.title, role)
 
+                    # Safely truncate string fields to match DB column sizes
+                    title = _truncate(rec.title, 255)
+                    company_name = _truncate(rec.company_name, 255)
+                    location_text = _truncate(rec.location_text, 255)
+                    postcode = _truncate(rec.postcode, 20)
+                    sector_val = _truncate(sector_value, 100)
+                    rate_type = _truncate(rec.rate_type, 50)
+                    contract_type = _truncate(rec.contract_type, 50)
+                    source_site = _truncate(rec.source_site, 100)
+                    external_id = _truncate(rec.external_id, 255)
+                    search_role_val = _truncate(role, 255)
+                    search_location_val = _truncate(loc, 255)
+
                     if existing:
                         # Update existing posting with fresh data
                         posting = existing
-                        posting.title = rec.title
-                        posting.company_name = rec.company_name
-                        posting.location_text = rec.location_text
-                        posting.postcode = rec.postcode
-                        posting.sector = sector_value
+                        posting.title = title
+                        posting.company_name = company_name
+                        posting.location_text = location_text
+                        posting.postcode = postcode
+                        posting.sector = sector_val
                         posting.min_rate = rec.min_rate
                         posting.max_rate = rec.max_rate
-                        posting.rate_type = rec.rate_type
-                        posting.contract_type = rec.contract_type
+                        posting.rate_type = rate_type
+                        posting.contract_type = contract_type
                         posting.url = rec.url
                         posting.posted_date = rec.posted_date
                         posting.raw_json = json.dumps(rec.raw_json or {})
-                        posting.search_role = role
-                        posting.search_location = loc
+                        posting.search_role = search_role_val
+                        posting.search_location = search_location_val
                         posting.scraped_at = now  # treat as "last seen"
                         posting.is_active = True
                         postings_updated += 1
                     else:
                         # Create new posting
                         posting = JobPosting(
-                            title=rec.title,
-                            company_name=rec.company_name,
-                            location_text=rec.location_text,
-                            postcode=rec.postcode,
-                            sector=sector_value,
+                            title=title,
+                            company_name=company_name,
+                            location_text=location_text,
+                            postcode=postcode,
+                            sector=sector_val,
                             min_rate=rec.min_rate,
                             max_rate=rec.max_rate,
-                            rate_type=rec.rate_type,
-                            contract_type=rec.contract_type,
-                            source_site=rec.source_site,
-                            external_id=rec.external_id,
+                            rate_type=rate_type,
+                            contract_type=contract_type,
+                            source_site=source_site,
+                            external_id=external_id,
                             url=rec.url,
                             posted_date=rec.posted_date,
                             raw_json=json.dumps(rec.raw_json or {}),
-                            search_role=role,
-                            search_location=loc,
+                            search_role=search_role_val,
+                            search_location=search_location_val,
                         )
                         db.session.add(posting)
                         postings_created += 1
@@ -332,11 +361,11 @@ def _canonicalise_job_roles_with_ai(
     NEW BEHAVIOUR:
     - Works at the level of JobRecord.job_role (distinct raw values).
     - Only processes roles that do NOT yet have a JobRoleMapping row.
-    - For each raw role, asks OpenAI for a canonical group label.
+    - For each raw role, asks OpenAI for a canonical group name.
     - Writes/updates JobRoleMapping(raw_value, canonical_role).
     - Applies that canonical role back to JobRecord:
-        - JobRecord.job_role      = canonical_role
-        - JobRecord.job_role_group = canonical_role (for any existing usage)
+        - JobRecord.job_role       = canonical_role
+        - JobRecord.job_role_group = canonical_role
     - Logs progress via CronRunLog.
 
     Assumes it is called inside app.app_context().
@@ -376,9 +405,8 @@ def _canonicalise_job_roles_with_ai(
         # ------------------------------------------------------------------
         # 1) Fetch distinct raw roles that do NOT yet have a mapping
         # ------------------------------------------------------------------
-        from sqlalchemy import func, outerjoin
+        from sqlalchemy import func
 
-        # Left join JobRoleMapping on raw_value
         roles_query = (
             db.session.query(
                 JobRecord.job_role.label("raw_value"),
@@ -389,9 +417,7 @@ def _canonicalise_job_roles_with_ai(
                 JobRoleMapping.raw_value == JobRecord.job_role,
             )
             .filter(JobRecord.job_role.isnot(None))
-            .filter(
-                (JobRoleMapping.id.is_(None))  # no mapping yet
-            )
+            .filter(JobRoleMapping.id.is_(None))  # no mapping yet
             .group_by(JobRecord.job_role)
             .order_by(func.count(JobRecord.id).desc())
             .limit(max_roles)
@@ -409,7 +435,7 @@ def _canonicalise_job_roles_with_ai(
         # Helper to chunk the work
         def chunked(seq, n):
             for i in range(0, len(seq), n):
-                yield seq[i: i + n]
+                yield seq[i : i + n]
 
         system_msg = (
             "You are normalising job titles for an analytics tool.\n"
@@ -442,7 +468,7 @@ def _canonicalise_job_roles_with_ai(
         # ------------------------------------------------------------------
         for chunk_index, chunk_rows in enumerate(chunked(rows, chunk_size), start=1):
             # chunk_rows: list of (raw_value, count)
-            role_items = []
+            role_items: list[str] = []
             for raw_value, count in chunk_rows:
                 raw_title = (raw_value or "").strip()
                 if not raw_title:
@@ -453,7 +479,6 @@ def _canonicalise_job_roles_with_ai(
             if not role_items:
                 continue
 
-            # Build prompt payload: simple bullet list of raw titles
             list_block = "\n".join(f"- {title}" for title in role_items)
             user_msg = (
                 "Here is the list of raw job titles you need to normalise:\n\n"
@@ -475,7 +500,7 @@ def _canonicalise_job_roles_with_ai(
                     max_tokens=1500,
                 )
                 content = resp.choices[0].message.content.strip()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 msg = (
                     f"OpenAI call failed during job-role canonicaliser "
                     f"(chunk {chunk_index}): {e!r}"
@@ -491,13 +516,11 @@ def _canonicalise_job_roles_with_ai(
             # ---- strip ```json / ``` fences defensively ----
             cleaned = content.strip()
             if cleaned.startswith("```"):
-                # Drop first fence line (``` or ```json)
                 first_newline = cleaned.find("\n")
                 if first_newline != -1:
-                    cleaned = cleaned[first_newline + 1:]
+                    cleaned = cleaned[first_newline + 1 :]
                 else:
                     cleaned = cleaned.lstrip("`")
-                # Drop trailing ``` if present
                 if "```" in cleaned:
                     cleaned = cleaned.rsplit("```", 1)[0].strip()
 
@@ -506,9 +529,8 @@ def _canonicalise_job_roles_with_ai(
                 if isinstance(data, dict) and "mappings" in data:
                     mapping = data.get("mappings") or {}
                 else:
-                    # If the model returned a flat dict, treat it as the mapping
                     mapping = data if isinstance(data, dict) else {}
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 msg = (
                     f"Failed to parse AI JSON for chunk {chunk_index}: {e!r} "
                     f"| content={cleaned[:500]}"
@@ -534,35 +556,44 @@ def _canonicalise_job_roles_with_ai(
                     total_skipped += 1
                     continue
 
-                # Upsert JobRoleMapping
-                m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
-                if m is None:
-                    m = JobRoleMapping(raw_value=raw_title, canonical_role=canonical)
-                    db.session.add(m)
-                else:
-                    m.canonical_role = canonical
+                # Upsert JobRoleMapping (race-safe)
+                try:
+                    m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
+                    if m is None:
+                        m = JobRoleMapping(
+                            raw_value=raw_title,
+                            canonical_role=canonical,
+                        )
+                        db.session.add(m)
+                        db.session.flush()  # force uniqueness check here
+                    else:
+                        m.canonical_role = canonical
+                except IntegrityError:
+                    # Another process inserted this mapping between SELECT and INSERT
+                    db.session.rollback()
+                    m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
+                    if not m:
+                        # If it's still not there, bubble up the real error
+                        raise
 
                 # Apply to all JobRecord rows with this raw_title
                 q = JobRecord.query.filter(JobRecord.job_role == raw_title)
                 count_updated = q.update(
                     {
-                        "job_role": canonical,        # use canonical as the main role
-                        "job_role_group": canonical,  # keep group in sync
+                        "job_role": canonical,
+                        "job_role_group": canonical,
                     },
                     synchronize_session=False,
                 )
                 total_updated += count_updated
 
-            # Commit after each chunk so progress is saved
-            db.session.commit()
-
-        # All chunks processed (or gracefully aborted earlier)
+        # If we get here, everything completed
+        db.session.commit()
         log.finished_at = datetime.utcnow()
         log.status = "success"
-        log.records_created = total_updated  # reuse field for "rows updated"
         log.message = (
-            f"Canonicalised job roles. Updated rows={total_updated}, "
-            f"examined={summary['examined']}, skipped={total_skipped}."
+            f"Canonicalised job roles. updated={total_updated}, "
+            f"examined={summary['examined']}, skipped={total_skipped}"
         )
         db.session.commit()
 
@@ -585,7 +616,10 @@ def _canonicalise_job_roles_with_ai(
 #   - Railway cron (python cron_runner.py)
 #   - Admin "Run Scrape Now" button
 # -------------------------------------------------------------------
-def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = None) -> dict:
+def run_scheduled_jobs(
+    trigger: str = "scheduled",
+    triggered_by: str | None = None,
+) -> dict:
     """
     Entry point used by both:
       - Railway cron task
@@ -604,7 +638,10 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
         roles = day_cfg["roles"]
         locations = day_cfg["locations"]
 
-        print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
+        print(
+            f"🔔 Cron: starting scheduled Adzuna scrape for "
+            f"'{label}' ({date.today().isoformat()})"
+        )
 
         # Make sure label fits VARCHAR(20)
         safe_label = str(label)[:20] if label is not None else None
@@ -645,7 +682,6 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
                 f"errors={len(result['errors'])}"
             )
 
-            # Include log_id in case the caller wants to link back
             result_with_log = dict(result)
             result_with_log["log_id"] = log.id
             result_with_log["day_label"] = safe_label
@@ -661,12 +697,15 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
                         max_roles=200,
                     )
                     print(
-                        f"🧹 Canonicaliser done: updated={canon_result.get('updated')}, "
+                        "🧹 Canonicaliser done: "
+                        f"updated={canon_result.get('updated')}, "
                         f"examined={canon_result.get('examined')}, "
                         f"error={canon_result.get('error')}"
                     )
                     result_with_log["canonicaliser_log_id"] = canon_result.get("log_id")
-                    result_with_log["canonicaliser_updated"] = canon_result.get("updated", 0)
+                    result_with_log["canonicaliser_updated"] = canon_result.get(
+                        "updated", 0
+                    )
                 except Exception as e:  # noqa: BLE001
                     # Don't break the main cron if canonicaliser fails
                     print("⚠ job_role_canonicaliser failed:", e)
@@ -674,34 +713,40 @@ def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = No
             # Daily JobSummaryDaily for today's data
             try:
                 target_date = date.today()
-                print(f"📊 Building daily job summaries for {target_date.isoformat()}…")
+                print(
+                    f"📊 Building daily job summaries "
+                    f"for {target_date.isoformat()}…"
+                )
                 summary_result = _run_daily_summaries_for_date(
                     target_date=target_date,
                     trigger=trigger,
                     triggered_by=triggered_by,
                 )
                 print(
-                    f"📊 Daily summaries done: created={summary_result.get('rows_created')}, "
+                    "📊 Daily summaries done: "
+                    f"created={summary_result.get('rows_created')}, "
                     f"error={summary_result.get('error')}"
                 )
                 result_with_log["summary_log_id"] = summary_result.get("log_id")
-                result_with_log["summary_rows_created"] = summary_result.get("rows_created", 0)
+                result_with_log["summary_rows_created"] = summary_result.get(
+                    "rows_created", 0
+                )
             except Exception as e:  # noqa: BLE001
                 print("⚠ job_summary_daily_builder failed:", e)
 
             # NEW: ONS ASHE earnings import / upsert (annual, but idempotent)
             try:
-                # ASHE is annual; safest default is "last completed year"
                 ashe_year = date.today().year - 1
                 print(f"📈 Importing ONS ASHE earnings for {ashe_year}…")
                 ons_result = import_ons_earnings_to_db(
                     ashe_year,
                     trigger=trigger,
                     triggered_by=triggered_by,
-                    use_app_context=True,  # we are already inside app.app_context()
+                    use_app_context=True,  # already inside app.app_context()
                 )
                 print(
-                    f"📈 ONS import done: fetched={ons_result.get('fetched')}, "
+                    "📈 ONS import done: "
+                    f"fetched={ons_result.get('fetched')}, "
                     f"created={ons_result.get('created')}, "
                     f"updated={ons_result.get('updated')}, "
                     f"error={ons_result.get('error')}"
@@ -737,7 +782,7 @@ def run_job_role_canonicaliser(
 
     Can be called from:
       - Admin UI button
-      - CLI: `python -c "from cron_runner import run_job_role_canonicaliser; run_job_role_canonicaliser()"`.
+      - CLI: python -c "from cron_runner import run_job_role_canonicaliser; run_job_role_canonicaliser()"
     """
     app = create_app()
     with app.app_context():
@@ -749,7 +794,8 @@ def run_job_role_canonicaliser(
             max_roles=max_roles,
         )
         print(
-            f"🧹 Canonicaliser complete: updated={result.get('updated')}, "
+            "🧹 Canonicaliser complete: "
+            f"updated={result.get('updated')}, "
             f"examined={result.get('examined')}, "
             f"error={result.get('error')}"
         )

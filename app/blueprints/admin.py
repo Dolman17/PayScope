@@ -985,41 +985,53 @@ def admin_jobs():
     page = request.args.get("page", 1, type=int)
     per_page = 50
 
+    # Base query
     query = JobPosting.query.order_by(JobPosting.scraped_at.desc())
 
-    source = request.args.get("source", type=str)
-    company = request.args.get("company", type=str)
+    # Filters
+    source = request.args.get("source", type=str, default="").strip()
+    company = request.args.get("company", type=str, default="").strip()
+    title = request.args.get("title", type=str, default="").strip()     # NEW
     active_only = request.args.get("active", "1")
 
+    # Apply filters
     if source:
         query = query.filter(JobPosting.source_site == source)
 
     if company:
         query = query.filter(JobPosting.company_name.ilike(f"%{company}%"))
 
+    if title:   # 🔥 NEW TITLE SEARCH
+        query = query.filter(JobPosting.title.ilike(f"%{title}%"))
+
     if active_only == "1":
         query = query.filter(JobPosting.is_active.is_(True))
 
+    # Pagination
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     jobs = pagination.items
 
+    # Sources list for dropdown
     sources = (
         db.session.query(JobPosting.source_site)
         .distinct()
         .order_by(JobPosting.source_site)
         .all()
     )
-    sources = [row[0] for row in sources]
+    sources = [row[0] for row in sources if row[0]]
 
+    # Render
     return render_template(
         "admin/jobs.html",
         jobs=jobs,
         pagination=pagination,
         sources=sources,
-        selected_source=source or "",
-        company_filter=company or "",
+        selected_source=source,
+        company_filter=company,
+        title_filter=title,     # 🔥 NEW
         active_only=active_only,
     )
+
 
 
 # -------------------------------------------------------------------

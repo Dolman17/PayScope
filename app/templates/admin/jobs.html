@@ -4,6 +4,8 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+  <!-- HEADER + IMPORT ALL BUTTON -->
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-2xl font-semibold text-gray-900">Job Postings</h1>
@@ -11,6 +13,15 @@
         View and filter job adverts ingested into the Pay Rate Map database.
       </p>
     </div>
+
+    {% if current_user.admin_level == 1 %}
+    <form action="{{ url_for('admin.admin_import_all_jobs') }}" method="POST">
+      <button type="submit"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm bg-green-600 text-white hover:bg-green-700">
+        Import All Active Postings
+      </button>
+    </form>
+    {% endif %}
   </div>
 
   <!-- Filters -->
@@ -155,7 +166,6 @@
 
               <td class="px-4 py-3 text-right whitespace-nowrap">
 
-                <!-- VIEW LINK -->
                 {% if job.url %}
                 <a href="{{ job.url }}" target="_blank" rel="noopener"
                    class="inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800 mr-3">
@@ -163,7 +173,6 @@
                 </a>
                 {% endif %}
 
-                <!-- IMPORT BUTTON -->
                 {% if job.imported %}
                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   Imported
@@ -191,7 +200,6 @@
       </table>
     </div>
 
-    <!-- Pagination -->
     {% if pagination.pages > 1 %}
     <div class="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-sm">
       <div class="text-gray-600">
