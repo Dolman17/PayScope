@@ -145,7 +145,6 @@
                   <form method="post"
                         action="{{ url_for('dashboard.admin_job_roles_map') }}"
                         class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    {{ csrf_token() }}
                     <input
                       type="hidden"
                       name="q"
@@ -204,9 +203,7 @@
         action="{{ url_for('dashboard.admin_job_roles_bulk_map') }}"
         class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
-        {{ csrf_token() }}
-
-        <!-- Preserve current filters on redirect -->
+               <!-- Preserve current filters on redirect -->
         <input type="hidden" name="q" value="{{ search }}">
         <input type="hidden" name="status" value="{{ status }}">
 
