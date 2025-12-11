@@ -54,24 +54,33 @@ def _compute_filter_options():
     months = col_distinct(JobRecord.imported_month)
     years = col_distinct(JobRecord.imported_year)
 
-    # Roles: prefer canonical roles from JobRoleMapping, fall back to raw job_role
+    # Roles: build from raw roles + JobRoleMapping in Python
     try:
-        roles_rows = (
-            db.session.query(
-                func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role)
-            )
-            .outerjoin(
-                JobRoleMapping,
-                JobRecord.job_role == JobRoleMapping.raw_value,
-            )
+        raw_roles = [
+            r[0]
+            for r in db.session.query(JobRecord.job_role)
             .filter(JobRecord.job_role.isnot(None))
             .distinct()
-            .order_by(
-                func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role)
-            )
             .all()
-        )
-        roles = [r[0] for r in roles_rows if r[0] is not None]
+        ]
+
+        mapping_rows = JobRoleMapping.query.all()
+        mapping_dict = {
+            (m.raw_value or "").strip(): (m.canonical_role or "").strip()
+            for m in mapping_rows
+            if (m.raw_value or "").strip() and (m.canonical_role or "").strip()
+        }
+
+        role_labels: set[str] = set()
+        for raw in raw_roles:
+            key = (raw or "").strip()
+            if not key:
+                continue
+            label = mapping_dict.get(key, key)
+            if label:
+                role_labels.add(label)
+
+        roles = sorted(role_labels)
     except Exception:
         # If mapping table is missing / broken, fall back to raw roles
         roles = col_distinct(JobRecord.job_role)
@@ -94,7 +103,7 @@ def get_filter_options(force: bool = False):
     """
     Return distinct values for filter dropdowns.
     - Cached for 120s by default.
-    - Pass force=True to bypass cache (e.g., right after uploads).
+    - Pass force=True to bypass cache (e.g., right after uploads or bulk role mapping).
     """
     return _compute_filter_options() if force else _cached_filter_options()
 
@@ -203,8 +212,6 @@ def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Option
             selected_labels = [str(raw_job_role).strip()]
 
         if selected_labels:
-            # Resolve canonical label(s) back to the set of raw job_role values
-            # that should match, including the label itself.
             raw_values_set: set[str] = set()
 
             try:
@@ -220,7 +227,6 @@ def build_filters_from_request(mapping: Mapping[str, Any]) -> tuple[list, Option
                         raw_values_set.add(canon.strip())
             except Exception:
                 # If mapping table is missing/broken, just fall back to matching
-                # directly on the selected labels.
                 raw_values_set.update(selected_labels)
 
             # Always include the selected labels themselves
