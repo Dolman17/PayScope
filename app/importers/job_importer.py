@@ -33,6 +33,62 @@ def _truncate(value: str | None, max_len: int) -> str | None:
     return value[:max_len]
 
 
+def classify_sector(
+    job_title: str | None = None,
+    company_name: str | None = None,
+    **kwargs,
+) -> str | None:
+    """
+    Very simple heuristic sector classifier.
+
+    Kept here primarily for backwards compatibility with older code that imports
+    `classify_sector` from this module (e.g. cron_runner, admin tools).
+
+    The signature is intentionally loose so that calls like
+        classify_sector(job_title)
+        classify_sector(job_title, company_name)
+        classify_sector(job_role=..., company_name=...)
+    all continue to work.
+
+    Returns a short sector label (e.g. "Nursing", "Care", "Support", etc.) or None
+    if nothing matches.
+    """
+    # Accept some common kwarg variants from older code
+    if job_title is None:
+        job_title = (
+            kwargs.get("job_role")
+            or kwargs.get("title")
+            or kwargs.get("role")
+        )
+
+    if not job_title:
+        return None
+
+    title = job_title.lower()
+
+    # Very light-touch keyword rules – easy to tweak later.
+    rules: list[tuple[str, list[str]]] = [
+        ("Nursing", ["nurse", "rgn", "rmn", "rnl"]),
+        ("Senior Care", ["senior carer", "senior care", "team leader", "shift leader"]),
+        ("Care", ["care assistant", "care worker", "carer", "hca", "health care assistant"]),
+        ("Support", ["support worker", "support assistant"]),
+        ("Management", ["registered manager", "care home manager", "deputy manager", "manager"]),
+        ("Domestic", ["domestic", "cleaner", "housekeeper", "kitchen", "chef", "cook"]),
+        ("Office / Admin", ["admin", "administrator", "receptionist", "coordinator"]),
+    ]
+
+    for sector_name, keywords in rules:
+        for kw in keywords:
+            if kw in title:
+                return sector_name
+
+    # Fallback: if 'nurse' anywhere, treat as Nursing
+    if "nurse" in title:
+        return "Nursing"
+
+    return None
+
+
 def import_posting_to_record(
     posting: JobPosting,
     enable_snap_to_postcode: bool = True,
@@ -86,7 +142,11 @@ def import_posting_to_record(
 
     # --- Sector ---
     raw_sector = getattr(posting, "sector", None)
-    sector = _truncate((raw_sector or "").strip() or None, MAX_SECTOR_LEN)
+    # Use the provided sector if present; otherwise try to infer from the job title.
+    sector_value = (raw_sector or "").strip() or None
+    if not sector_value:
+        sector_value = classify_sector(job_title=raw_job_role, company_name=company_name)
+    sector = _truncate(sector_value, MAX_SECTOR_LEN) if sector_value else None
 
     # --- County ---
     raw_county = getattr(posting, "county", None)
