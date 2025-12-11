@@ -619,6 +619,9 @@ def admin_job_roles():
     """
     Admin view to see distinct job_role values and map them to canonical roles.
     Self-healing: ensures job_role_mappings table exists before querying.
+    Supports:
+      - q: search over raw roles
+      - status: all / with / without canonical mapping
     """
     # Make sure the mapping table exists (safe if already created)
     try:
@@ -627,8 +630,12 @@ def admin_job_roles():
         # If this somehow fails, we still try to render with empty mappings below
         pass
 
-    search = request.args.get("q", "").strip()
+    search = (request.args.get("q") or "").strip()
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in ("all", "with", "without"):
+        status = "all"
 
+    # Base query: distinct job_role values with counts
     q = db.session.query(
         JobRecord.job_role.label("raw_value"),
         func.count(JobRecord.id).label("count"),
@@ -637,6 +644,18 @@ def admin_job_roles():
     if search:
         pattern = f"%{search}%"
         q = q.filter(JobRecord.job_role.ilike(pattern))
+
+    # Apply status filter via join/outerjoin on JobRoleMapping
+    if status == "with":
+        q = q.join(
+            JobRoleMapping,
+            JobRecord.job_role == JobRoleMapping.raw_value,
+        )
+    elif status == "without":
+        q = q.outerjoin(
+            JobRoleMapping,
+            JobRecord.job_role == JobRoleMapping.raw_value,
+        ).filter(JobRoleMapping.id.is_(None))
 
     rows = (
         q.group_by(JobRecord.job_role)
@@ -665,6 +684,7 @@ def admin_job_roles():
         rows=rows,
         mappings=mappings,
         search=search,
+        status=status,
         uncategorised_roles_count=uncategorised_roles_count,
     )
 
@@ -675,15 +695,20 @@ def admin_job_roles_map():
     """
     Create/update a mapping for a raw job_role value to a canonical role.
     Optionally applies the change immediately to existing JobRecord rows.
+    Redirects back to the current Job Role Cleaner filters (q, status).
     """
     raw_value = (request.form.get("raw_value") or "").strip()
     canonical_role = (request.form.get("canonical_role") or "").strip()
     apply_now = request.form.get("apply_now") == "1"
 
+    # Preserve filters on redirect
+    q_param = (request.form.get("q") or "").strip()
+    status_param = (request.form.get("status") or "all").strip().lower()
+
     if not raw_value or not canonical_role:
         flash("Raw value and canonical role are required.", "error")
         return redirect(
-            url_for("dashboard.admin_job_roles", q=request.args.get("q", ""))
+            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
         )
 
     # Ensure table exists here as well, in case this endpoint is hit first.
@@ -709,7 +734,76 @@ def admin_job_roles_map():
     db.session.commit()
     flash(f"Mapping saved for role '{raw_value}' → '{canonical_role}'.", "success")
     return redirect(
-        url_for("dashboard.admin_job_roles", q=request.args.get("q", ""))
+        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
     )
 
+
+@bp.route("/admin/job-roles/bulk-map", methods=["POST"])
+@login_required
+def admin_job_roles_bulk_map():
+    """
+    Bulk-create/update mappings for multiple raw job_role values to a single canonical role.
+    Optionally applies the change immediately to existing JobRecord rows.
+
+    Expects:
+      - raw_values: repeated form fields (one per selected checkbox)
+      - canonical_role: the target canonical role
+      - apply_now: "1" if JobRecord rows should be updated too
+      - q, status: current filter state on the Job Role Cleaner page
+    """
+    raw_values = request.form.getlist("raw_values") or []
+    # De-duplicate, strip empty
+    raw_values = sorted({(rv or "").strip() for rv in raw_values if (rv or "").strip()})
+
+    canonical_role = (request.form.get("canonical_role") or "").strip()
+    apply_now = request.form.get("apply_now") == "1"
+
+    q_param = (request.form.get("q") or "").strip()
+    status_param = (request.form.get("status") or "all").strip().lower()
+
+    if not raw_values:
+        flash("Select at least one job title before using bulk assign.", "error")
+        return redirect(
+            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+        )
+
+    if not canonical_role:
+        flash("Canonical role is required for bulk assignment.", "error")
+        return redirect(
+            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+        )
+
+    # Ensure table exists
+    try:
+        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        pass
+
+    updated_mappings = 0
+
+    for raw_value in raw_values:
+        mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
+        if mapping is None:
+            mapping = JobRoleMapping(raw_value=raw_value, canonical_role=canonical_role)
+            db.session.add(mapping)
+        else:
+            mapping.canonical_role = canonical_role
+        updated_mappings += 1
+
+    if apply_now:
+        # Update all JobRecord rows whose job_role is in the selected raw_values
+        db.session.query(JobRecord).filter(JobRecord.job_role.in_(raw_values)).update(
+            {JobRecord.job_role: canonical_role},
+            synchronize_session=False,
+        )
+
+    db.session.commit()
+
+    flash(
+        f"Bulk mapping applied: {updated_mappings} raw role(s) → '{canonical_role}'.",
+        "success",
+    )
+    return redirect(
+        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+    )
 
