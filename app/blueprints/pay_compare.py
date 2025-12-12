@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import logging
 from difflib import get_close_matches
@@ -33,6 +33,62 @@ ONS_MEDIAN_HOURLY_MEASURE_CODE = "20100"
 
 
 # ------------------------------------------------------------------
+# Sector normalisation (UI + query compatibility)
+# ------------------------------------------------------------------
+
+SECTOR_ALIASES: Dict[str, str] = {
+    # IT
+    "IT & Digital": "IT & Digital",
+    "IT & Technology": "IT & Digital",
+    "Information Technology": "IT & Digital",
+    "Technology": "IT & Digital",
+    "Tech": "IT & Digital",
+    # HR / Ops
+    "HR & Recruitment": "HR & Recruitment",
+    "HR, Admin & Operations": "HR & Recruitment",
+    "Human Resources": "HR & Recruitment",
+    "Recruitment": "HR & Recruitment",
+    # Finance
+    "Finance & Accounting": "Finance & Accounting",
+    "Finance": "Finance & Accounting",
+    "Accounting": "Finance & Accounting",
+    # Care
+    "Social Care & Nursing": "Social Care & Nursing",
+    "Weekend Social Care": "Social Care & Nursing",
+    "Weekend Nursing & Care": "Social Care & Nursing",
+    "Health & Social Care": "Social Care & Nursing",
+    # Customer/Support
+    "Support & Customer": "Customer Service",
+    "Customer Service": "Customer Service",
+    "Customer Support": "Customer Service",
+}
+
+
+def normalise_sector_name(value: str | None) -> str | None:
+    """
+    Map a sector label to a canonical form. Used for filtering so the UI
+    works even if the DB still contains mixed/legacy sector labels.
+    """
+    if not value:
+        return None
+    s = value.strip()
+    if not s:
+        return None
+
+    # exact
+    if s in SECTOR_ALIASES:
+        return SECTOR_ALIASES[s]
+
+    # case-insensitive
+    s_lower = s.lower()
+    for k, v in SECTOR_ALIASES.items():
+        if k.lower() == s_lower:
+            return v
+
+    return s
+
+
+# ------------------------------------------------------------------
 # Hint mapping: area label -> "target-ish" name for fuzzy search
 # ------------------------------------------------------------------
 # Keys are UPPERCASED JobSummaryDaily.county labels.
@@ -46,17 +102,14 @@ FUZZY_HINTS: Dict[str, str] = {
     "SOUTH WEST LONDON": "Wandsworth",
     "CENTRAL LONDON": "Westminster",
     "LONDON": "Westminster",
-
     # City-region labels → core cities
     "GREATER MANCHESTER": "Manchester",
     "WEST MIDLANDS": "Birmingham",
     "WEST YORKSHIRE": "Leeds",
     "SCOTLAND": "Glasgow City",
     "GLASGOW CITY CENTRE": "Glasgow City",
-
     # Regional rollups
     "SOUTH WEST ENGLAND": "Bristol",
-
     # Common suburb / area rollups → nearest LA hints
     "RUISLIP": "Hillingdon",
     "WEST DRAYTON": "Hillingdon",
@@ -69,7 +122,6 @@ FUZZY_HINTS: Dict[str, str] = {
     "RICHMOND": "Richmond upon Thames",
     "FELTHAM": "Hounslow",
     "ORPINGTON": "Bromley",
-
     # Manchester / Leeds satellites
     "WORSLEY": "Salford",
     "SWINTON": "Salford",
@@ -78,11 +130,9 @@ FUZZY_HINTS: Dict[str, str] = {
     "MICKLEFIELD": "Leeds",
     "TYLDESLEY": "Wigan",
     "WYTHENSHAWE": "Manchester",
-
     # Bristol satellites
     "ALMONDSBURY": "South Gloucestershire",
     "THORNBURY": "South Gloucestershire",
-
     # Midlands satellite
     "ALVECHURCH": "Bromsgrove",
 }
@@ -93,8 +143,8 @@ FUZZY_HINTS: Dict[str, str] = {
 # ------------------------------------------------------------------
 
 ONS_INDEX_YEAR: Optional[int] = None
-ONS_GEOG_LIST: List[str] = []           # list of geography_name
-ONS_VALUES: Dict[str, float] = {}       # geography_name -> median value
+ONS_GEOG_LIST: List[str] = []  # list of geography_name
+ONS_VALUES: Dict[str, float] = {}  # geography_name -> median value
 
 
 def _parse_date(value: str | None, default: date) -> date:
@@ -139,12 +189,10 @@ def _ensure_ons_index() -> Optional[int]:
         return None
 
     rows: List[OnsEarnings] = (
-        OnsEarnings.query
-        .filter(
+        OnsEarnings.query.filter(
             OnsEarnings.year == year,
             OnsEarnings.measure_code == ONS_MEDIAN_HOURLY_MEASURE_CODE,
-        )
-        .all()
+        ).all()
     )
 
     geogs: List[str] = []
@@ -160,10 +208,7 @@ def _ensure_ons_index() -> Optional[int]:
     ONS_GEOG_LIST = sorted(set(geogs))
     ONS_VALUES = values
 
-    print(
-        f"[PAY_COMPARE] Built ONS index for year {year}: "
-        f"{len(ONS_GEOG_LIST)} geographies"
-    )
+    print(f"[PAY_COMPARE] Built ONS index for year {year}: {len(ONS_GEOG_LIST)} geographies")
     sample = ONS_GEOG_LIST[:15]
     print("[PAY_COMPARE] Sample ONS geographies:", sample)
 
@@ -249,18 +294,13 @@ def _match_to_ons_geography(raw_name: Optional[str]) -> Optional[str]:
         )
         if match:
             name, score, _ = match
-            print(
-                f"[PAY_COMPARE] ONS GEO FUZZY RAW: raw='{raw_name}' "
-                f"-> '{name}' (score={score})"
-            )
+            print(f"[PAY_COMPARE] ONS GEO FUZZY RAW: raw='{raw_name}' -> '{name}' (score={score})")
             return name
     else:
         matches = get_close_matches(raw_name, candidates, n=1, cutoff=0.6)
         if matches:
             name = matches[0]
-            print(
-                f"[PAY_COMPARE] ONS GEO FUZZY RAW: raw='{raw_name}' -> '{name}'"
-            )
+            print(f"[PAY_COMPARE] ONS GEO FUZZY RAW: raw='{raw_name}' -> '{name}'")
             return name
 
     print(f"[PAY_COMPARE] ONS GEO NO MATCH: raw='{raw_name}', hint='{hint}'")
@@ -307,8 +347,16 @@ def get_pay_explorer_data(
         JobSummaryDaily.date >= start,
         JobSummaryDaily.date <= end,
     ]
-    if sector:
-        base_filters.append(JobSummaryDaily.sector == sector)
+
+    # Normalise sector for compatibility with mixed DB values
+    sector_norm = normalise_sector_name(sector)
+    if sector_norm:
+        raw_sector = (sector or "").strip()
+        if raw_sector and raw_sector != sector_norm:
+            base_filters.append(JobSummaryDaily.sector.in_([raw_sector, sector_norm]))
+        else:
+            base_filters.append(JobSummaryDaily.sector == sector_norm)
+
     if job_role_group:
         base_filters.append(JobSummaryDaily.job_role_group == job_role_group)
 
@@ -356,8 +404,7 @@ def get_pay_explorer_data(
                     ons_val = ONS_VALUES.get(matched_geo)
                 if matched_geo and ons_val is None:
                     print(
-                        f"[PAY_COMPARE] NO ONS VALUE: "
-                        f"raw='{raw_name}', matched_geo='{matched_geo}'"
+                        f"[PAY_COMPARE] NO ONS VALUE: raw='{raw_name}', matched_geo='{matched_geo}'"
                     )
 
             pay_vs_ons = None
@@ -458,8 +505,7 @@ def get_pay_explorer_data(
                     ons_val = ONS_VALUES.get(matched_geo)
                 if matched_geo and ons_val is None:
                     print(
-                        f"[PAY_COMPARE] NO ONS VALUE (sector_county): "
-                        f"raw='{raw_name}', matched_geo='{matched_geo}'"
+                        f"[PAY_COMPARE] NO ONS VALUE (sector_county): raw='{raw_name}', matched_geo='{matched_geo}'"
                     )
 
             pay_vs_ons = None
@@ -492,7 +538,7 @@ def get_pay_explorer_data(
         "params": {
             "start_date": start_date_str,
             "end_date": end_date_str,
-            "sector": sector,
+            "sector": sector_norm or sector,
             "job_role_group": job_role_group,
             "group_by": group_by,
         },
@@ -646,5 +692,3 @@ def build_pay_explorer_debug_snapshot(
     debug_rows.sort(key=lambda x: x["raw_county"])
 
     return debug_rows, ons_year
-
-

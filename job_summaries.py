@@ -6,14 +6,19 @@
 # This does NOT change your import flow; it just reads whatever
 # is already in job_record and writes aggregated stats per day.
 
-from datetime import date
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
 import statistics
+from typing import Dict, Iterable, List, Tuple
+
+from sqlalchemy import func
 
 from extensions import db
 from models import JobRecord, JobSummaryDaily
 
 
-def _percentile(sorted_values, fraction: float) -> float:
+def _percentile(sorted_values: List[float], fraction: float) -> float:
     """
     Return an approximate percentile from a sorted list.
     fraction=0.25 -> 25th percentile, 0.75 -> 75th, etc.
@@ -29,6 +34,11 @@ def _percentile(sorted_values, fraction: float) -> float:
     fraction = max(0.0, min(1.0, fraction))
     idx = int(round(fraction * (n - 1)))
     return float(sorted_values[idx])
+
+
+def _safe_label(value: str | None, fallback: str) -> str:
+    s = (value or "").strip()
+    return s if s else fallback
 
 
 def build_daily_job_summaries(target_date: date, delete_existing: bool = True) -> int:
@@ -49,22 +59,23 @@ def build_daily_job_summaries(target_date: date, delete_existing: bool = True) -
         JobSummaryDaily.query.filter(JobSummaryDaily.date == target_date).delete()
         db.session.flush()
 
-    # Pull all JobRecords imported on that date
-    # NOTE: imported_at can be NULL, so we guard against that.
+    # Pull only rows for that calendar day (imported_at can be NULL)
     q = (
-        JobRecord.query
-        .filter(db.func.date(JobRecord.imported_at) == target_date)
+        JobRecord.query.filter(JobRecord.imported_at.isnot(None))
+        .filter(func.date(JobRecord.imported_at) == target_date)
     )
 
-    buckets = {}  # (county, sector, job_role_group) -> [pay_rate, ...]
+    buckets: Dict[Tuple[str, str, str], List[float]] = {}  # (county, sector, job_role_group) -> [pay_rate,...]
 
     for rec in q:
         if rec.pay_rate is None:
-            continue  # skip records without a pay rate
+            continue
 
-        county = rec.county or "Unknown"
-        sector = rec.sector or "Unknown"
-        job_role_group = rec.job_role_group or rec.job_role or "Unknown"
+        county = _safe_label(getattr(rec, "county", None), "Unknown")
+        sector = _safe_label(getattr(rec, "sector", None), "Unknown")
+        job_role_group = _safe_label(getattr(rec, "job_role_group", None), "") or _safe_label(
+            getattr(rec, "job_role", None), "Unknown"
+        )
 
         key = (county, sector, job_role_group)
         buckets.setdefault(key, []).append(float(rec.pay_rate))
@@ -78,11 +89,15 @@ def build_daily_job_summaries(target_date: date, delete_existing: bool = True) -
         rates_sorted = sorted(rates)
         n = len(rates_sorted)
 
-        median = float(statistics.median(rates_sorted))
-        p25 = _percentile(rates_sorted, 0.25)
-        p75 = _percentile(rates_sorted, 0.75)
-        min_rate = float(rates_sorted[0])
-        max_rate = float(rates_sorted[-1])
+        # Robust stats: if anything odd sneaks in, fail "softly" for this bucket
+        try:
+            median = float(statistics.median(rates_sorted))
+            p25 = _percentile(rates_sorted, 0.25)
+            p75 = _percentile(rates_sorted, 0.75)
+            min_rate = float(rates_sorted[0])
+            max_rate = float(rates_sorted[-1])
+        except Exception:
+            continue
 
         summary = JobSummaryDaily(
             date=target_date,
@@ -101,3 +116,25 @@ def build_daily_job_summaries(target_date: date, delete_existing: bool = True) -
 
     db.session.commit()
     return created
+
+
+def build_daily_job_summaries_range(
+    start_date: date,
+    end_date: date,
+    delete_existing: bool = True,
+) -> int:
+    """
+    Convenience helper to build summaries across a date range (inclusive).
+
+    Returns total JobSummaryDaily rows created across all days.
+    """
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    total_created = 0
+    d = start_date
+    while d <= end_date:
+        total_created += build_daily_job_summaries(d, delete_existing=delete_existing)
+        d = d + timedelta(days=1)
+
+    return total_created
