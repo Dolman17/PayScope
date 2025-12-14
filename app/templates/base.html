@@ -308,7 +308,8 @@
           </span>
         </div>
 
-        <!-- Centre navigation (desktop) -->
+        <!-- Centre navigation (desktop) - MARKETING NAV ONLY WHEN LOGGED OUT -->
+        {% if not current_user.is_authenticated %}
         <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-gray-200">
 
           <!-- Solutions with megamenu -->
@@ -376,6 +377,7 @@
           <a href="{{ url_for('marketing.resources_page') }}" class="hover:text-white">Resources</a>
           <a href="{{ url_for('marketing.company') }}" class="hover:text-white">Company</a>
         </nav>
+        {% endif %}
 
         <!-- Right-side: login + CTAs -->
         <div class="hidden md:flex items-center gap-4 text-xs">
@@ -505,3 +507,4 @@
 
 </body>
 </html>
+
