@@ -1,9 +1,10 @@
-# cron_runner.py
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta
+import json
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from collections import Counter
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -27,7 +28,6 @@ except Exception:
 # Optional OpenAI client for job-role canonicalisation (safe if missing)
 try:
     from openai import OpenAI  # type: ignore
-
     _openai_client = OpenAI()
 except Exception:
     _openai_client = None
@@ -38,7 +38,6 @@ except Exception:
 # -----------------------------
 DEFAULT_RESULTS_PER_PAGE = int(os.getenv("ADZUNA_RESULTS_PER_PAGE", "50"))
 DEFAULT_MAX_PAGES = int(os.getenv("ADZUNA_MAX_PAGES", "2"))
-
 SLEEP_BETWEEN_QUERIES_SEC = float(os.getenv("SCRAPE_SLEEP_SEC", "0.25"))
 
 # 0 = Monday ... 6 = Sunday
@@ -52,9 +51,26 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
     6: {"roles": ["Operations Manager", "Warehouse Operative"], "where": "United Kingdom", "label": "Sun"},
 }
 
+ONS_IMPORT_ENABLED = os.getenv("ONS_IMPORT_ENABLED", "0").strip() in ("1", "true", "True", "yes", "YES")
+ONS_IMPORT_YEAR = int(os.getenv("ONS_IMPORT_YEAR", str(date.today().year - 1)))
 
+
+# -----------------------------
+# Helpers
+# -----------------------------
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    # Keep naive UTC in DB, but avoid deprecated datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+
+
+
+def _json_dump_safe(data) -> str:
+    try:
+        return json.dumps(data, default=str)
+    except Exception:
+        return "{}"
 
 
 def _start_log(job_name: str, trigger: str, day_label: Optional[str] = None) -> CronRunLog:
@@ -68,18 +84,28 @@ def _start_log(job_name: str, trigger: str, day_label: Optional[str] = None) -> 
         triggered_by=os.getenv("TRIGGERED_BY") or None,
         trigger=trigger,
         day_label=day_label,
+        run_stats=None,
     )
     db.session.add(log)
     db.session.commit()
     return log
 
 
-def _finish_log(log: CronRunLog, status: str, message: str, rows_scraped: int, records_created: int) -> None:
+def _finish_log(
+    log: CronRunLog,
+    status: str,
+    message: str,
+    rows_scraped: int,
+    records_created: int,
+    run_stats: Optional[Dict[str, Any]] = None,
+) -> None:
     log.finished_at = _utcnow()
     log.status = status
     log.message = message
     log.rows_scraped = rows_scraped
     log.records_created = records_created
+    if run_stats is not None:
+        log.run_stats = _json_dump_safe(run_stats)
     db.session.add(log)
     db.session.commit()
 
@@ -89,7 +115,10 @@ def _get_existing_posting(source_site: str, external_id: str | None) -> Optional
         return None
     return (
         JobPosting.query
-        .filter(JobPosting.source_site == source_site, JobPosting.external_id == external_id)
+        .filter(
+            JobPosting.source_site == source_site,
+            JobPosting.external_id == external_id,
+        )
         .first()
     )
 
@@ -101,9 +130,7 @@ def _upsert_posting_from_scraper_record(
     search_location: str | None = None,
 ) -> Tuple[JobPosting, bool]:
     """
-    Convert a scraper JobRecord (temporary object from app/scrapers/base.py)
-    into a DB JobPosting, upserting on (source_site, external_id).
-
+    Convert a scraper JobRecord into a DB JobPosting.
     Returns (posting, created_new)
     """
     external_id = getattr(rec, "external_id", None)
@@ -111,25 +138,21 @@ def _upsert_posting_from_scraper_record(
 
     existing = _get_existing_posting(source_site, external_id)
 
-    # Pull fields defensively
     title = getattr(rec, "title", None)
     company_name = getattr(rec, "company_name", None)
     location_text = getattr(rec, "location_text", None)
     postcode = getattr(rec, "postcode", None)
-    sector = getattr(rec, "sector", None)  # usually None from AdzunaScraper; OK
+    sector = getattr(rec, "sector", None)
     min_rate = getattr(rec, "min_rate", None)
     max_rate = getattr(rec, "max_rate", None)
     rate_type = getattr(rec, "rate_type", None)
     contract_type = getattr(rec, "contract_type", None)
     url = getattr(rec, "url", None)
     posted_date = getattr(rec, "posted_date", None)
-
     raw_json = getattr(rec, "raw_json", None)
-    # Your DB column is Text, so str(dict) is fine; JSON is better but not required.
-    # If raw_json is already a dict, store json.dumps.
+
     try:
-        import json
-        raw_json_text = json.dumps(raw_json, ensure_ascii=False) if isinstance(raw_json, dict) else (raw_json or None)
+        raw_json_text = json.dumps(raw_json, ensure_ascii=False) if isinstance(raw_json, dict) else raw_json
     except Exception:
         raw_json_text = None
 
@@ -139,24 +162,19 @@ def _upsert_posting_from_scraper_record(
         existing.location_text = location_text or existing.location_text
         existing.postcode = postcode or existing.postcode
         existing.sector = sector or existing.sector
-
         existing.min_rate = min_rate if min_rate is not None else existing.min_rate
         existing.max_rate = max_rate if max_rate is not None else existing.max_rate
         existing.rate_type = rate_type or existing.rate_type
         existing.contract_type = contract_type or existing.contract_type
-
         existing.url = url or existing.url
         existing.posted_date = posted_date or existing.posted_date
-
         existing.scraped_at = _utcnow()
         existing.is_active = True
         existing.raw_json = raw_json_text or existing.raw_json
-
         if search_role:
             existing.search_role = search_role
         if search_location:
             existing.search_location = search_location
-
         db.session.add(existing)
         db.session.commit()
         return existing, False
@@ -196,10 +214,6 @@ def _upsert_posting_from_scraper_record(
 
 
 def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
-    """
-    For each role, instantiate AdzunaScraper(what=role, where=where) and call .scrape().
-    Returns list of scraper JobRecord objects (temporary).
-    """
     out: List[Any] = []
     for role in roles:
         scraper = AdzunaScraper(
@@ -209,7 +223,6 @@ def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
             max_pages=DEFAULT_MAX_PAGES,
         )
         batch = scraper.scrape() or []
-        # annotate in-memory (optional)
         for r in batch:
             try:
                 r.search_role = role
@@ -220,87 +233,153 @@ def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
     return out
 
 
+# -----------------------------
+# Main pipeline
+# -----------------------------
 def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
-    """
-    Main pipeline:
-      - optional ONS import
-      - scrape Adzuna
-      - upsert JobPosting
-      - import JobPosting -> JobRecord (sector/role normalisation happens in job_importer)
-      - build daily summaries for yesterday
-    """
     app = create_app()
     with app.app_context():
-        weekday = date.today().weekday()
-        cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
-        day_label = cfg.get("label")
+        # ---------------------------------
+        # Config resolution (weekday vs env)
+        # ---------------------------------
+        override_roles = os.getenv("CRON_WHAT")
+        override_where = os.getenv("CRON_WHERE")
+
+        if override_roles:
+            roles = [r.strip() for r in override_roles.split(",") if r.strip()]
+            where = override_where or "United Kingdom"
+            day_label = "override"
+        else:
+            weekday = date.today().weekday()
+            cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
+            roles = list(cfg.get("roles") or [])
+            where = str(cfg.get("where") or "United Kingdom")
+            day_label = cfg.get("label")
 
         log = _start_log("scrape_import_summaries", trigger=trigger, day_label=day_label)
+
+        # ---- observability (per-run only) ----
+        run_stats: Dict[str, Any] = {
+            "rows_scraped": 0,
+            "postings_created": 0,
+            "postings_updated": 0,
+            "postings_upserted_total": 0,
+            "postings_imported_success": 0,
+            "postings_import_failed": 0,
+            "other_sector_imported": 0,
+            "unmapped_raw_sectors_top": {},
+            "day_label": day_label,
+            "trigger": trigger,
+            "roles": roles,
+            "where": where,
+        }
+        unmapped_sector_counter = Counter()
 
         rows_scraped = 0
         records_created = 0
         created_postings = 0
 
         try:
-            # 1) ONS import (optional, non-fatal)
-            if import_ons_earnings_to_db is not None:
+            # 1) Optional ONS import
+            if ONS_IMPORT_ENABLED and import_ons_earnings_to_db is not None:
                 try:
-                    import_ons_earnings_to_db()
+                    import_ons_earnings_to_db(ONS_IMPORT_YEAR)
                 except Exception as e:
                     print(f"[CRON] ONS import skipped/failed: {e}")
 
             # 2) Scrape
-            roles = list(cfg.get("roles") or [])
-            where = str(cfg.get("where") or "United Kingdom")
             scraped = _scrape_adzuna_for_roles(roles, where=where)
             rows_scraped = len(scraped)
+            run_stats["rows_scraped"] = rows_scraped
 
             # 3) Upsert JobPosting
             for rec in scraped:
-                role = getattr(rec, "search_role", None) or None
-                loc = getattr(rec, "search_location", None) or None
-                _, created = _upsert_posting_from_scraper_record("adzuna", rec, search_role=role, search_location=loc)
+                role = getattr(rec, "search_role", None)
+                loc = getattr(rec, "search_location", None)
+                _, created = _upsert_posting_from_scraper_record(
+                    "adzuna", rec, search_role=role, search_location=loc
+                )
+                run_stats["postings_upserted_total"] += 1
                 if created:
                     created_postings += 1
+                    run_stats["postings_created"] += 1
+                else:
+                    run_stats["postings_updated"] += 1
 
-            # 4) Import unimported postings to JobRecord
+            # 4) Import unimported postings (authoritative step)
             postings = (
                 JobPosting.query
                 .filter(JobPosting.imported.is_(False))
                 .order_by(JobPosting.id.asc())
                 .all()
             )
+
             for p in postings:
-                import_posting_to_record(p)
-                records_created += 1
+                try:
+                    record = import_posting_to_record(p)
+                    p.imported = True
+                    records_created += 1
+                    run_stats["postings_imported_success"] += 1
+
+                    if record and record.sector == "Other" and p.sector:
+                        run_stats["other_sector_imported"] += 1
+                        unmapped_sector_counter[p.sector.strip()] += 1
+
+                except Exception:
+                    run_stats["postings_import_failed"] += 1
+                    p.imported = False
 
             db.session.commit()
 
-            # 5) Build daily summaries (cron stays light)
+            # 5) Daily summaries
             target = date.today() - timedelta(days=1)
-            created_summaries = build_daily_job_summaries(target_date=target, delete_existing=True)
+            created_summaries = build_daily_job_summaries(
+                target_date=target,
+                delete_existing=True,
+            )
+
+            run_stats["summaries_date"] = str(target)
+            run_stats["summaries_created"] = created_summaries
+            run_stats["unmapped_raw_sectors_top"] = dict(
+                unmapped_sector_counter.most_common(10)
+            )
 
             msg = (
-                f"OK. Scraped={rows_scraped}, NewPostings={created_postings}, "
-                f"Imported={records_created}, Summaries({target})={created_summaries}"
+                f"OK. Scraped={rows_scraped}, "
+                f"NewPostings={created_postings}, "
+                f"Imported={records_created}, "
+                f"Summaries({target})={created_summaries}"
             )
-            _finish_log(log, "success", msg, rows_scraped, records_created)
+
+            _finish_log(
+                log,
+                status="success",
+                message=msg,
+                rows_scraped=rows_scraped,
+                records_created=records_created,
+                run_stats=run_stats,
+            )
             return {"ok": True, "message": msg}
 
         except Exception as e:
             db.session.rollback()
             msg = f"ERROR: {e}"
-            _finish_log(log, "error", msg, rows_scraped, records_created)
+            _finish_log(
+                log,
+                status="error",
+                message=msg,
+                rows_scraped=rows_scraped,
+                records_created=records_created,
+                run_stats=run_stats,
+            )
             return {"ok": False, "message": msg}
 
 
-def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dict[str, Any]:
-    """
-    Exists mainly so admin.py can import it safely:
-      from cron_runner import run_job_role_canonicaliser
 
-    If OpenAI isn't configured, it falls back to deterministic title-casing.
-    """
+# -----------------------------
+# Job role canonicaliser
+# -----------------------------
+def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dict[str, Any]:
     app = create_app()
     with app.app_context():
         log = _start_log("job_role_canonicaliser", trigger=trigger, day_label=None)
@@ -309,7 +388,7 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
         scanned = 0
 
         try:
-            q = (
+            rows = (
                 JobRoleMapping.query
                 .filter(
                     (JobRoleMapping.canonical_role.is_(None)) |
@@ -318,9 +397,9 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
                 )
                 .order_by(JobRoleMapping.id.asc())
                 .limit(limit)
+                .all()
             )
 
-            rows = q.all()
             scanned = len(rows)
 
             for m in rows:
@@ -356,13 +435,27 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
             db.session.commit()
 
             msg = f"OK. Scanned={scanned}, Updated={updated}"
-            _finish_log(log, "success", msg, rows_scraped=0, records_created=updated)
+            _finish_log(
+                log,
+                status="success",
+                message=msg,
+                rows_scraped=0,
+                records_created=updated,
+                run_stats=None,
+            )
             return {"ok": True, "message": msg}
 
         except Exception as e:
             db.session.rollback()
             msg = f"ERROR: {e}"
-            _finish_log(log, "error", msg, rows_scraped=0, records_created=updated)
+            _finish_log(
+                log,
+                status="error",
+                message=msg,
+                rows_scraped=0,
+                records_created=updated,
+                run_stats=None,
+            )
             return {"ok": False, "message": msg}
 
 

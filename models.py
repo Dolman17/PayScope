@@ -206,6 +206,7 @@ class CronRunLog(db.Model):
     triggered_by = db.Column(db.String(150), nullable=True)
     trigger = db.Column(db.String(50), nullable=True)  # manual/cron/etc
     day_label = db.Column(db.String(20))
+    run_stats = db.Column(db.Text) 
 
 
 class OnsEarnings(db.Model):

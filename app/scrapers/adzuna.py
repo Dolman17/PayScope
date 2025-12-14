@@ -29,6 +29,10 @@ class AdzunaScraper(BaseScraper):
     """
     Scraper for the Adzuna Jobs API.
     Produces JobRecord objects that will later be saved into JobPosting.
+
+    NOTE (PayScope constraints):
+    - Scrapers remain "dumb": they fetch + lightly parse.
+    - Sector/role normalisation is done ONLY at import time.
     """
 
     source_site = "adzuna"
@@ -50,10 +54,35 @@ class AdzunaScraper(BaseScraper):
         self.app_id = os.getenv("ADZUNA_APP_ID")
         self.app_key = os.getenv("ADZUNA_APP_KEY")
 
+        # Debug toggle for API visibility (does NOT change behaviour)
+        self.debug = os.getenv("ADZUNA_DEBUG", "0").strip() in ("1", "true", "True", "yes", "YES")
+
         if not self.app_id or not self.app_key:
             raise RuntimeError(
                 "AdzunaScraper: ADZUNA_APP_ID and ADZUNA_APP_KEY must be set."
             )
+
+    def _is_nationwide_where(self, where: Optional[str]) -> bool:
+        """
+        Adzuna already scopes by country via the URL (/gb/).
+        For a nationwide search, omit 'where' entirely.
+        """
+        if where is None:
+            return True
+        w = (where or "").strip().lower()
+        if not w:
+            return True
+        return w in {
+            "united kingdom",
+            "uk",
+            "great britain",
+            "gb",
+            "britain",
+            "england",
+            "scotland",
+            "wales",
+            "northern ireland",
+        }
 
     # -------------------------------------------------------------------------
     # HTTP helpers with backoff
@@ -68,14 +97,19 @@ class AdzunaScraper(BaseScraper):
           - network errors
         """
         url = f"{ADZUNA_BASE_URL}/{self.country}/search/{page}"
+
         params = {
             "app_id": self.app_id,
             "app_key": self.app_key,
             "results_per_page": self.results_per_page,
             "what": self.what,
-            "where": self.where,
+            # Adzuna doesn't require this, but leaving it doesn't hurt
             "content-type": "application/json",
         }
+
+        # IMPORTANT: Nationwide searches should omit 'where'
+        if not self._is_nationwide_where(self.where):
+            params["where"] = self.where
 
         max_retries = 5
         attempt = 0
@@ -94,6 +128,9 @@ class AdzunaScraper(BaseScraper):
                 time.sleep(sleep_for)
                 continue
 
+            if self.debug:
+                print(f"[Adzuna][DEBUG] status={resp.status_code} url={resp.url}")
+
             # Rate limit or temporary server errors
             if resp.status_code == 429 or 500 <= resp.status_code < 600:
                 attempt += 1
@@ -107,21 +144,40 @@ class AdzunaScraper(BaseScraper):
                 time.sleep(sleep_for)
                 continue
 
-            # Other non-OK responses – raise immediately
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except Exception:
+                if self.debug:
+                    print(f"[Adzuna][DEBUG] non-OK body (first 300 chars): {resp.text[:300]}")
+                raise
 
-            # Tiny delay between successful calls to avoid hammering the API
+            try:
+                data = resp.json()
+            except Exception:
+                if self.debug:
+                    print(f"[Adzuna][DEBUG] non-json response (first 300 chars): {resp.text[:300]}")
+                return {}
+
+            if self.debug:
+                if isinstance(data, dict):
+                    top_keys = list(data.keys())
+                    print(f"[Adzuna][DEBUG] keys={top_keys}")
+                    if "error" in data:
+                        print(f"[Adzuna][DEBUG] error={data.get('error')!r}")
+                    if "count" in data:
+                        print(f"[Adzuna][DEBUG] count={data.get('count')!r}")
+                    if "results" in data and isinstance(data.get("results"), list):
+                        print(f"[Adzuna][DEBUG] results_len={len(data.get('results'))}")
+                else:
+                    print(f"[Adzuna][DEBUG] unexpected json type={type(data)}")
+
             time.sleep(0.25)
-            return resp.json()
+            return data
 
     # -------------------------------------------------------------------------
     # Parsing helpers
     # -------------------------------------------------------------------------
     def _parse_posted_date(self, created_str: Optional[str]) -> Optional[date]:
-        """
-        Parse Adzuna 'created' string to a date, if possible.
-        Returns None on failure.
-        """
         if not created_str:
             return None
 
@@ -138,7 +194,6 @@ class AdzunaScraper(BaseScraper):
             except ValueError:
                 pass
 
-        # Fallback: first 10 chars as YYYY-MM-DD if that works
         try:
             return datetime.strptime(created_str[:10], "%Y-%m-%d").date()
         except Exception:
@@ -149,9 +204,6 @@ class AdzunaScraper(BaseScraper):
         location_display_name: Optional[str],
         description: Optional[str],
     ) -> Optional[str]:
-        """
-        Best-effort UK postcode extraction from location display or description.
-        """
         for text in (location_display_name, description):
             if not text:
                 continue
@@ -165,31 +217,21 @@ class AdzunaScraper(BaseScraper):
     # Core mapper: Adzuna JSON → JobRecord (temporary object)
     # -------------------------------------------------------------------------
     def _map_adzuna_result_to_record(self, item: dict) -> JobRecord:
-        """
-        Convert a single Adzuna item to a JobRecord (NOT the DB model).
-        This is later upserted into JobPosting.
-        """
-
-        # -------- Title & company ----------
         title = normalise_whitespace(item.get("title") or "")
         company_obj = item.get("company") or {}
         company_name = normalise_whitespace(company_obj.get("display_name") or "") or None
 
-        # -------- Location ----------
         location_obj = item.get("location") or {}
         location_text = normalise_whitespace(location_obj.get("display_name") or "") or None
 
-        # region breakdown: ["UK", "Region", "City", ...]
         area = location_obj.get("area") or []
         country = area[0] if len(area) >= 1 else None
         region = area[1] if len(area) >= 2 else None
         city = area[2] if len(area) >= 3 else None
 
-        # lat/lon directly from Adzuna item
         latitude = item.get("latitude")
         longitude = item.get("longitude")
 
-        # -------- Salary converting --------
         salary_min = item.get("salary_min")
         salary_max = item.get("salary_max")
 
@@ -197,6 +239,7 @@ class AdzunaScraper(BaseScraper):
             annual_min = float(salary_min) if salary_min is not None else None
         except Exception:
             annual_min = None
+
         try:
             annual_max = float(salary_max) if salary_max is not None else None
         except Exception:
@@ -205,17 +248,13 @@ class AdzunaScraper(BaseScraper):
         divisor = HOURS_PER_WEEK * WEEKS_PER_YEAR
         hourly_min = annual_min / divisor if annual_min else None
         hourly_max = annual_max / divisor if annual_max else None
-
         rate_type = "hourly"
 
-        # -------- Meta: posted date ----------
         created_raw = item.get("created")
         posted_date: Optional[date] = None
 
-        # Adzuna sometimes returns ISO strings, sometimes epoch-like numbers
         if isinstance(created_raw, (int, float)):
             try:
-                # Heuristic: if huge, assume ms; otherwise seconds
                 ts = created_raw / 1000.0 if created_raw > 10**12 else float(created_raw)
                 posted_date = datetime.utcfromtimestamp(ts).date()
             except Exception:
@@ -225,7 +264,6 @@ class AdzunaScraper(BaseScraper):
         else:
             posted_date = None
 
-        # Hard guarantee: downstream never sees None for posted_date
         if posted_date is None:
             posted_date = datetime.utcnow().date()
 
@@ -235,7 +273,6 @@ class AdzunaScraper(BaseScraper):
         description = item.get("description") or ""
         postcode = self._extract_postcode(location_text, description)
 
-        # -------- RAW JSON (enriched) for importer ----------
         raw = dict(item)
         raw["_country"] = country
         raw["_region"] = region
@@ -245,8 +282,9 @@ class AdzunaScraper(BaseScraper):
         raw["_postcode_extracted"] = postcode
         raw["_hourly_min"] = hourly_min
         raw["_hourly_max"] = hourly_max
+        raw["_search_what"] = self.what
+        raw["_search_where"] = self.where
 
-        # -------- Build JobRecord (temporary) ----------
         return JobRecord(
             title=title,
             company_name=company_name,
@@ -270,10 +308,12 @@ class AdzunaScraper(BaseScraper):
         all_records: List[JobRecord] = []
 
         for page in range(1, self.max_pages + 1):
-            data = self._fetch_page(page)
+            data = self._fetch_page(page) or {}
 
-            error_msg = data.get("error")
-            results = data.get("results") or []
+            error_msg = data.get("error") if isinstance(data, dict) else None
+            results = data.get("results") if isinstance(data, dict) else None
+            results = results or []
+
             print(f"[Adzuna] page={page}, error={error_msg!r}, results={len(results)}")
 
             if error_msg:
