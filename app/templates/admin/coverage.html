@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+
+  <!-- Header -->
+  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-slate-100">Weekly Sector & Location Coverage</h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Highlights anything seen on fewer than <span class="text-slate-200 font-medium">2 distinct days</span> in the selected window.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('admin.admin_coverage_export') }}"
+         class="inline-flex items-center gap-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 text-sm text-slate-200">
+        Export CSV
+      </a>
+
+      <a href="{{ url_for('admin.admin_coverage_heatmap') }}"
+         class="inline-flex items-center gap-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 text-sm text-slate-200">
+        Heatmap
+      </a>
+
+      <form method="get" class="flex items-center gap-2">
+        <select name="days" onchange="this.form.submit()"
+                class="bg-slate-800 text-slate-200 text-sm rounded px-2 py-2 border border-slate-700">
+          {% for d in [7, 14, 21, 28] %}
+            <option value="{{ d }}" {% if d == days %}selected{% endif %}>
+              Last {{ d }} days
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+
+  <!-- Summary banner -->
+  <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+      <div>
+        <div class="text-slate-400">Sectors</div>
+        <div class="text-slate-100 font-semibold">{{ summary.total_sectors }}</div>
+      </div>
+      <div>
+        <div class="text-slate-400">Locations</div>
+        <div class="text-slate-100 font-semibold">{{ summary.total_locations }}</div>
+      </div>
+      <div>
+        <div class="text-slate-400">Weak sectors</div>
+        <div class="font-semibold {% if summary.weak_sectors %}text-amber-400{% else %}text-emerald-400{% endif %}">
+          {{ summary.weak_sectors }}
+        </div>
+      </div>
+      <div>
+        <div class="text-slate-400">Weak locations</div>
+        <div class="font-semibold {% if summary.weak_locations %}text-amber-400{% else %}text-emerald-400{% endif %}">
+          {{ summary.weak_locations }}
+        </div>
+      </div>
+      <div>
+        <div class="text-slate-400">Window</div>
+        <div class="text-slate-100 font-semibold">{{ summary.coverage_days }} days</div>
+      </div>
+    </div>
+
+    {% if summary.weak_sectors or summary.weak_locations %}
+      <div class="mt-4 rounded-md border border-amber-900/40 bg-amber-950/30 p-3 text-sm">
+        <div class="text-amber-300 font-medium">Coverage warning</div>
+        <div class="text-slate-300 mt-1">
+          Some sectors/locations have thin coverage in this window. That usually means your scrape rotation isn’t hitting them often enough.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Sector table -->
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-medium text-slate-200">Sector Coverage</h2>
+      <div class="text-xs text-slate-400">Δ = adverts this window vs previous week snapshot</div>
+    </div>
+
+    <div class="overflow-x-auto rounded border border-slate-800">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-900 text-slate-300">
+          <tr>
+            <th class="px-3 py-2 text-left">Sector</th>
+            <th class="px-3 py-2 text-right">Adverts</th>
+            <th class="px-3 py-2 text-right">Days Seen</th>
+            <th class="px-3 py-2 text-right">Median £</th>
+            <th class="px-3 py-2 text-right">Δ</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800">
+          {% for r in sectors %}
+            {% set weak = r.days_seen < 2 %}
+            {% set delta = (sector_delta_map.get(r.sector, 0) if sector_delta_map is defined else 0) %}
+            <tr class="{% if weak %}bg-amber-950/40{% endif %}">
+              <td class="px-3 py-2 text-slate-100">{{ r.sector or "Unknown" }}</td>
+              <td class="px-3 py-2 text-right">{{ r.adverts | int }}</td>
+              <td class="px-3 py-2 text-right {% if weak %}text-amber-400{% endif %}">
+                {{ r.days_seen }}
+              </td>
+              <td class="px-3 py-2 text-right">
+                {% if r.median_pay %}£{{ "%.2f"|format(r.median_pay) }}{% else %}—{% endif %}
+              </td>
+              <td class="px-3 py-2 text-right">
+                {% if delta > 0 %}
+                  <span class="text-emerald-400 font-medium">+{{ delta }}</span>
+                {% elif delta < 0 %}
+                  <span class="text-rose-400 font-medium">{{ delta }}</span>
+                {% else %}
+                  <span class="text-slate-500">0</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Location table -->
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-medium text-slate-200">Location Coverage</h2>
+      <div class="text-xs text-slate-400">Δ = adverts this window vs previous week snapshot</div>
+    </div>
+
+    <div class="overflow-x-auto rounded border border-slate-800">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-900 text-slate-300">
+          <tr>
+            <th class="px-3 py-2 text-left">County</th>
+            <th class="px-3 py-2 text-right">Adverts</th>
+            <th class="px-3 py-2 text-right">Sectors</th>
+            <th class="px-3 py-2 text-right">Days Seen</th>
+            <th class="px-3 py-2 text-right">Δ</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800">
+          {% for r in locations %}
+            {% set weak = r.days_seen < 2 %}
+            {% set delta = (location_delta_map.get(r.county, 0) if location_delta_map is defined else 0) %}
+            <tr class="{% if weak %}bg-amber-950/40{% endif %}">
+              <td class="px-3 py-2 text-slate-100">{{ r.county or "Unknown" }}</td>
+              <td class="px-3 py-2 text-right">{{ r.adverts | int }}</td>
+              <td class="px-3 py-2 text-right">{{ r.sector_count }}</td>
+              <td class="px-3 py-2 text-right {% if weak %}text-amber-400{% endif %}">
+                {{ r.days_seen }}
+              </td>
+              <td class="px-3 py-2 text-right">
+                {% if delta > 0 %}
+                  <span class="text-emerald-400 font-medium">+{{ delta }}</span>
+                {% elif delta < 0 %}
+                  <span class="text-rose-400 font-medium">{{ delta }}</span>
+                {% else %}
+                  <span class="text-slate-500">0</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Deltas (ranked) -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+      <h3 class="text-slate-200 font-medium mb-3">Sectors with biggest drops</h3>
+      <div class="space-y-2 text-sm">
+        {% for d in sector_diff[:10] %}
+          <div class="flex items-center justify-between">
+            <div class="text-slate-200 truncate">{{ d.sector or d["sector"] }}</div>
+            <div class="text-rose-400 font-medium">
+              {{ d.delta if d.delta is defined else d["delta"] }}
+            </div>
+          </div>
+        {% endfor %}
+        {% if not sector_diff %}
+          <div class="text-slate-400">No diff data available.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+      <h3 class="text-slate-200 font-medium mb-3">Locations with biggest drops</h3>
+      <div class="space-y-2 text-sm">
+        {% for d in location_diff[:10] %}
+          <div class="flex items-center justify-between">
+            <div class="text-slate-200 truncate">{{ d.county or d["county"] }}</div>
+            <div class="text-rose-400 font-medium">
+              {{ d.delta if d.delta is defined else d["delta"] }}
+            </div>
+          </div>
+        {% endfor %}
+        {% if not location_diff %}
+          <div class="text-slate-400">No diff data available.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

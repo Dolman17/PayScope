@@ -11,7 +11,12 @@ from sqlalchemy.exc import IntegrityError
 
 from app import create_app
 from extensions import db
-from models import CronRunLog, JobPosting, JobRoleMapping
+from models import (
+    CronRunLog,
+    JobPosting,
+    JobRoleMapping,
+    JobSummaryDaily,
+)
 
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
@@ -42,12 +47,13 @@ SLEEP_BETWEEN_QUERIES_SEC = float(os.getenv("SCRAPE_SLEEP_SEC", "0.25"))
 ONS_IMPORT_ENABLED = os.getenv("ONS_IMPORT_ENABLED", "0").lower() in ("1", "true", "yes")
 ONS_IMPORT_YEAR = int(os.getenv("ONS_IMPORT_YEAR", str(date.today().year - 1)))
 
+
 # ---------------------------------------------------------------------
 # Weekly coverage config (sectors + rotating locations)
 # ---------------------------------------------------------------------
 # 0 = Monday ... 6 = Sunday
 DAY_CONFIG: Dict[int, Dict[str, Any]] = {
-    0: {  # Social Care + Leadership + Domestic/Retail
+    0: {
         "label": "Mon",
         "roles": [
             "Support Worker", "Care Assistant", "Senior Support Worker",
@@ -57,7 +63,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["London", "Croydon", "Brighton", "Reading", "Milton Keynes"],
     },
-    1: {  # Nursing + Public Sector + Admin
+    1: {
         "label": "Tue",
         "roles": [
             "Nurse", "RGN", "RMN",
@@ -66,7 +72,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["Birmingham", "Coventry", "Leicester", "Nottingham", "Stoke-on-Trent"],
     },
-    2: {  # IT + Research
+    2: {
         "label": "Wed",
         "roles": [
             "Software Developer", "Web Developer", "Data Analyst", "BI Analyst",
@@ -74,7 +80,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["Manchester", "Liverpool", "Preston", "Bolton", "Chester"],
     },
-    3: {  # Finance + HR + Legal
+    3: {
         "label": "Thu",
         "roles": [
             "Accountant", "Finance Analyst", "Management Accountant",
@@ -83,7 +89,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["Leeds", "Sheffield", "Bradford", "Hull", "York"],
     },
-    4: {  # Admin + Customer Service + Sales & Marketing
+    4: {
         "label": "Fri",
         "roles": [
             "Administrator", "Executive Assistant", "Receptionist",
@@ -92,7 +98,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["Newcastle", "Sunderland", "Middlesbrough", "Durham", "Gateshead"],
     },
-    5: {  # Education + Housing
+    5: {
         "label": "Sat",
         "roles": [
             "Trainer", "Learning and Development Trainer", "Assessor",
@@ -101,7 +107,7 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
         ],
         "where": ["Bristol", "Bath", "Plymouth", "Exeter", "Swindon"],
     },
-    6: {  # Engineering + Ops
+    6: {
         "label": "Sun",
         "roles": [
             "Electrician", "Plumber", "Site Manager", "Quantity Surveyor",
@@ -155,6 +161,30 @@ def _finish_log(
     if run_stats is not None:
         log.run_stats = _json_dump_safe(run_stats)
     db.session.commit()
+
+
+def _coverage_warnings(days: int = 7) -> dict:
+    start = date.today() - timedelta(days=days)
+
+    sector_days = (
+        db.session.query(
+            JobSummaryDaily.sector,
+            func.count(func.distinct(JobSummaryDaily.date)).label("days_seen"),
+        )
+        .filter(JobSummaryDaily.date >= start)
+        .group_by(JobSummaryDaily.sector)
+        .all()
+    )
+
+    weak_sectors = [
+        row.sector for row in sector_days if (row.days_seen or 0) < 2
+    ]
+
+    return {
+        "window_days": days,
+        "weak_sectors_count": len(weak_sectors),
+        "weak_sectors": weak_sectors[:10],
+    }
 
 
 def _get_existing_posting(source_site: str, external_id: str | None) -> Optional[JobPosting]:
@@ -318,12 +348,15 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
                 delete_existing=True,
             )
 
+            run_stats["coverage"] = _coverage_warnings(days=7)
+
             msg = f"OK. Scraped={rows_scraped}, Imported={records_created}"
             _finish_log(log, "success", msg, rows_scraped, records_created, run_stats)
             return {"ok": True, "message": msg}
 
         except Exception as e:
             db.session.rollback()
+            run_stats["coverage"] = _coverage_warnings(days=7)
             _finish_log(log, "error", str(e), rows_scraped, records_created, run_stats)
             return {"ok": False, "message": str(e)}
 

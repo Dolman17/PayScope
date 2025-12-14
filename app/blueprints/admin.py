@@ -44,6 +44,8 @@ from cron_runner import run_job_role_canonicaliser
 from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
 from ons_importer import import_ons_earnings_to_db, import_latest_ons_earnings_for_cron
+from app.blueprints.coverage import get_weekly_coverage_snapshot
+
 
 from . import pay_compare  # relative import of the module you just edited
 
@@ -89,6 +91,133 @@ def _safe_json_loads(value):
         return json.loads(s)
     except Exception:
         return None
+
+
+from datetime import date, timedelta
+from sqlalchemy import func
+from models import JobSummaryDaily
+
+
+def _get_coverage_window(start_date: date, end_date_exclusive: date):
+    """
+    Shared coverage query for a window:
+      start_date <= date < end_date_exclusive
+    """
+    # -----------------------------
+    # Sector coverage
+    # -----------------------------
+    sector_rows = (
+        db.session.query(
+            JobSummaryDaily.sector.label("sector"),
+            func.sum(JobSummaryDaily.adverts_count).label("adverts"),
+            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay"),
+            func.count(func.distinct(JobSummaryDaily.date)).label("days_seen"),
+        )
+        .filter(JobSummaryDaily.date >= start_date)
+        .filter(JobSummaryDaily.date < end_date_exclusive)
+        .group_by(JobSummaryDaily.sector)
+        .order_by(func.sum(JobSummaryDaily.adverts_count).desc())
+        .all()
+    )
+
+    # -----------------------------
+    # Location coverage
+    # -----------------------------
+    location_rows = (
+        db.session.query(
+            JobSummaryDaily.county.label("county"),
+            func.sum(JobSummaryDaily.adverts_count).label("adverts"),
+            func.count(func.distinct(JobSummaryDaily.sector)).label("sector_count"),
+            func.count(func.distinct(JobSummaryDaily.date)).label("days_seen"),
+        )
+        .filter(JobSummaryDaily.date >= start_date)
+        .filter(JobSummaryDaily.date < end_date_exclusive)
+        .group_by(JobSummaryDaily.county)
+        .order_by(func.sum(JobSummaryDaily.adverts_count).desc())
+        .all()
+    )
+
+    return sector_rows, location_rows
+
+
+def get_weekly_coverage(days: int = 7):
+    start_date = date.today() - timedelta(days=days)
+    end_excl = date.today() + timedelta(days=1)
+
+    sector_rows, location_rows = _get_coverage_window(start_date, end_excl)
+
+    weak_sectors = [r for r in sector_rows if r.days_seen < 2]
+    weak_locations = [r for r in location_rows if r.days_seen < 2]
+
+    summary = {
+        "total_sectors": len(sector_rows),
+        "total_locations": len(location_rows),
+        "weak_sectors": len(weak_sectors),
+        "weak_locations": len(weak_locations),
+        "coverage_days": days,
+    }
+
+    return {
+        "summary": summary,
+        "sectors": sector_rows,
+        "locations": location_rows,
+        "weak_sectors": weak_sectors,
+        "weak_locations": weak_locations,
+    }
+
+
+def get_weekly_coverage_diff():
+    """
+    Proper week-over-week diff:
+      - this_week: last 7 days
+      - last_week: the 7 days before that (non-overlapping)
+    """
+    today = date.today()
+
+    this_start = today - timedelta(days=7)
+    this_end_excl = today + timedelta(days=1)
+
+    prev_start = today - timedelta(days=14)
+    prev_end_excl = today - timedelta(days=7)
+
+    this_sector_rows, this_location_rows = _get_coverage_window(this_start, this_end_excl)
+    prev_sector_rows, prev_location_rows = _get_coverage_window(prev_start, prev_end_excl)
+
+    def index_by(rows, key):
+        return {getattr(r, key): r for r in rows}
+
+    this_sectors = index_by(this_sector_rows, "sector")
+    last_sectors = index_by(prev_sector_rows, "sector")
+
+    sector_diff = []
+    for sector, row in this_sectors.items():
+        prev = last_sectors.get(sector)
+        delta = (row.adverts or 0) - (prev.adverts or 0 if prev else 0)
+        sector_diff.append({
+            "sector": sector,
+            "this_week": int(row.adverts or 0),
+            "last_week": int(prev.adverts or 0) if prev else 0,
+            "delta": delta,
+        })
+
+    this_locations = index_by(this_location_rows, "county")
+    last_locations = index_by(prev_location_rows, "county")
+
+    location_diff = []
+    for county, row in this_locations.items():
+        prev = last_locations.get(county)
+        delta = (row.adverts or 0) - (prev.adverts or 0 if prev else 0)
+        location_diff.append({
+            "county": county,
+            "this_week": int(row.adverts or 0),
+            "last_week": int(prev.adverts or 0) if prev else 0,
+            "delta": delta,
+        })
+
+    return {
+        "sector_diff": sorted(sector_diff, key=lambda x: x["delta"]),
+        "location_diff": sorted(location_diff, key=lambda x: x["delta"]),
+    }
 
 
 def upsert_job_record(record, search_role=None, search_location=None) -> JobPosting:
@@ -479,7 +608,7 @@ def run_ons_import_manual():
 # -------------------------------------------------------------------
 # Simple ONS inspection helper
 # -------------------------------------------------------------------
-@bp.route("inspect/ons")
+@bp.route("/inspect/ons")
 @superuser_required
 def inspect_ons():
     from sqlalchemy import func
@@ -865,14 +994,25 @@ def ai_logs_get(log_id: int):
 @login_required
 @superuser_required
 def run_job_role_canonicaliser_now():
-    result = run_job_role_canonicaliser(
-        trigger="admin",
-        triggered_by=current_user.username,
-        max_roles=100,
+    # Match the cron_runner signature you shared (trigger + limit).
+    result = run_job_role_canonicaliser(trigger="admin", limit=100)
+
+    updated = (
+        result.get("updated")
+        or result.get("rows_updated")
+        or result.get("records_updated")
+        or 0
     )
+    examined = (
+        result.get("examined")
+        or result.get("scanned")
+        or result.get("rows_scanned")
+        or 0
+    )
+
     flash(
-        f"Job role canonicaliser updated {result.get('updated', 0)} rows "
-        f"(examined {result.get('examined', 0)}).",
+        f"Job role canonicaliser updated {updated} rows "
+        f"(examined {examined}).",
         "success",
     )
     return redirect(url_for("admin.cron_runs"))
@@ -1212,6 +1352,98 @@ def cron_runs():
         runs=runs,
         pagination=pagination,
         per_page=per_page,
+    )
+
+
+@bp.route("/coverage")
+@login_required
+@superuser_required
+def admin_coverage():
+    days = request.args.get("days", default=7, type=int)
+    days = max(1, min(days, 28))
+
+    coverage = get_weekly_coverage(days=days)
+    diff = get_weekly_coverage_diff()
+
+    # Build lookup dicts so templates can do .get()
+    sector_delta_map = {d["sector"]: d.get("delta", 0) for d in diff.get("sector_diff", [])}
+    location_delta_map = {d["county"]: d.get("delta", 0) for d in diff.get("location_diff", [])}
+
+    return render_template(
+        "admin/coverage.html",
+        days=days,
+        summary=coverage["summary"],
+        sectors=coverage["sectors"],
+        locations=coverage["locations"],
+        weak_sectors=coverage["weak_sectors"],
+        weak_locations=coverage["weak_locations"],
+        sector_diff=diff["sector_diff"],              # list (table-ready)
+        location_diff=diff["location_diff"],          # list (table-ready)
+        sector_delta_map=sector_delta_map,            # dict (lookup-ready)
+        location_delta_map=location_delta_map,        # dict (lookup-ready)
+    )
+
+
+@bp.route("/coverage/export")
+@login_required
+@superuser_required
+def admin_coverage_export():
+    from io import StringIO
+    import csv
+
+    data = get_weekly_coverage(days=7)
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Type", "Name", "Adverts", "Days Seen", "Extra"])
+
+    for s in data["sectors"]:
+        writer.writerow([
+            "Sector",
+            s.sector,
+            int(s.adverts or 0),
+            s.days_seen,
+            f"Median £{round(s.median_pay, 2)}" if s.median_pay else "",
+        ])
+
+    for l in data["locations"]:
+        writer.writerow([
+            "Location",
+            l.county,
+            int(l.adverts or 0),
+            l.days_seen,
+            f"Sectors {l.sector_count}",
+        ])
+
+    output.seek(0)
+    return current_app.response_class(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=payscope_coverage.csv"},
+    )
+
+
+@bp.route("/coverage/heatmap")
+@login_required
+@superuser_required
+def admin_coverage_heatmap():
+    start = date.today() - timedelta(days=7)
+
+    rows = (
+        db.session.query(
+            JobSummaryDaily.sector,
+            JobSummaryDaily.county,
+            func.sum(JobSummaryDaily.adverts_count).label("adverts"),
+        )
+        .filter(JobSummaryDaily.date >= start)
+        .group_by(JobSummaryDaily.sector, JobSummaryDaily.county)
+        .all()
+    )
+
+    return render_template(
+        "admin/coverage_heatmap.html",
+        rows=rows,
     )
 
 
