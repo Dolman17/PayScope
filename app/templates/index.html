@@ -32,47 +32,49 @@
             </span>
           </div>
 
-          <h1 class="text-4xl md:text-5xl font-extrabold mb-5 text-white leading-tight">
+          <h1 class="text-4xl md:text-5xl font-extrabold mb-4 text-white leading-tight">
             Real-Time Pay Insights<br class="hidden sm:block" />
             for Every Job, Every Region
           </h1>
 
           <p class="text-gray-300 text-base leading-relaxed mb-6 max-w-xl">
-            PayScope brings together live job-market signals and trusted public datasets to show
-            what employers are paying <span class="text-gray-100 font-semibold">right now</span>.
-            Built for practical decision-making, not academic reports.
+            PayScope blends live job-market signals with trusted public datasets to show what employers are paying
+            <span class="text-gray-100 font-semibold">right now</span> — designed for practical decisions, not academic reports.
           </p>
 
           <!-- Only entry into the app is Login -->
           <div class="flex flex-col sm:flex-row gap-3 mb-4">
             <a href="{{ url_for('auth.login') }}"
-               class="btn btn-primary w-full sm:w-auto justify-center">
+               class="btn btn-primary w-full sm:w-auto justify-center"
+               data-track="cta_login">
               Log in to PayScope
             </a>
 
             <button type="button"
                     class="btn btn-secondary w-full sm:w-auto justify-center"
-                    onclick="openRequestAccessModal()">
+                    onclick="openRequestAccessModal()"
+                    data-track="cta_request_access">
               Request access
             </button>
           </div>
 
           <p class="text-xs text-gray-400 max-w-xl">
-            This is a landing page. Access to live data, comparisons and dashboards requires login.
+            This is a landing page. Exploring live data, comparisons and dashboards requires login.
           </p>
 
-          <!-- Waitlist (no internal links; email-client handoff) -->
+          <!-- Waitlist (email-client handoff) -->
           <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-white">Join the waitlist</div>
                 <div class="text-xs text-gray-400 mt-0.5">
-                  Get early access updates (opens your email client — no data stored on this page).
+                  Opens your email client — nothing is stored from this page.
                 </div>
               </div>
 
               <form class="flex flex-col sm:flex-row gap-2 sm:items-center sm:min-w-[420px]"
-                    onsubmit="return submitWaitlistEmail(event)">
+                    onsubmit="return submitWaitlistEmail(event)"
+                    data-track="waitlist_submit">
                 <input id="waitlistEmail"
                        type="email"
                        inputmode="email"
@@ -94,13 +96,13 @@
               Why PayScope exists
             </h2>
             <p class="text-sm text-gray-300">
-              Most pay benchmarking tools are expensive, slow to update, and built for large
-              institutions.
+              Most pay benchmarking tools are expensive, slow to update, and built for large institutions.
             </p>
             <p class="text-sm text-gray-300 mt-2">
               PayScope is designed to be faster, leaner, and grounded in real advertised pay —
               so teams can make confident decisions without enterprise overheads.
             </p>
+
             <div class="mt-4 flex flex-wrap gap-2">
               <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
                 Evidence-ready insight
@@ -126,8 +128,8 @@
             </div>
 
             <div class="card card-hover bg-white/[0.03] border-white/10 p-3">
-              <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Focus</div>
-              <div class="text-lg font-bold text-white">Real-world pay</div>
+              <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Built for</div>
+              <div class="text-lg font-bold text-white">Real teams</div>
             </div>
           </div>
         </div>
@@ -141,7 +143,7 @@
         </div>
         <div class="card bg-white/[0.03] border-white/10 p-4">
           <div class="text-xs text-gray-400 mb-1">Defensible insight</div>
-          <div class="text-sm text-gray-200">Evidence for pay and workforce decisions</div>
+          <div class="text-sm text-gray-200">Evidence for pay & workforce decisions</div>
         </div>
         <div class="card bg-white/[0.03] border-white/10 p-4">
           <div class="text-xs text-gray-400 mb-1">Accessible by design</div>
@@ -149,6 +151,163 @@
         </div>
       </div>
 
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
+    <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
+      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
+        <h2 class="text-xl font-semibold text-white">How it works</h2>
+        <div class="text-xs text-gray-400">
+          Simple pipeline. Practical outputs.
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <div class="text-xs text-gray-400 mb-2">Step 1</div>
+          <div class="text-base font-semibold text-white mb-1">Ingest signals</div>
+          <p class="text-sm text-gray-300">
+            Collects advertised pay and demand signals from public job listings, alongside trusted official datasets.
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <div class="text-xs text-gray-400 mb-2">Step 2</div>
+          <div class="text-base font-semibold text-white mb-1">Normalise & structure</div>
+          <p class="text-sm text-gray-300">
+            Cleans titles, maps roles/locations, and standardises records so comparisons are actually meaningful.
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <div class="text-xs text-gray-400 mb-2">Step 3</div>
+          <div class="text-base font-semibold text-white mb-1">Output insight</div>
+          <p class="text-sm text-gray-300">
+            Produces pay ranges, trends, and competition signals you can use in minutes — including evidence packs.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST / COMPLIANCE + PRICING TEASER -->
+  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
+        <h2 class="text-xl font-semibold text-white mb-3">Trust & compliance</h2>
+        <ul class="space-y-2 text-sm text-gray-300 list-disc list-inside">
+          <li>Built on public job ads and official datasets — not scraped personal profiles.</li>
+          <li>Designed to be GDPR-friendly: no jobseeker PII collection on the landing page.</li>
+          <li>Clear methodology: live signals + official benchmarks for context.</li>
+          <li>Coverage and freshness are monitored so blind spots are visible, not hidden.</li>
+        </ul>
+      </div>
+
+      <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
+        <h2 class="text-xl font-semibold text-white mb-3">Pricing (simple, SME-friendly)</h2>
+        <p class="text-sm text-gray-300">
+          PayScope is built to avoid enterprise-style contracts. Early access pricing is available during rollout.
+        </p>
+
+        <div class="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div class="text-sm font-semibold text-white">Want pricing details?</div>
+          <div class="text-xs text-gray-400 mt-1">Request access and tell us your sector + typical roles.</div>
+
+          <div class="mt-3 flex flex-col sm:flex-row gap-2">
+            <a href="{{ url_for('auth.login') }}"
+               class="btn btn-primary w-full sm:w-auto justify-center"
+               data-track="pricing_login">
+              Log in
+            </a>
+            <button type="button"
+                    class="btn btn-secondary w-full sm:w-auto justify-center"
+                    onclick="openRequestAccessModal()"
+                    data-track="pricing_request_access">
+              Request access
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
+    <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
+      <h2 class="text-xl font-semibold text-white mb-4">FAQ</h2>
+
+      <div class="space-y-3">
+        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm font-semibold text-white">Where does the data come from?</span>
+            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
+            PayScope combines public job advertisements (to reflect what employers are offering today) with trusted public datasets,
+            including official earnings benchmarks, to add context and stability.
+          </div>
+        </details>
+
+        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm font-semibold text-white">How often is it updated?</span>
+            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
+            Live market data is refreshed on a scheduled basis. Official datasets update on their published cadence.
+            The platform is designed to surface both “right now” movement and longer-term baselines.
+          </div>
+        </details>
+
+        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm font-semibold text-white">How accurate is advertised pay?</span>
+            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
+            Advertised pay reflects what employers choose to publish. When ranges or missing values exist,
+            PayScope uses sensible rules and normalisation so you still get useful comparisons and trends.
+          </div>
+        </details>
+
+        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm font-semibold text-white">Is this compliant / GDPR-friendly?</span>
+            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
+            PayScope is built around public job ads and official datasets, not personal profiles.
+            This landing page does not store submitted emails — waitlist/access uses your email client.
+          </div>
+        </details>
+
+        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm font-semibold text-white">Can I use this for any sector?</span>
+            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
+            Yes — PayScope is designed for all sectors, with role/sector normalisation so comparisons remain practical.
+            Coverage varies by market data availability, and the platform is built to make those gaps visible.
+          </div>
+        </details>
+      </div>
+
+      <div class="mt-6 flex flex-col sm:flex-row gap-3">
+        <a href="{{ url_for('auth.login') }}"
+           class="btn btn-primary w-full sm:w-auto justify-center"
+           data-track="faq_login">
+          Log in to PayScope
+        </a>
+        <button type="button"
+                class="btn btn-secondary w-full sm:w-auto justify-center"
+                onclick="openRequestAccessModal()"
+                data-track="faq_request_access">
+          Request access
+        </button>
+      </div>
     </div>
   </section>
 
@@ -186,18 +345,36 @@
           Pay transparency shouldn’t be exclusive
         </h2>
         <p class="text-gray-300">
-          PayScope is built to make labour-market insight practical, affordable and grounded in
-          reality — not hidden behind enterprise pricing or opaque methodologies.
+          PayScope is built to make labour-market insight practical, affordable and grounded in reality —
+          not hidden behind enterprise pricing or opaque methodologies.
         </p>
       </div>
 
       <div class="flex flex-col gap-3 min-w-[220px]">
-        <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-full">
+        <a href="{{ url_for('auth.login') }}"
+           class="btn btn-primary w-full"
+           data-track="final_login">
           Log in to PayScope
         </a>
-        <button type="button" class="btn btn-secondary w-full" onclick="openRequestAccessModal()">
+        <button type="button"
+                class="btn btn-secondary w-full"
+                onclick="openRequestAccessModal()"
+                data-track="final_request_access">
           Request access
         </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER LINKS (production hygiene) -->
+  <section class="max-w-7xl mx-auto px-4 pb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-gray-500">
+      <div>© {{ (now().year if now is defined else 2025) }} PayScope. All rights reserved.</div>
+      <div class="flex flex-wrap gap-x-4 gap-y-2">
+        <a href="/privacy" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_privacy">Privacy</a>
+        <a href="/terms" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_terms">Terms</a>
+        <a href="/cookies" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_cookies">Cookies</a>
+        <a href="mailto:hello@payscope.uk" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_contact">Contact</a>
       </div>
     </div>
   </section>
@@ -214,7 +391,7 @@
           <div>
             <h3 class="text-lg font-semibold text-white">Request access</h3>
             <p class="text-sm text-gray-300 mt-1">
-              This will open an email to the PayScope team. Add any context (company, roles, regions) and hit send.
+              This opens an email to the PayScope team. Add context (company, roles, regions) and send.
             </p>
           </div>
           <button type="button"
@@ -244,10 +421,10 @@
           </div>
 
           <div class="flex flex-col sm:flex-row gap-2 pt-2">
-            <button type="button" class="btn btn-primary w-full sm:w-auto justify-center" onclick="sendAccessEmail()">
+            <button type="button" class="btn btn-primary w-full sm:w-auto justify-center" onclick="sendAccessEmail()" data-track="modal_send_email">
               Create request email
             </button>
-            <button type="button" class="btn btn-secondary w-full sm:w-auto justify-center" onclick="copyAccessTemplate()">
+            <button type="button" class="btn btn-secondary w-full sm:w-auto justify-center" onclick="copyAccessTemplate()" data-track="modal_copy_template">
               Copy template
             </button>
           </div>
@@ -263,7 +440,9 @@
 </div>
 
 <script>
-  // Hard-coded to ensure all landing page emails go to the same inbox
+  // ----------------------------
+  // Contact handling
+  // ----------------------------
   const PAYSCAPE_CONTACT_EMAIL = "hello@payscope.uk";
 
   function _isValidEmail(email) {
@@ -271,11 +450,64 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
   }
 
+  // ----------------------------
+  // Lightweight analytics hook (no cookies required)
+  // - If you later add Plausible: window.plausible('event', { props })
+  // - If you later add PostHog: window.posthog.capture('event', props)
+  // - Always safe: will never break the page
+  // ----------------------------
+  function trackEvent(name, props) {
+    try {
+      if (window.plausible) window.plausible(name, { props: props || {} });
+      if (window.posthog && window.posthog.capture) window.posthog.capture(name, props || {});
+      // Fallback: helpful during dev; harmless in prod
+      // console.debug("[track]", name, props || {});
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  // Attach click tracking to any element with data-track
+  document.addEventListener("click", (e) => {
+    const el = e.target && e.target.closest ? e.target.closest("[data-track]") : null;
+    if (!el) return;
+    const key = el.getAttribute("data-track");
+    if (!key) return;
+    trackEvent(key, { path: window.location.pathname });
+  }, { passive: true });
+
+  // Basic scroll depth (25/50/75/100)
+  (function initScrollDepth() {
+    const fired = new Set();
+    function onScroll() {
+      const doc = document.documentElement;
+      const scrollTop = doc.scrollTop || document.body.scrollTop;
+      const scrollHeight = (doc.scrollHeight || document.body.scrollHeight) - doc.clientHeight;
+      if (scrollHeight <= 0) return;
+
+      const pct = Math.round((scrollTop / scrollHeight) * 100);
+      const marks = [25, 50, 75, 100];
+
+      for (const m of marks) {
+        if (pct >= m && !fired.has(m)) {
+          fired.add(m);
+          trackEvent("scroll_depth", { depth: m, path: window.location.pathname });
+        }
+      }
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  })();
+
+  // ----------------------------
+  // Modal controls
+  // ----------------------------
   function openRequestAccessModal() {
     const m = document.getElementById("requestAccessModal");
     if (!m) return;
     m.classList.remove("hidden");
     m.setAttribute("aria-hidden", "false");
+    trackEvent("modal_open_request_access", { path: window.location.pathname });
 
     // prefill from waitlist if present
     const wait = document.getElementById("waitlistEmail");
@@ -288,18 +520,22 @@
     if (!m) return;
     m.classList.add("hidden");
     m.setAttribute("aria-hidden", "true");
+    trackEvent("modal_close_request_access", { path: window.location.pathname });
   }
 
-  // Close on ESC + backdrop click
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeRequestAccessModal();
   });
+
   document.addEventListener("click", (e) => {
     const m = document.getElementById("requestAccessModal");
     if (!m || m.classList.contains("hidden")) return;
     if (e.target === m || e.target === m.firstElementChild) closeRequestAccessModal();
   });
 
+  // ----------------------------
+  // Waitlist (mailto)
+  // ----------------------------
   function submitWaitlistEmail(evt) {
     evt.preventDefault();
     const input = document.getElementById("waitlistEmail");
@@ -310,6 +546,8 @@
       alert("Please enter a valid email address.");
       return false;
     }
+
+    trackEvent("waitlist_mailto", { path: window.location.pathname });
 
     const subject = encodeURIComponent("PayScope waitlist request");
     const body = encodeURIComponent(
@@ -324,6 +562,9 @@
     return false;
   }
 
+  // ----------------------------
+  // Access request (mailto + copy)
+  // ----------------------------
   function _buildAccessEmailTemplate() {
     const email = (document.getElementById("accessEmail")?.value || "").trim();
     const notes = (document.getElementById("accessNotes")?.value || "").trim();
@@ -352,6 +593,8 @@
       return;
     }
 
+    trackEvent("request_access_mailto", { path: window.location.pathname });
+
     const subject = encodeURIComponent("Request access to PayScope");
     const body = encodeURIComponent(_buildAccessEmailTemplate());
 
@@ -365,15 +608,16 @@
     const text = _buildAccessEmailTemplate();
     try {
       await navigator.clipboard.writeText(text);
+      trackEvent("request_access_copy_template", { path: window.location.pathname });
       alert("Template copied to clipboard.");
     } catch (e) {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
+      trackEvent("request_access_copy_template_fallback", { path: window.location.pathname });
       alert("Template copied to clipboard.");
     }
   }
