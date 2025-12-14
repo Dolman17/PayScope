@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from datetime import datetime, date
 from functools import wraps
 
@@ -71,6 +72,25 @@ def _require_superuser():
     return True
 
 
+def _safe_json_loads(value):
+    """
+    Best-effort JSON loader for CronRunLog.run_stats / other text fields.
+    Returns dict on success, else None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    try:
+        s = value.decode("utf-8") if isinstance(value, (bytes, bytearray)) else str(value)
+        s = s.strip()
+        if not s:
+            return None
+        return json.loads(s)
+    except Exception:
+        return None
+
+
 def upsert_job_record(record, search_role=None, search_location=None) -> JobPosting:
     """
     Insert or update a JobPosting based on (source_site, external_id) or URL.
@@ -109,8 +129,6 @@ def upsert_job_record(record, search_role=None, search_location=None) -> JobPost
         job.search_location = search_location
 
     if record.raw_json is not None:
-        import json
-
         try:
             job.raw_json = json.dumps(record.raw_json)
         except TypeError:
@@ -271,8 +289,6 @@ def manage_users():
                     elif user.admin_level == 2:
                         user.org_role = "admin"
                     else:
-                        # Don't auto-downgrade owners if you ever want to keep them;
-                        # here we keep it simple and treat level 0 as member.
                         if user.org_role != "owner":
                             user.org_role = "member"
 
@@ -374,14 +390,11 @@ def run_ons_import():
 
     from models import OnsEarnings  # local import to avoid cycles
 
-    # Which DB are we actually connected to?
     db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI")
     print("🔎 ONS IMPORT using DB URI:", db_uri)
 
-    # Target ASHE year (last completed year)
     year = date.today().year - 1
 
-    # Count rows for that year *before* the import
     before_count = (
         db.session.query(func.count())
         .filter(OnsEarnings.year == year)
@@ -389,7 +402,6 @@ def run_ons_import():
     )
     print(f"🔢 Before import: OnsEarnings rows for {year} = {before_count}")
 
-    # Run the importer INSIDE THIS APP CONTEXT
     result = import_ons_earnings_to_db(
         year,
         trigger="admin_button",
@@ -397,7 +409,6 @@ def run_ons_import():
         use_app_context=True,
     )
 
-    # Count rows for that year *after* the import
     after_count = (
         db.session.query(func.count())
         .filter(OnsEarnings.year == year)
@@ -405,7 +416,6 @@ def run_ons_import():
     )
     print(f"🔢 After import: OnsEarnings rows for {year} = {after_count}")
 
-    # Normal flash message logic
     if result.get("error"):
         flash(f"ONS import FAILED for {year}: {result['error']}", "error")
     else:
@@ -426,11 +436,6 @@ def run_ons_import():
 @login_required
 @superuser_required
 def debug_pay_explorer_json():
-    """
-    Return the exact JSON that get_pay_explorer_data() produces for
-    the default Pay Explorer view (last 30 days, group_by=county).
-    This lets us see whether ons_median_hourly is populated per row.
-    """
     data = pay_compare.get_pay_explorer_data(
         start_date_str=None,
         end_date_str=None,
@@ -448,9 +453,6 @@ def debug_pay_explorer_json():
 @login_required
 @superuser_required
 def run_ons_import_manual():
-    """
-    New ONS import endpoint using the helper that chooses the latest full year.
-    """
     who = (
         getattr(current_user, "email", None)
         or getattr(current_user, "username", None)
@@ -461,7 +463,7 @@ def run_ons_import_manual():
         result = import_latest_ons_earnings_for_cron(
             trigger="manual",
             triggered_by=who,
-            use_app_context=True,  # already in a request/app context
+            use_app_context=True,
         )
         year = result.get("year")
         created = result.get("created")
@@ -480,16 +482,9 @@ def run_ons_import_manual():
 @bp.route("inspect/ons")
 @superuser_required
 def inspect_ons():
-    """
-    Quick JSON debug view of OnsEarnings:
-
-    - summary: counts per (year, measure_code)
-    - latest_rows: a few sample rows from the newest year in the table
-    """
     from sqlalchemy import func
     from models import OnsEarnings, db
 
-    # 1) Grouped summary: how many rows per (year, measure)
     grouped = (
         db.session.query(
             OnsEarnings.year.label("year"),
@@ -510,12 +505,10 @@ def inspect_ons():
         for row in grouped
     ]
 
-    # 2) Find the latest year actually present in the table
     latest_year = db.session.query(func.max(OnsEarnings.year)).scalar()
 
     latest_rows: list[dict] = []
     if latest_year is not None:
-        # Grab a few sample rows from that latest year so we can see what's really there
         samples = (
             OnsEarnings.query
             .filter(OnsEarnings.year == latest_year)
@@ -550,11 +543,6 @@ def inspect_ons():
 @login_required
 @superuser_required
 def debug_pay_explorer_mapping():
-    """
-    Debug endpoint: shows how each county label maps to an ONS geography
-    and whether we have an ONS median for it.
-    Optional query param: ?days=30 to change the lookback window.
-    """
     days = request.args.get("days", default=30, type=int)
     rows, ons_year = pay_compare.build_pay_explorer_debug_snapshot(days=days)
     return jsonify(
@@ -571,13 +559,6 @@ def debug_pay_explorer_mapping():
 @bp.route("/companies", methods=["GET", "POST"])
 @login_required
 def admin_companies():
-    """
-    Admin view for:
-      - Viewing grouped companies (by JobRecord.company_id)
-      - Merging multiple company_ids into a target
-      - Editing Company name/canonical_name/sector
-      - Uploading logos for a given company_id
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -586,7 +567,6 @@ def admin_companies():
     if request.method == "POST":
         action = request.form.get("action")
 
-        # ----- MERGE company_ids -----
         if action == "merge":
             target_slug = (request.form.get("target_company_id") or "").strip()
             source_raw = (request.form.get("source_company_ids") or "").strip()
@@ -596,7 +576,6 @@ def admin_companies():
                 if s.strip()
             ]
 
-            # Remove self-merge and duplicates
             source_slugs = [s for s in source_slugs if s != target_slug]
             source_slugs = list(dict.fromkeys(source_slugs))
 
@@ -624,7 +603,6 @@ def admin_companies():
 
             return redirect(url_for("admin.admin_companies"))
 
-        # ----- UPDATE a Company row -----
         elif action == "update_company":
             company_db_id = request.form.get("company_db_id", type=int)
             if not company_db_id:
@@ -649,7 +627,6 @@ def admin_companies():
 
             return redirect(url_for("admin.admin_companies"))
 
-        # ----- UPLOAD logo for company_id -----
         elif action == "upload_logo":
             slug = (request.form.get("company_id") or "").strip()
             logo_file = request.files.get("logo_file")
@@ -671,7 +648,6 @@ def admin_companies():
 
             return redirect(url_for("admin.admin_companies"))
 
-    # ----- GET: build view model -----
     company_groups = (
         db.session.query(
             JobRecord.company_id,
@@ -712,9 +688,6 @@ def admin_companies():
 @bp.route("/companies/regenerate-ids")
 @login_required
 def regenerate_company_ids():
-    """
-    Rebuild JobRecord.company_id values from the current Company canonical names.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -779,11 +752,6 @@ def regenerate_company_ids():
 @bp.route("/regeocode-jobs")
 @login_required
 def regeocode_jobs():
-    """
-    Re-geocode JobRecord.postcode values using the UK-only geocoder.
-    Also, if postcode-based lookup fails but we already have coordinates,
-    snap to the nearest postcode based on latitude/longitude.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -952,10 +920,6 @@ def diagnose_postcodes():
 @bp.route("/clear-job-records")
 @login_required
 def clear_job_records():
-    """
-    Delete ALL JobRecord rows from the database.
-    Keeps users, logs, etc. intact.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -982,33 +946,25 @@ def admin_jobs():
     page = request.args.get("page", 1, type=int)
     per_page = 50
 
-    # Base query
     query = JobPosting.query.order_by(JobPosting.scraped_at.desc())
 
-    # Filters
     source = request.args.get("source", type=str, default="").strip()
     company = request.args.get("company", type=str, default="").strip()
     title = request.args.get("title", type=str, default="").strip()
     active_only = request.args.get("active", "1")
 
-    # Apply filters
     if source:
         query = query.filter(JobPosting.source_site == source)
-
     if company:
         query = query.filter(JobPosting.company_name.ilike(f"%{company}%"))
-
     if title:
         query = query.filter(JobPosting.title.ilike(f"%{title}%"))
-
     if active_only == "1":
         query = query.filter(JobPosting.is_active.is_(True))
 
-    # Pagination
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     jobs = pagination.items
 
-    # Sources list for dropdown
     sources = (
         db.session.query(JobPosting.source_site)
         .distinct()
@@ -1017,7 +973,6 @@ def admin_jobs():
     )
     sources = [row[0] for row in sources if row[0]]
 
-    # Render
     return render_template(
         "admin/jobs.html",
         jobs=jobs,
@@ -1058,22 +1013,11 @@ def admin_import_job(posting_id):
 @bp.route("/admin/jobs/import-all", methods=["POST"])
 @login_required
 def admin_import_all_jobs():
-    """
-    Bulk-import all currently visible JobPostings into JobRecord.
-
-    - Respects current filter/search on the Job Postings admin page.
-    - Skips postings already marked as imported.
-    - Uses import_posting_to_record with enable_snap_to_postcode=False
-      to avoid hammering external postcode APIs in bulk (prevents timeouts).
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
     query = JobPosting.query
 
-    # Apply any filters from the request (role, company, source, active, etc.)
-    # This should mirror the listing view logic so "Import All Visible" means
-    # "import exactly what I'm currently looking at".
     search = request.form.get("search") or request.args.get("search")
     company = request.form.get("company") or request.args.get("company")
     source = request.form.get("source") or request.args.get("source")
@@ -1096,12 +1040,10 @@ def admin_import_all_jobs():
     skipped_already_imported = 0
 
     for posting in postings:
-        # Avoid re-importing
         if getattr(posting, "imported", False):
             skipped_already_imported += 1
             continue
 
-        # Bulk mode – skip postcode snapping to avoid timeouts
         import_posting_to_record(posting, enable_snap_to_postcode=False)
         imported_count += 1
 
@@ -1146,9 +1088,6 @@ def admin_tools():
 @bp.route("/db-health", methods=["GET"])
 @login_required
 def db_health():
-    """
-    Simple DB health + table list page.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -1199,9 +1138,6 @@ def db_health():
 @bp.route("/backfill-company-ids")
 @login_required
 def backfill_company_ids():
-    """
-    Backfill all JobRecord.company_id values using canonical Company table.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -1239,17 +1175,11 @@ def backfill_company_ids():
 @bp.route("/utils/create-job-role-mapping-table")
 @login_required
 def create_job_role_mapping_table():
-    """
-    One-off helper: create the job_role_mappings table if it doesn't exist.
-    Safe to call multiple times thanks to checkfirst=True.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
     JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
     flash("JobRoleMapping table has been created (or already existed).", "success")
-
-    # After creation, send you to the Job Role Cleaner admin view
     return redirect(url_for("dashboard.admin_job_roles"))
 
 
@@ -1261,6 +1191,7 @@ def create_job_role_mapping_table():
 def cron_runs():
     """
     Show history of cron runs (from cron_run_logs table).
+    Also attaches r.stats parsed from CronRunLog.run_stats so templates can render it.
     """
     if not _require_superuser():
         return redirect(url_for("home"))
@@ -1271,6 +1202,10 @@ def cron_runs():
     query = CronRunLog.query.order_by(CronRunLog.started_at.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     runs = pagination.items
+
+    # Attach parsed stats (safe; never breaks page)
+    for r in runs:
+        setattr(r, "stats", _safe_json_loads(getattr(r, "run_stats", None)) or {})
 
     return render_template(
         "admin/cron_runs.html",
@@ -1286,6 +1221,7 @@ def cron_run_now():
     if not _require_superuser():
         return redirect(url_for("home"))
 
+    # Keep compatibility with the cron runner entrypoint if present
     from cron_runner import run_scheduled_jobs
 
     started_at = datetime.utcnow()
@@ -1304,10 +1240,11 @@ def cron_run_now():
         message=message,
         started_at=started_at,
         finished_at=finished_at,
+        # run_stats intentionally omitted here because run_scheduled_jobs() may
+        # return different shapes; cron_runner itself writes rich run_stats.
     )
     db.session.add(log_row)
     commit_or_rollback()
 
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
-
