@@ -5,33 +5,24 @@ from app import create_app
 from extensions import db
 from models import JobRecord, SectorMapping
 
-BATCH_SIZE = 2000  # 1000–5000 is usually fine
-
-
-def _clean_key(raw: str | None) -> str:
-    if not raw:
-        return ""
-    return raw.strip().upper()
+BATCH_SIZE = 5000
 
 
 def run():
     app = create_app()
     with app.app_context():
+        # Load mappings ONCE (your old script re-queried per row = slow)
+        mappings = {
+            (m.raw_value or "").strip().upper(): (m.canonical_sector or "").strip()
+            for m in SectorMapping.query.all()
+            if m.raw_value and m.canonical_sector
+        }
+        print(f"Loaded {len(mappings)} sector mappings.")
+
         total = db.session.query(db.func.count(JobRecord.id)).scalar() or 0
         print(f"Normalising sectors for {total} JobRecord rows…")
 
-        # Load all mappings once
-        mapping_rows = SectorMapping.query.all()
-        mappings = {
-            (m.raw_value or "").strip().upper(): (m.canonical_sector or "").strip()
-            for m in mapping_rows
-            if m.raw_value
-        }
-
-        print(f"Loaded {len(mappings)} sector mappings.")
-
         updated = 0
-        processed = 0
         last_id = 0
 
         while True:
@@ -46,19 +37,19 @@ def run():
                 break
 
             for r in rows:
-                last_id = r.id
+                raw = (r.sector or "").strip()
+                key = raw.upper()
 
-                key = _clean_key(r.sector)
-                canonical = mappings.get(key) if key else None
-                canonical = canonical if canonical else "Other"
-
-                if (r.sector or "").strip() != canonical:
+                # Only change when we have a mapping
+                canonical = mappings.get(key)
+                if canonical and r.sector != canonical:
                     r.sector = canonical
                     updated += 1
 
+                last_id = r.id
+
             db.session.commit()
-            processed += len(rows)
-            print(f"Processed {processed}/{total} (updated {updated})")
+            print(f"Processed up to id={last_id} / updated={updated}")
 
         print(f"✅ Sector normalisation complete. Updated {updated} rows.")
 
