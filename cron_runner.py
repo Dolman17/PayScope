@@ -1,801 +1,370 @@
 # cron_runner.py
 from __future__ import annotations
 
-import json
 import os
-import time
-from datetime import datetime, date
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from app.scrapers.adzuna import AdzunaScraper
-from app.importers.job_importer import import_posting_to_record, classify_sector
+from app import create_app
 from extensions import db
-from models import JobPosting, CronRunLog, JobRecord, JobRoleMapping
-from job_summaries import build_daily_job_summaries  # Daily summaries
-from ons_importer import import_ons_earnings_to_db   # ONS → DB upsert
+from models import CronRunLog, JobPosting, JobRoleMapping
 
+from app.scrapers.adzuna import AdzunaScraper
+from app.importers.job_importer import import_posting_to_record
 
-# ------------------------------
-# Safety / runtime guardrails
-# ------------------------------
-CRON_TIME_BUDGET_SECONDS = int(os.getenv("CRON_TIME_BUDGET_SECONDS", "85"))  # aim < 90s
-ADZUNA_PAIR_SLEEP_SECONDS = float(os.getenv("ADZUNA_PAIR_SLEEP_SECONDS", "0.15"))
+from job_summaries import build_daily_job_summaries
 
-MAX_TOTAL_PAIRS_PER_RUN = int(os.getenv("MAX_TOTAL_PAIRS_PER_RUN", "30"))
-
-ADZUNA_MAX_PAGES = int(os.getenv("ADZUNA_MAX_PAGES", "2"))
-ADZUNA_RESULTS_PER_PAGE = int(os.getenv("ADZUNA_RESULTS_PER_PAGE", "40"))
-
-CANON_DAILY_ENABLED = os.getenv("CANON_DAILY_ENABLED", "1").strip() == "1"
-CANON_DAILY_MAX_ROLES = int(os.getenv("CANON_DAILY_MAX_ROLES", "100"))
-CANON_DAILY_CHUNK_SIZE = int(os.getenv("CANON_DAILY_CHUNK_SIZE", "25"))
-
-
-# Optional OpenAI client for AI canonicalisation
+# Optional ONS import (safe to skip if you don't want it in cron yet)
 try:
-    from openai import OpenAI
+    from ons_importer import import_ons_earnings_to_db
+except Exception:
+    import_ons_earnings_to_db = None  # type: ignore
+
+
+# Optional OpenAI client for job-role canonicalisation (safe if missing)
+try:
+    from openai import OpenAI  # type: ignore
+
     _openai_client = OpenAI()
 except Exception:
     _openai_client = None
 
 
-def _truncate(value, max_len: int | None):
-    """Safely truncate strings for fixed-length VARCHAR columns."""
-    if value is None or max_len is None:
-        return value
-    s = str(value)
-    if len(s) <= max_len:
-        return s
-    return s[:max_len]
+# -----------------------------
+# Config
+# -----------------------------
+DEFAULT_RESULTS_PER_PAGE = int(os.getenv("ADZUNA_RESULTS_PER_PAGE", "50"))
+DEFAULT_MAX_PAGES = int(os.getenv("ADZUNA_MAX_PAGES", "2"))
 
+SLEEP_BETWEEN_QUERIES_SEC = float(os.getenv("SCRAPE_SLEEP_SEC", "0.25"))
 
-# -------------------------------------------------------------------
-# Day-of-week scrape configuration
-# -------------------------------------------------------------------
-DAY_CONFIG = {
-    0: {  # Monday – Social Care & Nursing
-        "label": "Social Care & Nursing",
-        "roles": [
-            "support worker",
-            "care assistant",
-            "senior care assistant",
-            "healthcare assistant",
-            "nurse",
-            "registered nurse",
-            "team leader",
-            "deputy manager",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-            "Manchester",
-            "Leeds",
-            "Glasgow",
-        ],
-    },
-    1: {  # Tuesday – IT & Tech
-        "label": "IT & Technology",
-        "roles": [
-            "software developer",
-            "software engineer",
-            "it support",
-            "data analyst",
-            "business analyst",
-            "devops engineer",
-        ],
-        "locations": [
-            "London",
-            "Manchester",
-            "Birmingham",
-            "Leeds",
-            "Bristol",
-        ],
-    },
-    2: {  # Wednesday – Finance & Accounting
-        "label": "Finance & Accounting",
-        "roles": [
-            "accountant",
-            "finance manager",
-            "financial analyst",
-            "bookkeeper",
-            "payroll clerk",
-        ],
-        "locations": [
-            "London",
-            "Manchester",
-            "Leeds",
-            "Edinburgh",
-        ],
-    },
-    3: {  # Thursday – HR, Admin & Operations
-        "label": "HR, Admin & Operations",
-        "roles": [
-            "hr advisor",
-            "hr manager",
-            "recruitment consultant",
-            "office manager",
-            "administrator",
-            "operations manager",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-            "Manchester",
-        ],
-    },
-    4: {  # Friday – Mixed Support Roles
-        "label": "Support & Customer",
-        "roles": [
-            "customer service advisor",
-            "call centre advisor",
-            "receptionist",
-            "support officer",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-            "Leeds",
-        ],
-    },
-    5: {  # Saturday – Light Social Care refresh
-        "label": "Weekend Social Care",
-        "roles": [
-            "support worker",
-            "care assistant",
-            "senior care assistant",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Manchester",
-        ],
-    },
-    6: {  # Sunday – Light Nursing / Care
-        "label": "Weekend Nursing & Care",
-        "roles": [
-            "nurse",
-            "registered nurse",
-            "support worker",
-        ],
-        "locations": [
-            "United Kingdom",
-            "London",
-            "Birmingham",
-        ],
-    },
+# 0 = Monday ... 6 = Sunday
+DAY_CONFIG: Dict[int, Dict[str, Any]] = {
+    0: {"roles": ["Support Worker", "Care Assistant"], "where": "United Kingdom", "label": "Mon"},
+    1: {"roles": ["Nurse", "RMN", "RGN"], "where": "United Kingdom", "label": "Tue"},
+    2: {"roles": ["HR Advisor", "Recruiter"], "where": "United Kingdom", "label": "Wed"},
+    3: {"roles": ["Finance Analyst", "Accountant"], "where": "United Kingdom", "label": "Thu"},
+    4: {"roles": ["Developer", "Data Analyst"], "where": "United Kingdom", "label": "Fri"},
+    5: {"roles": ["Customer Service Advisor"], "where": "United Kingdom", "label": "Sat"},
+    6: {"roles": ["Operations Manager", "Warehouse Operative"], "where": "United Kingdom", "label": "Sun"},
 }
 
 
-# -------------------------------------------------------------------
-# Gap-filling config: target coverage + mappings
-# -------------------------------------------------------------------
-SECTOR_TARGET_MIN = 1500
-COUNTY_TARGET_MIN = 800
-
-MAX_GAP_SECTOR_JOBS = 6
-MAX_GAP_COUNTY_JOBS = 6
-
-SECTOR_KEYWORDS = {
-    "Education & Training": ["teacher", "lecturer", "trainer", "tutor"],
-    "Legal": ["solicitor", "paralegal", "legal assistant"],
-    "Sales & Marketing": ["sales executive", "sales manager", "marketing manager", "business development"],
-    "Customer Service": ["customer service advisor", "call centre advisor", "contact centre"],
-    "HR & Recruitment": ["hr advisor", "hr officer", "recruitment consultant"],
-    "Finance & Accounting": ["accountant", "finance analyst", "bookkeeper"],
-    "IT & Digital": ["web developer", "frontend developer", "backend developer", "python developer"],
-    "Retail": ["retail assistant", "store manager", "sales assistant", "merchandiser", "supervisor"],
-}
-
-COUNTY_LOCATIONS = {
-    "Staffordshire": "Staffordshire",
-    "Cheshire": "Cheshire",
-    "Norfolk": "Norfolk",
-    "Lancashire": "Lancashire",
-    "Herefordshire": "Herefordshire",
-    "Shropshire": "Shropshire",
-    "Worcestershire": "Worcestershire",
-    "West Midlands": "West Midlands",
-    "Greater Manchester": "Greater Manchester",
-    "Bristol": "Bristol",
-    "Glasgow": "Glasgow",
-    "Edinburgh": "Edinburgh",
-    "London": "London",
-    "Leeds": "Leeds",
-    "Birmingham": "Birmingham",
-}
+def _utcnow() -> datetime:
+    return datetime.utcnow()
 
 
-def get_underrepresented_sectors(limit: int = 20) -> list[str]:
-    rows = (
-        db.session.query(JobRecord.sector, func.count(JobRecord.id))
-        .filter(JobRecord.sector.isnot(None))
-        .group_by(JobRecord.sector)
-        .order_by(func.count(JobRecord.id).asc())
-        .limit(limit)
-        .all()
+def _start_log(job_name: str, trigger: str, day_label: Optional[str] = None) -> CronRunLog:
+    log = CronRunLog(
+        job_name=job_name,
+        started_at=_utcnow(),
+        status="running",
+        message=None,
+        rows_scraped=0,
+        records_created=0,
+        triggered_by=os.getenv("TRIGGERED_BY") or None,
+        trigger=trigger,
+        day_label=day_label,
+    )
+    db.session.add(log)
+    db.session.commit()
+    return log
+
+
+def _finish_log(log: CronRunLog, status: str, message: str, rows_scraped: int, records_created: int) -> None:
+    log.finished_at = _utcnow()
+    log.status = status
+    log.message = message
+    log.rows_scraped = rows_scraped
+    log.records_created = records_created
+    db.session.add(log)
+    db.session.commit()
+
+
+def _get_existing_posting(source_site: str, external_id: str | None) -> Optional[JobPosting]:
+    if not external_id:
+        return None
+    return (
+        JobPosting.query
+        .filter(JobPosting.source_site == source_site, JobPosting.external_id == external_id)
+        .first()
     )
 
-    result: list[str] = []
-    for sector, count in rows:
-        if not sector:
-            continue
-        if sector in SECTOR_KEYWORDS and (count or 0) < SECTOR_TARGET_MIN:
-            result.append(sector)
-    return result
 
+def _upsert_posting_from_scraper_record(
+    source_site: str,
+    rec: Any,
+    search_role: str | None = None,
+    search_location: str | None = None,
+) -> Tuple[JobPosting, bool]:
+    """
+    Convert a scraper JobRecord (temporary object from app/scrapers/base.py)
+    into a DB JobPosting, upserting on (source_site, external_id).
 
-def get_underrepresented_counties(limit: int = 50) -> list[str]:
-    rows = (
-        db.session.query(JobRecord.county, func.count(JobRecord.id))
-        .filter(JobRecord.county.isnot(None))
-        .group_by(JobRecord.county)
-        .order_by(func.count(JobRecord.id).asc())
-        .limit(limit)
-        .all()
+    Returns (posting, created_new)
+    """
+    external_id = getattr(rec, "external_id", None)
+    external_id = str(external_id) if external_id else None
+
+    existing = _get_existing_posting(source_site, external_id)
+
+    # Pull fields defensively
+    title = getattr(rec, "title", None)
+    company_name = getattr(rec, "company_name", None)
+    location_text = getattr(rec, "location_text", None)
+    postcode = getattr(rec, "postcode", None)
+    sector = getattr(rec, "sector", None)  # usually None from AdzunaScraper; OK
+    min_rate = getattr(rec, "min_rate", None)
+    max_rate = getattr(rec, "max_rate", None)
+    rate_type = getattr(rec, "rate_type", None)
+    contract_type = getattr(rec, "contract_type", None)
+    url = getattr(rec, "url", None)
+    posted_date = getattr(rec, "posted_date", None)
+
+    raw_json = getattr(rec, "raw_json", None)
+    # Your DB column is Text, so str(dict) is fine; JSON is better but not required.
+    # If raw_json is already a dict, store json.dumps.
+    try:
+        import json
+        raw_json_text = json.dumps(raw_json, ensure_ascii=False) if isinstance(raw_json, dict) else (raw_json or None)
+    except Exception:
+        raw_json_text = None
+
+    if existing:
+        existing.title = title or existing.title
+        existing.company_name = company_name or existing.company_name
+        existing.location_text = location_text or existing.location_text
+        existing.postcode = postcode or existing.postcode
+        existing.sector = sector or existing.sector
+
+        existing.min_rate = min_rate if min_rate is not None else existing.min_rate
+        existing.max_rate = max_rate if max_rate is not None else existing.max_rate
+        existing.rate_type = rate_type or existing.rate_type
+        existing.contract_type = contract_type or existing.contract_type
+
+        existing.url = url or existing.url
+        existing.posted_date = posted_date or existing.posted_date
+
+        existing.scraped_at = _utcnow()
+        existing.is_active = True
+        existing.raw_json = raw_json_text or existing.raw_json
+
+        if search_role:
+            existing.search_role = search_role
+        if search_location:
+            existing.search_location = search_location
+
+        db.session.add(existing)
+        db.session.commit()
+        return existing, False
+
+    posting = JobPosting(
+        title=title or "",
+        company_name=company_name,
+        location_text=location_text,
+        postcode=postcode,
+        sector=sector,
+        min_rate=min_rate,
+        max_rate=max_rate,
+        rate_type=rate_type,
+        contract_type=contract_type,
+        source_site=source_site,
+        external_id=external_id,
+        url=url,
+        posted_date=posted_date,
+        scraped_at=_utcnow(),
+        is_active=True,
+        imported=False,
+        raw_json=raw_json_text,
+        search_role=search_role,
+        search_location=search_location,
     )
+    db.session.add(posting)
 
-    result: list[str] = []
-    for county, count in rows:
-        if not county:
-            continue
-        if county in COUNTY_LOCATIONS and (count or 0) < COUNTY_TARGET_MIN:
-            result.append(county)
-    return result
-
-
-def build_gap_fill_pairs() -> list[tuple[str, str]]:
-    pairs: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    for sector in get_underrepresented_sectors():
-        keywords = SECTOR_KEYWORDS.get(sector) or []
-        for kw in keywords:
-            pair = (kw, "United Kingdom")
-            if pair in seen:
-                continue
-            pairs.append(pair)
-            seen.add(pair)
-            if len([p for p in pairs if p[0]]) >= MAX_GAP_SECTOR_JOBS:
-                break
-        if len([p for p in pairs if p[0]]) >= MAX_GAP_SECTOR_JOBS:
-            break
-
-    for county in get_underrepresented_counties():
-        where = COUNTY_LOCATIONS[county]
-        pair = ("", where)
-        if pair in seen:
-            continue
-        pairs.append(pair)
-        seen.add(pair)
-        if len([p for p in pairs if p[0] == ""]) >= MAX_GAP_COUNTY_JOBS:
-            break
-
-    return pairs
+    try:
+        db.session.commit()
+        return posting, True
+    except IntegrityError:
+        db.session.rollback()
+        again = _get_existing_posting(source_site, external_id)
+        if again:
+            return again, False
+        raise
 
 
-def _find_existing_posting(source_site: str, external_id: str | None, url: str | None):
-    q = None
-    if external_id:
-        q = JobPosting.query.filter_by(source_site=source_site, external_id=external_id)
-    elif url:
-        q = JobPosting.query.filter_by(source_site=source_site, url=url)
-    return q.first() if q is not None else None
-
-
-def _build_pairs(roles: list[str], locations: list[str], extra_pairs: list[tuple[str, str]] | None):
-    pairs_set: set[tuple[str, str]] = set()
+def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
+    """
+    For each role, instantiate AdzunaScraper(what=role, where=where) and call .scrape().
+    Returns list of scraper JobRecord objects (temporary).
+    """
+    out: List[Any] = []
     for role in roles:
-        for loc in locations:
-            pairs_set.add((role, loc))
-    if extra_pairs:
-        for r, l in extra_pairs:
-            pairs_set.add((r, l))
+        scraper = AdzunaScraper(
+            what=role,
+            where=where,
+            results_per_page=DEFAULT_RESULTS_PER_PAGE,
+            max_pages=DEFAULT_MAX_PAGES,
+        )
+        batch = scraper.scrape() or []
+        # annotate in-memory (optional)
+        for r in batch:
+            try:
+                r.search_role = role
+                r.search_location = where
+            except Exception:
+                pass
+        out.extend(batch)
+    return out
 
-    pairs = sorted(pairs_set)
-    if len(pairs) > MAX_TOTAL_PAIRS_PER_RUN:
-        pairs = pairs[:MAX_TOTAL_PAIRS_PER_RUN]
-    return pairs
 
+def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
+    """
+    Main pipeline:
+      - optional ONS import
+      - scrape Adzuna
+      - upsert JobPosting
+      - import JobPosting -> JobRecord (sector/role normalisation happens in job_importer)
+      - build daily summaries for yesterday
+    """
+    app = create_app()
+    with app.app_context():
+        weekday = date.today().weekday()
+        cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
+        day_label = cfg.get("label")
 
-def _run_for_config(
-    label: str,
-    roles: list[str],
-    locations: list[str],
-    extra_pairs: list[tuple[str, str]] | None = None,
-    started_monotonic: float | None = None,
-    time_budget_seconds: int | None = None,
-) -> dict:
-    rows_scraped = 0
-    records_created = 0
-    postings_created = 0
-    postings_updated = 0
-    errors: list[str] = []
-    stopped_early = False
+        log = _start_log("scrape_import_summaries", trigger=trigger, day_label=day_label)
 
-    pairs = _build_pairs(roles, locations, extra_pairs)
-
-    for role, loc in pairs:
-        if started_monotonic is not None and time_budget_seconds is not None:
-            if (time.monotonic() - started_monotonic) > time_budget_seconds:
-                stopped_early = True
-                msg = f"{label}: stopping early due to time budget ({time_budget_seconds}s)."
-                print("⏱️", msg)
-                errors.append(msg)
-                break
-
-        if ADZUNA_PAIR_SLEEP_SECONDS > 0:
-            time.sleep(ADZUNA_PAIR_SLEEP_SECONDS)
+        rows_scraped = 0
+        records_created = 0
+        created_postings = 0
 
         try:
-            scraper = AdzunaScraper(
-                what=role,
-                where=loc,
-                max_pages=ADZUNA_MAX_PAGES,
-                results_per_page=ADZUNA_RESULTS_PER_PAGE,
+            # 1) ONS import (optional, non-fatal)
+            if import_ons_earnings_to_db is not None:
+                try:
+                    import_ons_earnings_to_db()
+                except Exception as e:
+                    print(f"[CRON] ONS import skipped/failed: {e}")
+
+            # 2) Scrape
+            roles = list(cfg.get("roles") or [])
+            where = str(cfg.get("where") or "United Kingdom")
+            scraped = _scrape_adzuna_for_roles(roles, where=where)
+            rows_scraped = len(scraped)
+
+            # 3) Upsert JobPosting
+            for rec in scraped:
+                role = getattr(rec, "search_role", None) or None
+                loc = getattr(rec, "search_location", None) or None
+                _, created = _upsert_posting_from_scraper_record("adzuna", rec, search_role=role, search_location=loc)
+                if created:
+                    created_postings += 1
+
+            # 4) Import unimported postings to JobRecord
+            postings = (
+                JobPosting.query
+                .filter(JobPosting.imported.is_(False))
+                .order_by(JobPosting.id.asc())
+                .all()
             )
-            results = scraper.scrape()
-
-            for rec in results:
-                rows_scraped += 1
-
-                existing = _find_existing_posting(
-                    source_site=rec.source_site,
-                    external_id=rec.external_id,
-                    url=rec.url,
-                )
-
-                now = datetime.utcnow()
-                sector_value = classify_sector(rec.title, role)
-
-                title = _truncate(rec.title, 255)
-                company_name = _truncate(rec.company_name, 255)
-                location_text = _truncate(rec.location_text, 255)
-                postcode = _truncate(rec.postcode, 20)
-                sector_val = _truncate(sector_value, 100)
-                rate_type = _truncate(rec.rate_type, 50)
-                contract_type = _truncate(rec.contract_type, 50)
-                source_site = _truncate(rec.source_site, 100)
-                external_id = _truncate(rec.external_id, 255)
-                search_role_val = _truncate(role, 255)
-                search_location_val = _truncate(loc, 255)
-
-                if existing:
-                    posting = existing
-                    posting.title = title
-                    posting.company_name = company_name
-                    posting.location_text = location_text
-                    posting.postcode = postcode
-                    posting.sector = sector_val
-                    posting.min_rate = rec.min_rate
-                    posting.max_rate = rec.max_rate
-                    posting.rate_type = rate_type
-                    posting.contract_type = contract_type
-                    posting.url = rec.url
-                    posting.posted_date = rec.posted_date
-                    posting.raw_json = json.dumps(rec.raw_json or {})
-                    posting.search_role = search_role_val
-                    posting.search_location = search_location_val
-                    posting.scraped_at = now
-                    posting.is_active = True
-                    postings_updated += 1
-                else:
-                    posting = JobPosting(
-                        title=title,
-                        company_name=company_name,
-                        location_text=location_text,
-                        postcode=postcode,
-                        sector=sector_val,
-                        min_rate=rec.min_rate,
-                        max_rate=rec.max_rate,
-                        rate_type=rate_type,
-                        contract_type=contract_type,
-                        source_site=source_site,
-                        external_id=external_id,
-                        url=rec.url,
-                        posted_date=rec.posted_date,
-                        raw_json=json.dumps(rec.raw_json or {}),
-                        search_role=search_role_val,
-                        search_location=search_location_val,
-                    )
-                    db.session.add(posting)
-                    postings_created += 1
-
-                job_record = import_posting_to_record(posting)
-                db.session.add(job_record)
+            for p in postings:
+                import_posting_to_record(p)
                 records_created += 1
 
             db.session.commit()
 
-        except Exception as e:  # noqa: BLE001
+            # 5) Build daily summaries (cron stays light)
+            target = date.today() - timedelta(days=1)
+            created_summaries = build_daily_job_summaries(target_date=target, delete_existing=True)
+
+            msg = (
+                f"OK. Scraped={rows_scraped}, NewPostings={created_postings}, "
+                f"Imported={records_created}, Summaries({target})={created_summaries}"
+            )
+            _finish_log(log, "success", msg, rows_scraped, records_created)
+            return {"ok": True, "message": msg}
+
+        except Exception as e:
             db.session.rollback()
-            msg = f"{label}: error scraping '{role}' @ '{loc}': {e!r}"
-            print("⚠", msg)
-            errors.append(msg)
-
-    return {
-        "rows_scraped": rows_scraped,
-        "records_created": records_created,
-        "postings_created": postings_created,
-        "postings_updated": postings_updated,
-        "errors": errors,
-        "stopped_early": stopped_early,
-        "pairs_attempted": len(pairs),
-    }
+            msg = f"ERROR: {e}"
+            _finish_log(log, "error", msg, rows_scraped, records_created)
+            return {"ok": False, "message": msg}
 
 
-def _run_daily_summaries_for_date(target_date: date, trigger: str = "scheduled", triggered_by: str | None = None) -> dict:
-    now = datetime.utcnow()
-    safe_label = target_date.isoformat()[:20]
+def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dict[str, Any]:
+    """
+    Exists mainly so admin.py can import it safely:
+      from cron_runner import run_job_role_canonicaliser
 
-    log = CronRunLog(
-        job_name="job_summary_daily_builder",
-        started_at=now,
-        status="running",
-        trigger=trigger,
-        triggered_by=triggered_by,
-        day_label=safe_label,
-    )
-    db.session.add(log)
-    db.session.commit()
-
-    result: dict = {"log_id": log.id, "rows_created": 0, "error": None, "date": target_date.isoformat()}
-
-    try:
-        rows_created = build_daily_job_summaries(target_date)
-        log.finished_at = datetime.utcnow()
-        log.status = "success"
-        log.records_created = rows_created
-        log.message = f"Built {rows_created} JobSummaryDaily rows for {target_date.isoformat()}."
-        db.session.commit()
-        result["rows_created"] = rows_created
-        return result
-    except Exception as e:  # noqa: BLE001
-        db.session.rollback()
-        log.finished_at = datetime.utcnow()
-        log.status = "error"
-        log.message = f"{e!r}"
-        db.session.commit()
-        result["error"] = repr(e)
-        return result
-
-
-def _canonicalise_job_roles_with_ai(
-    trigger: str = "scheduled",
-    triggered_by: str | None = None,
-    day_label: str | None = None,
-    max_roles: int = 500,
-    chunk_size: int = 25,
-) -> dict:
-    now = datetime.utcnow()
-    safe_day_label = (day_label or "Job roles")[:20]
-
-    log = CronRunLog(
-        job_name="job_role_canonicaliser",
-        started_at=now,
-        status="running",
-        trigger=trigger,
-        triggered_by=triggered_by,
-        day_label=safe_day_label,
-    )
-    db.session.add(log)
-    db.session.commit()
-
-    summary: dict = {"log_id": log.id, "updated": 0, "examined": 0, "skipped": 0, "error": None}
-
-    try:
-        if _openai_client is None:
-            msg = "OpenAI client not available; skipping canonicaliser."
-            log.status = "error"
-            log.message = msg
-            db.session.commit()
-            summary["error"] = msg
-            return summary
-
-        roles_query = (
-            db.session.query(
-                JobRecord.job_role.label("raw_value"),
-                func.count(JobRecord.id).label("count"),
-            )
-            .outerjoin(JobRoleMapping, JobRoleMapping.raw_value == JobRecord.job_role)
-            .filter(JobRecord.job_role.isnot(None))
-            .filter(JobRoleMapping.id.is_(None))
-            .group_by(JobRecord.job_role)
-            .order_by(func.count(JobRecord.id).desc())
-            .limit(max_roles)
-        )
-
-        rows = roles_query.all()
-        summary["examined"] = len(rows)
-
-        if not rows:
-            log.status = "success"
-            log.message = "No job roles needing canonicalisation."
-            db.session.commit()
-            return summary
-
-        def chunked(seq, n):
-            for i in range(0, len(seq), n):
-                yield seq[i : i + n]
-
-        system_msg = (
-            "You are normalising job titles for an analytics tool.\n"
-            "You will be given a list of raw job titles from multiple sectors. "
-            "Assign a short canonical group name for each.\n\n"
-            "Rules:\n"
-            "- Similar titles must share the SAME canonical group label.\n"
-            "- Keep labels concise (2–4 words).\n"
-            "- Do NOT include contract details.\n"
-            "- Do NOT include seniority unless it changes job level.\n"
-            "- Respond ONLY with valid JSON:\n"
-            "{ \"mappings\": { \"raw\": \"Canonical\" } }\n"
-        )
-
-        total_updated = 0
-        total_skipped = 0
-
-        for chunk_index, chunk_rows in enumerate(chunked(rows, chunk_size), start=1):
-            role_items: list[str] = []
-            for raw_value, _count in chunk_rows:
-                raw_title = (raw_value or "").strip()
-                if not raw_title:
-                    total_skipped += 1
-                    continue
-                role_items.append(raw_title)
-
-            if not role_items:
-                continue
-
-            list_block = "\n".join(f"- {title}" for title in role_items)
-            user_msg = (
-                "Normalise these raw job titles:\n\n"
-                f"{list_block}\n\n"
-                "Return ONLY JSON with mappings for ALL titles."
-            )
-
-            try:
-                resp = _openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_msg},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    temperature=0.1,
-                    timeout=20,
-                    max_tokens=1500,
-                )
-                content = resp.choices[0].message.content.strip()
-            except Exception as e:  # noqa: BLE001
-                msg = f"OpenAI call failed (chunk {chunk_index}): {e!r}"
-                log.status = "error"
-                log.message = msg
-                db.session.commit()
-                summary["error"] = msg
-                summary["updated"] = total_updated
-                summary["skipped"] = total_skipped
-                return summary
-
-            cleaned = content.strip()
-            if cleaned.startswith("```"):
-                first_newline = cleaned.find("\n")
-                if first_newline != -1:
-                    cleaned = cleaned[first_newline + 1 :]
-                if "```" in cleaned:
-                    cleaned = cleaned.rsplit("```", 1)[0].strip()
-
-            try:
-                data = json.loads(cleaned)
-                mapping = data.get("mappings") if isinstance(data, dict) else {}
-                if not isinstance(mapping, dict):
-                    mapping = {}
-            except Exception as e:  # noqa: BLE001
-                msg = f"Failed to parse AI JSON (chunk {chunk_index}): {e!r} | content={cleaned[:500]}"
-                log.status = "error"
-                log.message = msg
-                db.session.commit()
-                summary["error"] = msg
-                summary["updated"] = total_updated
-                summary["skipped"] = total_skipped
-                return summary
-
-            for raw_value, _count in chunk_rows:
-                raw_title = (raw_value or "").strip()
-                if not raw_title:
-                    continue
-
-                canonical = (mapping.get(raw_title) or "").strip()
-                if not canonical:
-                    total_skipped += 1
-                    continue
-
-                try:
-                    m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
-                    if m is None:
-                        m = JobRoleMapping(raw_value=raw_title, canonical_role=canonical)
-                        db.session.add(m)
-                        db.session.flush()
-                    else:
-                        m.canonical_role = canonical
-                except IntegrityError:
-                    db.session.rollback()
-                    m = JobRoleMapping.query.filter_by(raw_value=raw_title).first()
-                    if not m:
-                        raise
-
-                q = JobRecord.query.filter(JobRecord.job_role == raw_title)
-                count_updated = q.update(
-                    {"job_role": canonical, "job_role_group": canonical},
-                    synchronize_session=False,
-                )
-                total_updated += count_updated
-
-        db.session.commit()
-        log.finished_at = datetime.utcnow()
-        log.status = "success"
-        log.message = f"Canonicalised roles. updated={total_updated}, examined={summary['examined']}, skipped={total_skipped}"
-        db.session.commit()
-
-        summary["updated"] = total_updated
-        summary["skipped"] = total_skipped
-        return summary
-
-    except Exception as e:  # noqa: BLE001
-        db.session.rollback()
-        log.finished_at = datetime.utcnow()
-        log.status = "error"
-        log.message = f"{e!r}"
-        db.session.commit()
-        summary["error"] = repr(e)
-        return summary
-
-
-def run_scheduled_jobs(trigger: str = "scheduled", triggered_by: str | None = None) -> dict:
-    # IMPORTANT: Lazy import to avoid circular imports with admin blueprint
-    from app import create_app
-
+    If OpenAI isn't configured, it falls back to deterministic title-casing.
+    """
     app = create_app()
-
     with app.app_context():
-        started_monotonic = time.monotonic()
-        now = datetime.utcnow()
-        weekday = date.today().weekday()
-        day_cfg = DAY_CONFIG.get(weekday) or DAY_CONFIG[0]
-        label = day_cfg["label"]
-        roles = day_cfg["roles"]
-        locations = day_cfg["locations"]
+        log = _start_log("job_role_canonicaliser", trigger=trigger, day_label=None)
 
-        print(f"🔔 Cron: starting scheduled Adzuna scrape for '{label}' ({date.today().isoformat()})")
-
-        safe_label = str(label)[:20] if label is not None else None
-
-        log = CronRunLog(
-            job_name="adzuna_daily_scrape",
-            started_at=now,
-            status="running",
-            trigger=trigger,
-            triggered_by=triggered_by,
-            day_label=safe_label,
-        )
-        db.session.add(log)
-        db.session.commit()
+        updated = 0
+        scanned = 0
 
         try:
-            gap_pairs = build_gap_fill_pairs()
-            if gap_pairs:
-                print(f"🎯 Gap-fill enabled: {len(gap_pairs)} extra (role, location) pairs this run.")
-
-            result = _run_for_config(
-                label,
-                roles,
-                locations,
-                extra_pairs=gap_pairs,
-                started_monotonic=started_monotonic,
-                time_budget_seconds=CRON_TIME_BUDGET_SECONDS,
+            q = (
+                JobRoleMapping.query
+                .filter(
+                    (JobRoleMapping.canonical_role.is_(None)) |
+                    (func.trim(JobRoleMapping.canonical_role) == "") |
+                    (JobRoleMapping.canonical_role == JobRoleMapping.raw_value)
+                )
+                .order_by(JobRoleMapping.id.asc())
+                .limit(limit)
             )
 
-            log.finished_at = datetime.utcnow()
-            log.rows_scraped = result["rows_scraped"]
-            log.records_created = result["records_created"]
+            rows = q.all()
+            scanned = len(rows)
 
-            if result["errors"]:
-                log.status = "partial"
-                log.message = "\n".join(result["errors"])[:4000]
-            else:
-                log.status = "success"
-                log.message = None
+            for m in rows:
+                raw = (m.raw_value or "").strip()
+                if not raw:
+                    continue
 
-            db.session.commit()
+                canonical = raw.title()
 
-            result_with_log = dict(result)
-            result_with_log["log_id"] = log.id
-            result_with_log["day_label"] = safe_label
-
-            if CANON_DAILY_ENABLED:
-                try:
-                    if (time.monotonic() - started_monotonic) < (CRON_TIME_BUDGET_SECONDS * 0.85):
-                        canon_result = _canonicalise_job_roles_with_ai(
-                            trigger=trigger,
-                            triggered_by=triggered_by,
-                            day_label=safe_label,
-                            max_roles=CANON_DAILY_MAX_ROLES,
-                            chunk_size=CANON_DAILY_CHUNK_SIZE,
+                if _openai_client is not None:
+                    try:
+                        prompt = (
+                            "Normalise this job title into a short canonical role group.\n"
+                            "Return ONLY the canonical role name.\n"
+                            f"Raw job title: {raw}"
                         )
-                        result_with_log["canonicaliser_log_id"] = canon_result.get("log_id")
-                        result_with_log["canonicaliser_updated"] = canon_result.get("updated", 0)
-                    else:
-                        print("⏱️ Skipping canonicaliser (time budget nearly exhausted).")
-                except Exception as e:  # noqa: BLE001
-                    print("⚠ job_role_canonicaliser failed:", e)
+                        resp = _openai_client.responses.create(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            input=prompt,
+                        )
+                        text = (resp.output_text or "").strip()
+                        if text:
+                            canonical = text[:255]
+                    except Exception:
+                        pass
 
-            try:
-                if (time.monotonic() - started_monotonic) < (CRON_TIME_BUDGET_SECONDS * 0.90):
-                    target_date = date.today()
-                    summary_result = _run_daily_summaries_for_date(
-                        target_date=target_date,
-                        trigger=trigger,
-                        triggered_by=triggered_by,
-                    )
-                    result_with_log["summary_log_id"] = summary_result.get("log_id")
-                    result_with_log["summary_rows_created"] = summary_result.get("rows_created", 0)
-                else:
-                    print("⏱️ Skipping daily summaries (time budget nearly exhausted).")
-            except Exception as e:  # noqa: BLE001
-                print("⚠ job_summary_daily_builder failed:", e)
+                if m.canonical_role != canonical:
+                    m.canonical_role = canonical
+                    m.updated_at = _utcnow()
+                    db.session.add(m)
+                    updated += 1
 
-            try:
-                if (time.monotonic() - started_monotonic) < (CRON_TIME_BUDGET_SECONDS * 0.95):
-                    ashe_year = date.today().year - 1
-                    ons_result = import_ons_earnings_to_db(
-                        ashe_year,
-                        trigger=trigger,
-                        triggered_by=triggered_by,
-                        use_app_context=True,
-                    )
-                    result_with_log["ons_log_id"] = ons_result.get("log_id")
-                    result_with_log["ons_fetched"] = ons_result.get("fetched", 0)
-                    result_with_log["ons_created"] = ons_result.get("created", 0)
-                    result_with_log["ons_updated"] = ons_result.get("updated", 0)
-                else:
-                    print("⏱️ Skipping ONS import (time budget nearly exhausted).")
-            except Exception as e:  # noqa: BLE001
-                print("⚠ ONS ASHE import failed:", e)
-
-            return result_with_log
-
-        except Exception as e:  # noqa: BLE001
-            log.finished_at = datetime.utcnow()
-            log.status = "error"
-            log.message = f"{e!r}"[:4000]
             db.session.commit()
-            print("💥 Cron failed:", e)
-            raise
 
+            msg = f"OK. Scanned={scanned}, Updated={updated}"
+            _finish_log(log, "success", msg, rows_scraped=0, records_created=updated)
+            return {"ok": True, "message": msg}
 
-def run_job_role_canonicaliser(trigger: str = "manual", triggered_by: str | None = None, max_roles: int = 5000) -> dict:
-    # IMPORTANT: Lazy import to avoid circular imports with admin blueprint
-    from app import create_app
-
-    app = create_app()
-    with app.app_context():
-        print("🧹 One-off job-role canonicaliser: starting…")
-        result = _canonicalise_job_roles_with_ai(
-            trigger=trigger,
-            triggered_by=triggered_by,
-            day_label="Manual run",
-            max_roles=max_roles,
-        )
-        print(
-            "🧹 Canonicaliser complete: "
-            f"updated={result.get('updated')}, "
-            f"examined={result.get('examined')}, "
-            f"error={result.get('error')}"
-        )
-        return result
+        except Exception as e:
+            db.session.rollback()
+            msg = f"ERROR: {e}"
+            _finish_log(log, "error", msg, rows_scraped=0, records_created=updated)
+            return {"ok": False, "message": msg}
 
 
 if __name__ == "__main__":
-    run_scheduled_jobs(trigger="railway")
+    print(run_scrape_import_and_summaries(trigger="manual"))
