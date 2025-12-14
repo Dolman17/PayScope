@@ -1219,7 +1219,34 @@ def import_job(posting_id):
 @login_required
 @superuser_required
 def admin_tools():
-    return render_template("admin/admin_tools.html")
+    # Coverage Health tile (last 7 days)
+    cov = get_weekly_coverage(days=7)
+
+    weak_sectors = int(cov["summary"].get("weak_sectors", 0) or 0)
+    weak_locations = int(cov["summary"].get("weak_locations", 0) or 0)
+    weak_total = weak_sectors + weak_locations
+
+    # Simple status rules:
+    # - green: no weak sectors/locations
+    # - amber: small number of weak items
+    # - red: many weak items
+    if weak_total == 0:
+        status = "green"
+    elif weak_total <= 3:
+        status = "amber"
+    else:
+        status = "red"
+
+    coverage_tile = {
+        "status": status,
+        "weak_sectors": weak_sectors,
+        "weak_locations": weak_locations,
+        "weak_total": weak_total,
+        "window_days": 7,
+    }
+
+    return render_template("admin/admin_tools.html", coverage_tile=coverage_tile)
+
 
 
 # -------------------------------------------------------------------
