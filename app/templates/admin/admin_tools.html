@@ -66,6 +66,51 @@
           </p>
         </a>
 
+        <!-- Coverage Health -->
+        <a href="{{ url_for('admin.admin_coverage') }}"
+           class="card p-5 hover:shadow-md transition flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              {% set cov_status = (coverage_tile.status if coverage_tile is defined else 'amber') %}
+              {% set dot_class =
+                'bg-emerald-500' if cov_status == 'green'
+                else 'bg-amber-500' if cov_status == 'amber'
+                else 'bg-rose-500'
+              %}
+              {% set badge_class =
+                'bg-emerald-50 text-emerald-700 border-emerald-200' if cov_status == 'green'
+                else 'bg-amber-50 text-amber-700 border-amber-200' if cov_status == 'amber'
+                else 'bg-rose-50 text-rose-700 border-rose-200'
+              %}
+
+              <div class="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center">
+                <span class="text-slate-600 text-lg">🛡️</span>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900">Coverage Health</h3>
+                <p class="text-xs text-gray-500">
+                  Last {{ coverage_tile.window_days if coverage_tile is defined else 7 }} days
+                </p>
+              </div>
+            </div>
+
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold {{ badge_class }}">
+              <span class="h-2 w-2 rounded-full {{ dot_class }}"></span>
+              {{ cov_status|upper }}
+            </span>
+          </div>
+
+          <p class="text-gray-600 text-sm">
+            Weak sectors: <span class="font-semibold">{{ coverage_tile.weak_sectors if coverage_tile is defined else "—" }}</span>
+            &nbsp;·&nbsp;
+            Weak locations: <span class="font-semibold">{{ coverage_tile.weak_locations if coverage_tile is defined else "—" }}</span>
+          </p>
+
+          <div class="mt-3 text-xs text-gray-400">
+            Open weekly coverage →
+          </div>
+        </a>
+
         <!-- AI Logs -->
         <a href="{{ url_for('admin.ai_logs') }}"
            class="card p-5 hover:shadow-md transition flex flex-col">
@@ -341,5 +386,6 @@
   </div>
 </div>
 {% endblock %}
+
 
 
