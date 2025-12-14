@@ -68,6 +68,7 @@
           <tr class="text-gray-600">
             <th class="py-3 px-4 font-semibold">ID</th>
             <th class="py-3 px-4 font-semibold">Username</th>
+            <th class="py-3 px-4 font-semibold">Organisation</th>
             <th class="py-3 px-4 font-semibold">Admin Level</th>
             <th class="py-3 px-4 font-semibold">Actions</th>
           </tr>
@@ -82,7 +83,27 @@
               <input type="hidden" name="csrf_token" class="csrf_upd" value="">
 
               <td class="py-3 px-4 align-middle">{{ user.id }}</td>
-              <td class="py-3 px-4 align-middle">{{ user.username }}</td>
+
+              <td class="py-3 px-4 align-middle">
+                <div class="font-medium text-gray-900">{{ user.username }}</div>
+                {% if user.org_role %}
+                  <div class="text-xs text-gray-500">Role: {{ user.org_role }}</div>
+                {% endif %}
+              </td>
+
+              <td class="py-3 px-4 align-middle">
+                {% if user.organisation %}
+                  <div class="text-gray-900 font-medium">
+                    {{ user.organisation.name or user.organisation.slug }}
+                  </div>
+                  {% if user.organisation.slug %}
+                    <div class="text-xs text-gray-500">{{ user.organisation.slug }}</div>
+                  {% endif %}
+                {% else %}
+                  <span class="text-gray-400">—</span>
+                {% endif %}
+              </td>
+
               <td class="py-3 px-4 align-middle">
                 <select name="admin_level" class="input">
                   <option value="0" {% if user.admin_level == 0 %}selected{% endif %}>User</option>
@@ -90,6 +111,7 @@
                   <option value="1" {% if user.admin_level == 1 %}selected{% endif %}>Superuser</option>
                 </select>
               </td>
+
               <td class="py-3 px-4 align-middle">
                 <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
                   <button type="submit" class="btn btn-primary">
@@ -139,3 +161,4 @@
   })();
 </script>
 {% endblock %}
+
