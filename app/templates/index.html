@@ -2,11 +2,19 @@
 {% block title %}PayScope • Real-Time Pay Insights{% endblock %}
 
 {% block content %}
-<div class="w-full bg-gray-900 text-gray-100 py-12">
+<div class="w-full py-12">
 
   <!-- HERO -->
   <section class="max-w-7xl mx-auto px-4 py-16">
-    <div class="hero-shell px-6 py-10 sm:px-10 sm:py-12 lg:py-16 fade-in-on-scroll">
+    <div class="hero-shell px-6 py-10 sm:px-10 sm:py-12 lg:py-16 fade-in-on-scroll relative overflow-hidden">
+
+      <!-- Ambient glow -->
+      <div class="absolute inset-0 pointer-events-none">
+        <div class="absolute -top-24 -left-24 w-80 h-80 rounded-full blur-3xl opacity-25"
+             style="background: radial-gradient(circle at center, rgba(1,96,177,.9), transparent 65%);"></div>
+        <div class="absolute -bottom-28 -right-28 w-96 h-96 rounded-full blur-3xl opacity-20"
+             style="background: radial-gradient(circle at center, rgba(0,255,200,.75), transparent 70%);"></div>
+      </div>
 
       <!-- Brand particles -->
       <div class="hero-orbit hero-orbit--teal"></div>
@@ -15,149 +23,360 @@
 
       <div class="relative grid lg:grid-cols-2 gap-10 items-center">
         <div>
-          <h1 class="text-4xl md:text-5xl font-extrabold mb-5 text-white">
-            Real-Time Pay Insights for Every Job, Every Region
+          <div class="inline-flex items-center gap-2 mb-4">
+            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+              UK labour market intelligence
+            </span>
+            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+              Live + official data
+            </span>
+          </div>
+
+          <h1 class="text-4xl md:text-5xl font-extrabold mb-5 text-white leading-tight">
+            Real-Time Pay Insights<br class="hidden sm:block" />
+            for Every Job, Every Region
           </h1>
 
           <p class="text-gray-300 text-base leading-relaxed mb-6 max-w-xl">
-            PayScope unifies live job-market data with official statistics to give you a clear,
-            real-world view of what employers are paying today. Track pay trends, hiring difficulty
-            and competitor activity in minutes.
+            PayScope brings together live job-market signals and trusted public datasets to show
+            what employers are paying <span class="text-gray-100 font-semibold">right now</span>.
+            Built for practical decision-making, not academic reports.
           </p>
 
+          <!-- Only entry into the app is Login -->
           <div class="flex flex-col sm:flex-row gap-3 mb-4">
-            <a href="{{ url_for('maps.map_sector_select') }}"
+            <a href="{{ url_for('auth.login') }}"
                class="btn btn-primary w-full sm:w-auto justify-center">
-              Explore Pay Rates
+              Log in to PayScope
             </a>
 
-            {% if not current_user.is_authenticated %}
-            <a href="{{ url_for('auth.login') }}"
-               class="btn btn-secondary w-full sm:w-auto justify-center">
-              Log in to Dashboard
-            </a>
-            {% else %}
-            <a href="{{ url_for('dashboard.dashboard') }}"
-               class="btn btn-secondary w-full sm:w-auto justify-center">
-              Open Dashboard
-            </a>
-            {% endif %}
+            <button type="button"
+                    class="btn btn-secondary w-full sm:w-auto justify-center"
+                    onclick="openRequestAccessModal()">
+              Request access
+            </button>
           </div>
 
-          <p class="text-xs text-gray-400">
-            Powered by job boards, public APIs, government datasets, ONS earnings and more.
+          <p class="text-xs text-gray-400 max-w-xl">
+            This is a landing page. Access to live data, comparisons and dashboards requires login.
           </p>
+
+          <!-- Waitlist (no internal links; email-client handoff) -->
+          <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div class="text-sm font-semibold text-white">Join the waitlist</div>
+                <div class="text-xs text-gray-400 mt-0.5">
+                  Get early access updates (opens your email client — no data stored on this page).
+                </div>
+              </div>
+
+              <form class="flex flex-col sm:flex-row gap-2 sm:items-center sm:min-w-[420px]"
+                    onsubmit="return submitWaitlistEmail(event)">
+                <input id="waitlistEmail"
+                       type="email"
+                       inputmode="email"
+                       autocomplete="email"
+                       placeholder="you@company.com"
+                       class="w-full sm:flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
+                <button type="submit" class="btn btn-primary w-full sm:w-auto justify-center">
+                  Join waitlist
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
 
-        <!-- Right column: Feature card + metrics -->
+        <!-- Right column -->
         <div class="space-y-4">
-          <div class="card card-hover bg-gray-900/90 border-gray-700 text-gray-100 p-6">
+          <div class="card card-hover bg-white/[0.03] border-white/10 text-gray-100 p-6">
             <h2 class="text-sm font-semibold text-gray-100 mb-2">
-              A New, Affordable Way to Benchmark Pay
+              Why PayScope exists
             </h2>
             <p class="text-sm text-gray-300">
-              Traditional labour-market platforms cost tens of thousands per year and
-              are built for large corporates and government bodies.
+              Most pay benchmarking tools are expensive, slow to update, and built for large
+              institutions.
             </p>
             <p class="text-sm text-gray-300 mt-2">
-              PayScope uses live scraping, open data and smart normalisation to
-              deliver practical, affordable market insight for real teams.
+              PayScope is designed to be faster, leaner, and grounded in real advertised pay —
+              so teams can make confident decisions without enterprise overheads.
             </p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+                Evidence-ready insight
+              </span>
+              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+                Regional clarity
+              </span>
+              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+                Hiring pressure signals
+              </span>
+            </div>
           </div>
 
           <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="card card-hover bg-gray-900/90 border-gray-700 p-3">
-              <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">Coverage</div>
+            <div class="card card-hover bg-white/[0.03] border-white/10 p-3">
+              <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Coverage</div>
               <div class="text-lg font-bold text-white">UK-wide</div>
             </div>
 
-            <div class="card card-hover bg-gray-900/90 border-gray-700 p-3">
-              <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">Data Feeds</div>
+            <div class="card card-hover bg-white/[0.03] border-white/10 p-3">
+              <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Data</div>
               <div class="text-lg font-bold text-white">Live + ONS</div>
             </div>
 
-            <div class="card card-hover bg-gray-900/90 border-gray-700 p-3">
-              <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">Built For</div>
-              <div class="text-lg font-bold text-white">Real-world use</div>
+            <div class="card card-hover bg-white/[0.03] border-white/10 p-3">
+              <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Focus</div>
+              <div class="text-lg font-bold text-white">Real-world pay</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- WHAT YOU CAN DO -->
-  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
-    <div class="card card-hover bg-gray-900/90 border-gray-800 p-6 text-gray-200">
-      <h2 class="text-xl font-semibold mb-4 text-white">What You Can Do With PayScope</h2>
-
-      <div class="grid sm:grid-cols-2 gap-8 text-sm">
-        <ul class="space-y-2 text-gray-300 list-disc list-inside">
-          <li>Search live pay by role, sector, or postcode</li>
-          <li>Compare salaries across regions, industries and employers</li>
-          <li>Track hiring demand and job-ad volumes over time</li>
-          <li>See how advertised pay compares to ONS earnings</li>
-        </ul>
-
-        <ul class="space-y-2 text-gray-300 list-disc list-inside">
-          <li>Identify pay pressure and competition in any location</li>
-          <li>Monitor trends in remote work, seniority and skills</li>
-          <li>Export evidence packs for boards, unions or budgeting</li>
-          <li>Use historical data to understand shifts in the market</li>
-        </ul>
+      <!-- Value strip -->
+      <div class="relative mt-10 grid sm:grid-cols-3 gap-3">
+        <div class="card bg-white/[0.03] border-white/10 p-4">
+          <div class="text-xs text-gray-400 mb-1">Grounded in reality</div>
+          <div class="text-sm text-gray-200">Based on what employers actually advertise</div>
+        </div>
+        <div class="card bg-white/[0.03] border-white/10 p-4">
+          <div class="text-xs text-gray-400 mb-1">Defensible insight</div>
+          <div class="text-sm text-gray-200">Evidence for pay and workforce decisions</div>
+        </div>
+        <div class="card bg-white/[0.03] border-white/10 p-4">
+          <div class="text-xs text-gray-400 mb-1">Accessible by design</div>
+          <div class="text-sm text-gray-200">Not priced for corporates only</div>
+        </div>
       </div>
+
     </div>
   </section>
 
   <!-- WHO IT’S FOR -->
   <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
-    <div class="card card-hover bg-gray-900/90 border-gray-800 p-6">
-      <h2 class="text-xl font-semibold mb-4 text-white">Who It’s For</h2>
+    <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
+      <h2 class="text-xl font-semibold mb-4 text-white">Who PayScope Is Built For</h2>
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-        <div>
-          <h3 class="font-semibold text-white mb-1">SMEs & Local Businesses</h3>
-          <p class="text-gray-300">Set competitive pay without enterprise-tool price tags.</p>
+        <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 class="font-semibold text-white mb-1">SMEs & Operators</h3>
+          <p class="text-gray-300">Sense-check pay without enterprise tools or consultants.</p>
         </div>
-        <div>
-          <h3 class="font-semibold text-white mb-1">HR & Recruitment Teams</h3>
-          <p class="text-gray-300">Benchmark offers, defend budgets and spot hot spots.</p>
+        <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 class="font-semibold text-white mb-1">HR & Recruitment</h3>
+          <p class="text-gray-300">Benchmark offers and understand local competition.</p>
         </div>
-        <div>
-          <h3 class="font-semibold text-white mb-1">Jobseekers & Career Changers</h3>
-          <p class="text-gray-300">See what roles pay in your area and where demand is highest.</p>
+        <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 class="font-semibold text-white mb-1">Finance & Leadership</h3>
+          <p class="text-gray-300">Support budgets, forecasts and board discussions.</p>
         </div>
-        <div>
-          <h3 class="font-semibold text-white mb-1">Councils, Colleges & Community</h3>
-          <p class="text-gray-300">Support planning, skills initiatives and local insight work.</p>
+        <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 class="font-semibold text-white mb-1">Public & Community</h3>
+          <p class="text-gray-300">Local insight for planning, skills and funding work.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- CTA -->
+  <!-- FINAL CTA -->
   <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
-    <div class="card card-hover bg-gray-900/95 border-gray-800 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-      <div>
-        <h2 class="text-lg font-semibold mb-2 text-white">Pay Transparency Should Be Accessible</h2>
+    <div class="card card-hover bg-white/[0.03] border-white/10 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+      <div class="max-w-3xl">
+        <h2 class="text-lg font-semibold mb-2 text-white">
+          Pay transparency shouldn’t be exclusive
+        </h2>
         <p class="text-gray-300">
-          High-quality pay data shouldn’t only be available to organisations with deep pockets.
-          PayScope aims to bring real-time labour-market intelligence within reach for HR teams,
-          managers and local organisations.
+          PayScope is built to make labour-market insight practical, affordable and grounded in
+          reality — not hidden behind enterprise pricing or opaque methodologies.
         </p>
       </div>
 
-      <div class="flex flex-col gap-3 min-w-[180px]">
-        <a href="{{ url_for('maps.map_sector_select') }}" class="btn btn-primary w-full">Start Exploring</a>
-
-        {% if not current_user.is_authenticated %}
-        <a href="{{ url_for('auth.login') }}" class="btn btn-secondary w-full">Sign In for Full Access</a>
-        {% endif %}
+      <div class="flex flex-col gap-3 min-w-[220px]">
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-full">
+          Log in to PayScope
+        </a>
+        <button type="button" class="btn btn-secondary w-full" onclick="openRequestAccessModal()">
+          Request access
+        </button>
       </div>
     </div>
   </section>
 
-</div>
-{% endblock %}
+  <!-- Request Access Modal (no internal links) -->
+  <div id="requestAccessModal"
+       class="fixed inset-0 z-50 hidden"
+       aria-hidden="true">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
 
+    <div class="relative max-w-lg mx-auto mt-24 px-4">
+      <div class="rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Request access</h3>
+            <p class="text-sm text-gray-300 mt-1">
+              This will open an email to the PayScope team. Add any context (company, roles, regions) and hit send.
+            </p>
+          </div>
+          <button type="button"
+                  class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10"
+                  onclick="closeRequestAccessModal()">
+            Close
+          </button>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Your email</label>
+            <input id="accessEmail"
+                   type="email"
+                   inputmode="email"
+                   autocomplete="email"
+                   placeholder="you@company.com"
+                   class="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-400 mb-1">Notes (optional)</label>
+            <textarea id="accessNotes"
+                      rows="3"
+                      placeholder="e.g., We’re hiring Support Workers in the North West and want to benchmark hourly rates."
+                      class="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10"></textarea>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2 pt-2">
+            <button type="button" class="btn btn-primary w-full sm:w-auto justify-center" onclick="sendAccessEmail()">
+              Create request email
+            </button>
+            <button type="button" class="btn btn-secondary w-full sm:w-auto justify-center" onclick="copyAccessTemplate()">
+              Copy template
+            </button>
+          </div>
+
+          <p class="text-xs text-gray-500">
+            Emails for waitlist and access requests are sent to <span class="text-gray-300 font-medium">hello@payscope.uk</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Hard-coded to ensure all landing page emails go to the same inbox
+  const PAYSCAPE_CONTACT_EMAIL = "hello@payscope.uk";
+
+  function _isValidEmail(email) {
+    if (!email) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+  }
+
+  function openRequestAccessModal() {
+    const m = document.getElementById("requestAccessModal");
+    if (!m) return;
+    m.classList.remove("hidden");
+    m.setAttribute("aria-hidden", "false");
+
+    // prefill from waitlist if present
+    const wait = document.getElementById("waitlistEmail");
+    const access = document.getElementById("accessEmail");
+    if (wait && access && wait.value && !access.value) access.value = wait.value;
+  }
+
+  function closeRequestAccessModal() {
+    const m = document.getElementById("requestAccessModal");
+    if (!m) return;
+    m.classList.add("hidden");
+    m.setAttribute("aria-hidden", "true");
+  }
+
+  // Close on ESC + backdrop click
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeRequestAccessModal();
+  });
+  document.addEventListener("click", (e) => {
+    const m = document.getElementById("requestAccessModal");
+    if (!m || m.classList.contains("hidden")) return;
+    if (e.target === m || e.target === m.firstElementChild) closeRequestAccessModal();
+  });
+
+  function submitWaitlistEmail(evt) {
+    evt.preventDefault();
+    const input = document.getElementById("waitlistEmail");
+    const email = input ? input.value.trim() : "";
+
+    if (!_isValidEmail(email)) {
+      if (input) input.focus();
+      alert("Please enter a valid email address.");
+      return false;
+    }
+
+    const subject = encodeURIComponent("PayScope waitlist request");
+    const body = encodeURIComponent(
+      "Please add me to the PayScope waitlist.\n\nEmail: " + email + "\n\n(Optional) Company/role context:\n"
+    );
+
+    window.location.href =
+      "mailto:" + encodeURIComponent(PAYSCAPE_CONTACT_EMAIL) +
+      "?subject=" + subject +
+      "&body=" + body;
+
+    return false;
+  }
+
+  function _buildAccessEmailTemplate() {
+    const email = (document.getElementById("accessEmail")?.value || "").trim();
+    const notes = (document.getElementById("accessNotes")?.value || "").trim();
+
+    const lines = [
+      "Hi PayScope team,",
+      "",
+      "I’d like to request access to PayScope.",
+      "",
+      "Email: " + (email || "[your email]"),
+      "",
+      "Context / what I’m trying to do:",
+      notes ? notes : "[briefly describe your company, roles, regions, and what you want to benchmark]",
+      "",
+      "Thanks,",
+      "[Your name]"
+    ];
+    return lines.join("\n");
+  }
+
+  function sendAccessEmail() {
+    const email = (document.getElementById("accessEmail")?.value || "").trim();
+    if (email && !_isValidEmail(email)) {
+      document.getElementById("accessEmail")?.focus();
+      alert("Please enter a valid email address (or leave it blank).");
+      return;
+    }
+
+    const subject = encodeURIComponent("Request access to PayScope");
+    const body = encodeURIComponent(_buildAccessEmailTemplate());
+
+    window.location.href =
+      "mailto:" + encodeURIComponent(PAYSCAPE_CONTACT_EMAIL) +
+      "?subject=" + subject +
+      "&body=" + body;
+  }
+
+  async function copyAccessTemplate() {
+    const text = _buildAccessEmailTemplate();
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Template copied to clipboard.");
+    } catch (e) {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      alert("Template copied to clipboard.");
+    }
+  }
+</script>
+{% endblock %}
 
