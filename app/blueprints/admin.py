@@ -18,7 +18,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
-from sqlalchemy import desc, or_, cast, String, text, inspect, func
+from sqlalchemy import desc, or_, cast, String, text, inspect, func, joinedload
 
 from extensions import db
 from models import (
@@ -429,7 +429,8 @@ def manage_users():
                 else:
                     flash("User not found.", "error")
 
-    users = User.query.all()
+    
+    users = User.query.options(joinedload(User.organisation)).all()
     return render_template("manage_users.html", users=users)
 
 
