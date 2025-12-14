@@ -18,7 +18,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
-from sqlalchemy import desc, or_, cast, String, text, inspect, func,
+from sqlalchemy import desc, or_, cast, String, text, inspect, func
 from sqlalchemy.orm import joinedload
 
 from extensions import db
