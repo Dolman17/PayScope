@@ -1,468 +1,314 @@
 {% extends "base.html" %}
-{% block title %}PayScope • Real-Time Pay Insights{% endblock %}
+{% block title %}PayScope • Real-time UK Pay & Labour Market Intelligence{% endblock %}
 
 {% block content %}
-<div class="w-full py-12">
 
-  <!-- HERO -->
-  <section class="max-w-7xl mx-auto px-4 py-16">
-    <div class="hero-shell px-6 py-10 sm:px-10 sm:py-12 lg:py-16 fade-in-on-scroll relative overflow-hidden">
+<style>
+  /* Landing page polish (scoped) */
+  .lp-wrap {
+    background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(0,96,177,.20), transparent 60%),
+      radial-gradient(900px 500px at 80% 20%, rgba(16,185,129,.16), transparent 55%),
+      radial-gradient(900px 700px at 40% 95%, rgba(59,130,246,.10), transparent 60%);
+  }
+  .lp-card { border: 1px solid rgba(255,255,255,.08); background: rgba(2,6,23,.55); }
+  .lp-card-strong { border: 1px solid rgba(255,255,255,.10); background: rgba(2,6,23,.78); }
+  .lp-muted { color: rgba(226,232,240,.72); }
+  .lp-hair { border-color: rgba(255,255,255,.08); }
+  .lp-pill { border: 1px solid rgba(255,255,255,.10); background: rgba(2,6,23,.55); }
+  .lp-btn { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; padding:.70rem 1.05rem; border-radius: 9999px; font-weight: 700; }
+  .lp-btn-primary { background: rgba(0,96,177,.95); color: white; box-shadow: 0 14px 34px rgba(0,96,177,.28); }
+  .lp-btn-primary:hover { filter: brightness(1.06); }
+  .lp-btn-ghost { border:1px solid rgba(255,255,255,.14); background: rgba(2,6,23,.45); color: rgba(226,232,240,.95); }
+  .lp-btn-ghost:hover { background: rgba(2,6,23,.70); }
+  .lp-input { width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(2,6,23,.55); color: rgba(226,232,240,.95); padding: .85rem 1rem; }
+  .lp-input::placeholder { color: rgba(148,163,184,.8); }
+  .lp-label { font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: rgba(148,163,184,.85); }
 
-      <!-- Ambient glow -->
-      <div class="absolute inset-0 pointer-events-none">
-        <div class="absolute -top-24 -left-24 w-80 h-80 rounded-full blur-3xl opacity-25"
-             style="background: radial-gradient(circle at center, rgba(1,96,177,.9), transparent 65%);"></div>
-        <div class="absolute -bottom-28 -right-28 w-96 h-96 rounded-full blur-3xl opacity-20"
-             style="background: radial-gradient(circle at center, rgba(0,255,200,.75), transparent 70%);"></div>
+  /* Professional spacing + container rhythm */
+  .lp-section { padding-top: 3.5rem; }
+  .lp-kicker { letter-spacing: .06em; text-transform: uppercase; font-weight: 700; font-size: .75rem; color: rgba(148,163,184,.9); }
+
+  /* Make details look like proper accordions */
+  details.lp-acc summary::-webkit-details-marker { display:none; }
+  details.lp-acc summary { list-style: none; }
+  details.lp-acc[open] .lp-chevron { transform: rotate(90deg); }
+
+  /* Image polish */
+  .lp-img {
+    width: 100%;
+    height: auto;
+    display:block;
+    background: rgba(2,6,23,.35);
+  }
+</style>
+
+<div class="lp-wrap">
+  <div class="max-w-7xl mx-auto px-6 pt-16 pb-10">
+
+    <!-- HERO -->
+    <section class="grid lg:grid-cols-2 gap-12 items-center">
+      <div>
+        <div class="inline-flex items-center gap-2 lp-pill rounded-full px-3 py-1 text-xs lp-muted mb-6">
+          <span class="h-2 w-2 rounded-full" style="background: rgba(16,185,129,.9)"></span>
+          Live job signals + ONS earnings • UK-wide • Updated daily
+        </div>
+
+        <h1 class="text-4xl sm:text-5xl font-bold leading-tight text-white">
+          Real-time pay intelligence<br class="hidden sm:block">
+          for practical decisions
+        </h1>
+
+        <p class="mt-5 text-lg lp-muted max-w-xl">
+          PayScope blends advertised pay with official datasets to show what employers are paying
+          right now — across roles, sectors and regions — without enterprise overheads.
+        </p>
+
+        <div class="mt-8 flex flex-col sm:flex-row gap-3">
+          <a href="{{ url_for('auth.login') }}" class="lp-btn lp-btn-primary">
+            Log in
+            <span aria-hidden="true">→</span>
+          </a>
+
+          <a href="#request-access" class="lp-btn lp-btn-ghost">
+            Request access
+          </a>
+        </div>
+
+        <!-- Proof stats (optional, safe) -->
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="lp-card rounded-2xl p-4">
+            <div class="lp-label">Coverage</div>
+            <div class="mt-1 text-white font-semibold">UK-wide</div>
+            <div class="text-sm lp-muted mt-1">County + sector views</div>
+          </div>
+          <div class="lp-card rounded-2xl p-4">
+            <div class="lp-label">Monitoring</div>
+            <div class="mt-1 text-white font-semibold">Coverage health</div>
+            <div class="text-sm lp-muted mt-1">Blind spots made visible</div>
+          </div>
+          <div class="lp-card rounded-2xl p-4">
+            <div class="lp-label">Feeds</div>
+            <div class="mt-1 text-white font-semibold">Live + ONS</div>
+            <div class="text-sm lp-muted mt-1">Signals you can defend</div>
+          </div>
+        </div>
+
+        {% if stats is defined %}
+        <div class="mt-6 flex flex-wrap gap-2 text-xs lp-muted">
+          {% if stats.last_data_date %}
+            <span class="lp-pill rounded-full px-3 py-1">Last data: <span class="text-white font-semibold">{{ stats.last_data_date }}</span></span>
+          {% endif %}
+          {% if stats.job_records_count %}
+            <span class="lp-pill rounded-full px-3 py-1">Records: <span class="text-white font-semibold">{{ "{:,}".format(stats.job_records_count) }}</span></span>
+          {% endif %}
+          {% if stats.sectors_mapped_count %}
+            <span class="lp-pill rounded-full px-3 py-1">Sectors mapped: <span class="text-white font-semibold">{{ stats.sectors_mapped_count }}</span></span>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
 
-      <!-- Brand particles -->
-      <div class="hero-orbit hero-orbit--teal"></div>
-      <div class="hero-orbit hero-orbit--blue"></div>
-      <div class="hero-orbit hero-orbit--amber"></div>
+      <!-- VISUAL -->
+      <div class="relative">
+        <div class="lp-card-strong rounded-3xl p-5">
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-white font-semibold">Inside PayScope</div>
+            <div class="text-xs lp-muted">Preview</div>
+          </div>
 
-      <div class="relative grid lg:grid-cols-2 gap-10 items-center">
+          <!-- Replace these with real screenshots when ready -->
+          <div class="mt-4 overflow-hidden rounded-2xl border lp-hair">
+            <img
+              src="/static/img/placeholder-dashboard.png"
+              alt="PayScope product preview"
+              class="lp-img"
+            >
+          </div>
+
+          <div class="mt-4 grid sm:grid-cols-2 gap-3">
+            <div class="lp-card rounded-2xl p-4">
+              <div class="lp-label">Typical outputs</div>
+              <div class="text-white font-semibold mt-1">Pay ranges + trends</div>
+              <div class="text-sm lp-muted mt-1">Role / sector / county cuts</div>
+            </div>
+            <div class="lp-card rounded-2xl p-4">
+              <div class="lp-label">Designed for</div>
+              <div class="text-white font-semibold mt-1">Evidence packs</div>
+              <div class="text-sm lp-muted mt-1">Boards, budgeting, workforce</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- subtle glow -->
+        <div class="absolute -inset-8 -z-10 blur-3xl opacity-40"
+             style="background: radial-gradient(circle at 30% 30%, rgba(0,96,177,.35), transparent 55%),
+                              radial-gradient(circle at 80% 40%, rgba(16,185,129,.25), transparent 55%);">
+        </div>
+      </div>
+    </section>
+
+    <!-- TRUST BAR -->
+    <section class="lp-section border-t lp-hair">
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="lp-card rounded-2xl p-6">
+          <div class="text-white font-semibold">Grounded in real adverts</div>
+          <p class="text-sm lp-muted mt-2">
+            Normalised and structured so comparisons are meaningful — not guesswork.
+          </p>
+        </div>
+        <div class="lp-card rounded-2xl p-6">
+          <div class="text-white font-semibold">Defensible vs. ONS</div>
+          <p class="text-sm lp-muted mt-2">
+            See how advertised pay compares to official earnings to support decisions.
+          </p>
+        </div>
+        <div class="lp-card rounded-2xl p-6">
+          <div class="text-white font-semibold">Visibility on coverage</div>
+          <p class="text-sm lp-muted mt-2">
+            Coverage health highlights where the market signal is strong vs. thin.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="lp-section border-t lp-hair">
+      <div class="flex items-end justify-between gap-6 mb-8">
+        <h2 class="text-2xl font-bold text-white">How it works</h2>
+        <div class="text-sm lp-muted">Simple pipeline. Practical outputs.</div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="lp-card rounded-2xl p-6">
+          <div class="lp-label">Step 1</div>
+          <div class="text-white font-semibold mt-2">Ingest signals</div>
+          <p class="text-sm lp-muted mt-2">
+            Live job adverts + public datasets create a current market view.
+          </p>
+        </div>
+        <div class="lp-card rounded-2xl p-6">
+          <div class="lp-label">Step 2</div>
+          <div class="text-white font-semibold mt-2">Normalise & structure</div>
+          <p class="text-sm lp-muted mt-2">
+            Titles, roles and locations are standardised for reliable comparisons.
+          </p>
+        </div>
+        <div class="lp-card rounded-2xl p-6">
+          <div class="lp-label">Step 3</div>
+          <div class="text-white font-semibold mt-2">Output insight</div>
+          <p class="text-sm lp-muted mt-2">
+            Pay ranges, trends and pressure signals — ready for decision-makers.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- REQUEST ACCESS (BACKEND POSTS TO /request-access) -->
+    <section id="request-access" class="lp-section border-t lp-hair pb-16">
+      <div class="grid lg:grid-cols-2 gap-10 items-start">
         <div>
-          <div class="inline-flex flex-wrap items-center gap-2 mb-4">
-            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-              UK labour market intelligence
-            </span>
-            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-              Live + official data
-            </span>
-
-            {% if stats and stats.last_data_date %}
-              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-                Data freshness: {{ stats.last_data_date.strftime("%-d %b %Y") if stats.last_data_date else "Daily" }}
-              </span>
-            {% else %}
-              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-                Updated daily
-              </span>
-            {% endif %}
-
-            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-              Coverage health monitored weekly
-            </span>
-          </div>
-
-          <h1 class="text-4xl md:text-5xl font-extrabold mb-4 text-white leading-tight">
-            Real-Time Pay Insights<br class="hidden sm:block" />
-            for Every Job, Every Region
-          </h1>
-
-          <p class="text-gray-300 text-base leading-relaxed mb-6 max-w-xl">
-            PayScope blends live job-market signals with trusted public datasets to show what employers are paying
-            <span class="text-gray-100 font-semibold">right now</span> — designed for practical decisions, not academic reports.
+          <div class="lp-kicker">Access</div>
+          <h2 class="text-2xl font-bold text-white mt-2">Request access</h2>
+          <p class="mt-3 text-sm lp-muted max-w-xl">
+            Tell us what you’re benchmarking. We’ll prioritise access based on sector coverage and use case.
           </p>
 
-          <!-- Only entry into the app is Login -->
-          <div class="flex flex-col sm:flex-row gap-3 mb-4">
-            <a href="{{ url_for('auth.login') }}"
-               class="btn btn-primary w-full sm:w-auto justify-center"
-               data-track="cta_login">
-              Log in to PayScope
-            </a>
+          <!-- Recommended stock image: abstract analytics / map overlay / dashboard-y (not cheesy people-hands) -->
+          <div class="mt-6 overflow-hidden rounded-3xl border lp-hair">
+            <img
+              src="/static/img/placeholder-abstract.png"
+              alt="Abstract analytics visual"
+              class="lp-img"
+            >
+          </div>
 
-            <button type="button"
-                    class="btn btn-secondary w-full sm:w-auto justify-center"
-                    onclick="openRequestAccessModal()"
-                    data-track="cta_request_access">
-              Request access
+          <p class="text-xs lp-muted mt-3">
+            Requests are emailed to <strong class="text-white">{{ contact_email if contact_email is defined else "hello@payscope.uk" }}</strong> and stored for admin review.
+          </p>
+        </div>
+
+        <div class="lp-card-strong rounded-3xl p-7">
+          <div class="text-white font-semibold">Access request</div>
+          <p class="text-sm lp-muted mt-2">
+            Leave email blank if you prefer — but it helps us get back to you quickly.
+          </p>
+
+          <form method="POST" action="{{ url_for('public.request_access_submit') }}" class="mt-6 space-y-4">
+            <input type="hidden" name="source" value="landing">
+
+            <div>
+              <div class="lp-label mb-2">Work email</div>
+              <input name="email" class="lp-input" type="email" placeholder="you@company.co.uk" autocomplete="email">
+            </div>
+
+            <div>
+              <div class="lp-label mb-2">What do you want to use PayScope for?</div>
+              <textarea name="notes" class="lp-input" rows="5" placeholder="E.g. benchmarking Support Worker pay in the North West, budgeting, recruitment planning…"></textarea>
+            </div>
+
+            <button type="submit" class="lp-btn lp-btn-primary w-full">
+              Send request
+              <span aria-hidden="true">→</span>
             </button>
-          </div>
 
-          <p class="text-xs text-gray-400 max-w-xl">
-            This is a landing page. Exploring live data, comparisons and dashboards requires login.
-          </p>
-
-          <!-- Waitlist (real POST, stored in DB) -->
-          <div id="waitlist" class="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <div class="text-sm font-semibold text-white">Join the waitlist</div>
-                <div class="text-xs text-gray-400 mt-0.5">
-                  Early access updates. No spam. Unsubscribe anytime.
-                </div>
-              </div>
-
-              <form class="flex flex-col sm:flex-row gap-2 sm:items-center sm:min-w-[420px]"
-                    method="POST"
-                    action="{{ url_for('public.waitlist_submit') }}"
-                    data-track="waitlist_submit">
-                {{ csrf_token() if csrf_token is defined }}
-                <input type="hidden" name="source" value="landing" />
-                <input name="email"
-                       type="email"
-                       inputmode="email"
-                       autocomplete="email"
-                       placeholder="you@company.com"
-                       class="w-full sm:flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
-                <button type="submit" class="btn btn-primary w-full sm:w-auto justify-center">
-                  Join waitlist
-                </button>
-              </form>
+            <div class="text-xs lp-muted">
+              By sending, you agree we can contact you about PayScope.
             </div>
-          </div>
-        </div>
-
-        <!-- Right column -->
-        <div class="space-y-4">
-
-          <!-- Social proof / credibility (data-backed where possible) -->
-          <div class="card card-hover bg-white/[0.03] border-white/10 text-gray-100 p-6">
-            <h2 class="text-sm font-semibold text-gray-100 mb-3">Signals you can trust</h2>
-
-            <div class="grid grid-cols-3 gap-3 text-center">
-              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Coverage</div>
-                <div class="text-lg font-bold text-white">UK-wide</div>
-              </div>
-
-              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Monitoring</div>
-                <div class="text-lg font-bold text-white">Weekly</div>
-              </div>
-
-              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                <div class="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Feeds</div>
-                <div class="text-lg font-bold text-white">Live + ONS</div>
-              </div>
-            </div>
-
-            <div class="mt-4 grid sm:grid-cols-2 gap-3 text-sm text-gray-300">
-              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                <div class="text-xs text-gray-400 mb-1">Records processed</div>
-                <div class="text-base font-semibold text-white">
-                  {% if stats and stats.job_records_count is not none %}
-                    {{ "{:,}".format(stats.job_records_count) }}
-                  {% else %}
-                    Growing daily
-                  {% endif %}
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                <div class="text-xs text-gray-400 mb-1">Sector mapping</div>
-                <div class="text-base font-semibold text-white">
-                  {% if stats and stats.sectors_mapped_count is not none %}
-                    {{ "{:,}".format(stats.sectors_mapped_count) }} mappings
-                  {% else %}
-                    Normalised taxonomy
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-
-            <p class="text-xs text-gray-500 mt-3">
-              We monitor coverage so blind spots are visible, not hidden.
-            </p>
-          </div>
-
-          <div class="card card-hover bg-white/[0.03] border-white/10 text-gray-100 p-6">
-            <h2 class="text-sm font-semibold text-gray-100 mb-2">
-              Why PayScope exists
-            </h2>
-            <p class="text-sm text-gray-300">
-              Most pay benchmarking tools are expensive, slow to update, and built for large institutions.
-            </p>
-            <p class="text-sm text-gray-300 mt-2">
-              PayScope is designed to be faster, leaner, and grounded in real advertised pay —
-              so teams can make confident decisions without enterprise overheads.
-            </p>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-                Evidence-ready insight
-              </span>
-              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-                Regional clarity
-              </span>
-              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
-                Hiring pressure signals
-              </span>
-            </div>
-          </div>
-
+          </form>
         </div>
       </div>
+    </section>
 
-      <!-- Value strip -->
-      <div class="relative mt-10 grid sm:grid-cols-3 gap-3">
-        <div class="card bg-white/[0.03] border-white/10 p-4">
-          <div class="text-xs text-gray-400 mb-1">Grounded in reality</div>
-          <div class="text-sm text-gray-200">Based on what employers actually advertise</div>
-        </div>
-        <div class="card bg-white/[0.03] border-white/10 p-4">
-          <div class="text-xs text-gray-400 mb-1">Defensible insight</div>
-          <div class="text-sm text-gray-200">Evidence for pay & workforce decisions</div>
-        </div>
-        <div class="card bg-white/[0.03] border-white/10 p-4">
-          <div class="text-xs text-gray-400 mb-1">Accessible by design</div>
-          <div class="text-sm text-gray-200">Not priced for corporates only</div>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- HOW IT WORKS -->
-  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
-    <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
-      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-        <h2 class="text-xl font-semibold text-white">How it works</h2>
-        <div class="text-xs text-gray-400">Simple pipeline. Practical outputs.</div>
-      </div>
-
-      <div class="grid lg:grid-cols-3 gap-4">
-        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-          <div class="text-xs text-gray-400 mb-2">Step 1</div>
-          <div class="text-base font-semibold text-white mb-1">Ingest signals</div>
-          <p class="text-sm text-gray-300">
-            Collects advertised pay and demand signals from public job listings, alongside trusted official datasets.
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-          <div class="text-xs text-gray-400 mb-2">Step 2</div>
-          <div class="text-base font-semibold text-white mb-1">Normalise & structure</div>
-          <p class="text-sm text-gray-300">
-            Cleans titles, maps roles/locations, and standardises records so comparisons are actually meaningful.
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-          <div class="text-xs text-gray-400 mb-2">Step 3</div>
-          <div class="text-base font-semibold text-white mb-1">Output insight</div>
-          <p class="text-sm text-gray-300">
-            Produces pay ranges, trends, and competition signals you can use in minutes — including evidence packs.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FAQ (unchanged from previous approach, kept concise) -->
-  <section class="max-w-7xl mx-auto px-4 py-12 fade-in-on-scroll">
-    <div class="card card-hover bg-white/[0.03] border-white/10 p-6">
-      <h2 class="text-xl font-semibold text-white mb-4">FAQ</h2>
+    <!-- FAQ -->
+    <section class="border-t lp-hair pt-12 pb-16">
+      <h2 class="text-2xl font-bold text-white mb-8">FAQ</h2>
 
       <div class="space-y-3">
-        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
-            <span class="text-sm font-semibold text-white">Where does the data come from?</span>
-            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+        <details class="lp-card rounded-2xl p-5 lp-acc">
+          <summary class="cursor-pointer flex items-center justify-between gap-4 text-white font-semibold">
+            <span>Where does the data come from?</span>
+            <span class="lp-chevron transition transform text-gray-300">›</span>
           </summary>
-          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
-            Public job advertisements (live market movement) plus official public datasets for context (e.g. earnings benchmarks).
-          </div>
-        </details>
-
-        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
-            <span class="text-sm font-semibold text-white">How often is it updated?</span>
-            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
-          </summary>
-          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
-            Live market data refreshes on a schedule. Official datasets update on their published cadence.
-          </div>
-        </details>
-
-        <details class="group rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <summary class="cursor-pointer list-none flex items-center justify-between gap-4">
-            <span class="text-sm font-semibold text-white">Is this GDPR-friendly?</span>
-            <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
-          </summary>
-          <div class="mt-3 text-sm text-gray-300 leading-relaxed">
-            Built on public job ads and official datasets — not scraped personal profiles. Waitlist/access requests are stored securely.
-          </div>
-        </details>
-      </div>
-
-      <div class="mt-6 flex flex-col sm:flex-row gap-3">
-        <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-full sm:w-auto justify-center" data-track="faq_login">
-          Log in to PayScope
-        </a>
-        <button type="button" class="btn btn-secondary w-full sm:w-auto justify-center" onclick="openRequestAccessModal()" data-track="faq_request_access">
-          Request access
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER LINKS -->
-  <section class="max-w-7xl mx-auto px-4 pb-6">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-gray-500">
-      <div>© {{ today.year if today is defined else 2025 }} PayScope. All rights reserved.</div>
-      <div class="flex flex-wrap gap-x-4 gap-y-2">
-        <a href="{{ url_for('public.privacy') }}" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_privacy">Privacy</a>
-        <a href="{{ url_for('public.terms') }}" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_terms">Terms</a>
-        <a href="{{ url_for('public.cookies') }}" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_cookies">Cookies</a>
-        <a href="mailto:{{ contact_email or 'hello@payscope.uk' }}" class="hover:text-gray-300 underline underline-offset-4" data-track="footer_contact">Contact</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Request Access Modal -->
-  <div id="requestAccessModal" class="fixed inset-0 z-50 hidden" aria-hidden="true">
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-
-    <div id="request-access" class="relative max-w-lg mx-auto mt-24 px-4">
-      <div class="rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <h3 class="text-lg font-semibold text-white">Request access</h3>
-            <p class="text-sm text-gray-300 mt-1">
-              Tell us what you’re trying to benchmark (roles + regions). We’ll reply from {{ contact_email or 'hello@payscope.uk' }}.
-            </p>
-          </div>
-          <button type="button"
-                  class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10"
-                  onclick="closeRequestAccessModal()">
-            Close
-          </button>
-        </div>
-
-        <form class="mt-4 space-y-3"
-              method="POST"
-              action="{{ url_for('public.request_access_submit') }}"
-              data-track="request_access_submit">
-          {{ csrf_token() if csrf_token is defined }}
-          <input type="hidden" name="source" value="landing" />
-
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Your email (optional)</label>
-            <input name="email"
-                   id="accessEmail"
-                   type="email"
-                   inputmode="email"
-                   autocomplete="email"
-                   placeholder="you@company.com"
-                   class="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
-          </div>
-
-          <div>
-            <label class="block text-xs text-gray-400 mb-1">Notes</label>
-            <textarea name="notes"
-                      id="accessNotes"
-                      rows="3"
-                      placeholder="e.g., We’re hiring Support Workers in the North West and want to benchmark hourly rates."
-                      class="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10"></textarea>
-          </div>
-
-          <div class="flex flex-col sm:flex-row gap-2 pt-2">
-            <button type="submit" class="btn btn-primary w-full sm:w-auto justify-center" data-track="modal_submit_access">
-              Submit request
-            </button>
-            <button type="button" class="btn btn-secondary w-full sm:w-auto justify-center" onclick="copyAccessTemplate()" data-track="modal_copy_template">
-              Copy template
-            </button>
-          </div>
-
-          <p class="text-xs text-gray-500">
-            We store your request so we can respond. You can ask to be removed anytime via {{ contact_email or 'hello@payscope.uk' }}.
+          <p class="text-sm lp-muted mt-2">
+            PayScope combines live job adverts, public APIs and official datasets including ONS earnings data.
           </p>
-        </form>
-      </div>
-    </div>
-  </div>
+        </details>
 
+        <details class="lp-card rounded-2xl p-5 lp-acc">
+          <summary class="cursor-pointer flex items-center justify-between gap-4 text-white font-semibold">
+            <span>How often is it updated?</span>
+            <span class="lp-chevron transition transform text-gray-300">›</span>
+          </summary>
+          <p class="text-sm lp-muted mt-2">
+            Job signals are ingested daily. Coverage health is reviewed weekly.
+          </p>
+        </details>
+
+        <details class="lp-card rounded-2xl p-5 lp-acc">
+          <summary class="cursor-pointer flex items-center justify-between gap-4 text-white font-semibold">
+            <span>Is this GDPR-friendly?</span>
+            <span class="lp-chevron transition transform text-gray-300">›</span>
+          </summary>
+          <p class="text-sm lp-muted mt-2">
+            Yes. PayScope is designed around aggregated, non-personal labour-market signals.
+          </p>
+        </details>
+      </div>
+
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4 lp-card-strong rounded-3xl p-6">
+        <div>
+          <div class="text-white font-semibold">Ready to enter PayScope?</div>
+          <div class="text-sm lp-muted mt-1">Login is the only route into the app from here.</div>
+        </div>
+        <div class="flex gap-3">
+          <a href="{{ url_for('auth.login') }}" class="lp-btn lp-btn-primary">Log in</a>
+          <a href="#request-access" class="lp-btn lp-btn-ghost">Request access</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
 </div>
 
-<script>
-  // ----------------------------
-  // Lightweight analytics hook (safe if no provider installed)
-  // ----------------------------
-  function trackEvent(name, props) {
-    try {
-      if (window.plausible) window.plausible(name, { props: props || {} });
-      if (window.posthog && window.posthog.capture) window.posthog.capture(name, props || {});
-    } catch (e) {}
-  }
-
-  document.addEventListener("click", (e) => {
-    const el = e.target && e.target.closest ? e.target.closest("[data-track]") : null;
-    if (!el) return;
-    const key = el.getAttribute("data-track");
-    if (!key) return;
-    trackEvent(key, { path: window.location.pathname });
-  }, { passive: true });
-
-  // Scroll depth (25/50/75/100)
-  (function initScrollDepth() {
-    const fired = new Set();
-    function onScroll() {
-      const doc = document.documentElement;
-      const scrollTop = doc.scrollTop || document.body.scrollTop;
-      const scrollHeight = (doc.scrollHeight || document.body.scrollHeight) - doc.clientHeight;
-      if (scrollHeight <= 0) return;
-      const pct = Math.round((scrollTop / scrollHeight) * 100);
-      for (const m of [25, 50, 75, 100]) {
-        if (pct >= m && !fired.has(m)) {
-          fired.add(m);
-          trackEvent("scroll_depth", { depth: m, path: window.location.pathname });
-        }
-      }
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-  })();
-
-  // ----------------------------
-  // Modal controls
-  // ----------------------------
-  function openRequestAccessModal() {
-    const m = document.getElementById("requestAccessModal");
-    if (!m) return;
-    m.classList.remove("hidden");
-    m.setAttribute("aria-hidden", "false");
-    trackEvent("modal_open_request_access", { path: window.location.pathname });
-  }
-
-  function closeRequestAccessModal() {
-    const m = document.getElementById("requestAccessModal");
-    if (!m) return;
-    m.classList.add("hidden");
-    m.setAttribute("aria-hidden", "true");
-    trackEvent("modal_close_request_access", { path: window.location.pathname });
-  }
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeRequestAccessModal();
-  });
-
-  document.addEventListener("click", (e) => {
-    const m = document.getElementById("requestAccessModal");
-    if (!m || m.classList.contains("hidden")) return;
-    if (e.target === m || e.target === m.firstElementChild) closeRequestAccessModal();
-  });
-
-  async function copyAccessTemplate() {
-    const email = (document.getElementById("accessEmail")?.value || "").trim();
-    const notes = (document.getElementById("accessNotes")?.value || "").trim();
-
-    const text = [
-      "Request access to PayScope",
-      "",
-      "Email: " + (email || "[your email]"),
-      "",
-      "Notes:",
-      notes || "[briefly describe your company, roles, regions, and what you want to benchmark]"
-    ].join("\n");
-
-    try {
-      await navigator.clipboard.writeText(text);
-      trackEvent("request_access_copy_template", { path: window.location.pathname });
-      alert("Template copied to clipboard.");
-    } catch (e) {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      trackEvent("request_access_copy_template_fallback", { path: window.location.pathname });
-      alert("Template copied to clipboard.");
-    }
-  }
-</script>
 {% endblock %}

@@ -5,6 +5,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from collections import Counter
+from types import SimpleNamespace
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -46,6 +47,17 @@ SLEEP_BETWEEN_QUERIES_SEC = float(os.getenv("SCRAPE_SLEEP_SEC", "0.25"))
 
 ONS_IMPORT_ENABLED = os.getenv("ONS_IMPORT_ENABLED", "0").lower() in ("1", "true", "yes")
 ONS_IMPORT_YEAR = int(os.getenv("ONS_IMPORT_YEAR", str(date.today().year - 1)))
+
+# ---------------------------------------------------------------------
+# Reed (optional second source)
+# ---------------------------------------------------------------------
+REED_ENABLED = os.getenv("REED_ENABLED", "0").lower() in ("1", "true", "yes")
+REED_API_KEY = os.getenv("REED_API_KEY", "").strip()
+
+REED_RESULTS_PER_PAGE = int(os.getenv("REED_RESULTS_PER_PAGE", "100"))  # Reed cap is 100
+REED_MAX_PAGES = int(os.getenv("REED_MAX_PAGES", "1"))                  # conservative
+REED_DISTANCE = int(os.getenv("REED_DISTANCE", "10"))
+REED_THROTTLE_SECONDS = float(os.getenv("REED_THROTTLE_SECONDS", "1.0"))
 
 
 # ---------------------------------------------------------------------
@@ -176,9 +188,7 @@ def _coverage_warnings(days: int = 7) -> dict:
         .all()
     )
 
-    weak_sectors = [
-        row.sector for row in sector_days if (row.days_seen or 0) < 2
-    ]
+    weak_sectors = [row.sector for row in sector_days if (row.days_seen or 0) < 2]
 
     return {
         "window_days": days,
@@ -272,6 +282,91 @@ def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
     return out
 
 
+def _payload_to_rec_obj(payload: Dict[str, Any]) -> Any:
+    """
+    Reed returns dict payloads (Adzuna-shaped). Convert to a record-like object so the
+    existing upsert logic remains unchanged and low-risk.
+    """
+    posted = payload.get("posted_date")
+    if isinstance(posted, datetime):
+        posted = posted.date()
+
+    return SimpleNamespace(
+        title=(payload.get("title") or ""),
+        company_name=payload.get("company_name"),
+        location_text=payload.get("location_text"),
+        postcode=payload.get("postcode"),
+        min_rate=payload.get("min_rate"),
+        max_rate=payload.get("max_rate"),
+        rate_type=payload.get("rate_type"),
+        contract_type=payload.get("contract_type"),
+        source_site=(payload.get("source_site") or "reed"),
+        external_id=str(payload.get("external_id") or "") or None,
+        url=payload.get("url"),
+        posted_date=posted if isinstance(posted, date) else None,
+        raw_json=payload.get("raw_json"),
+        search_role=payload.get("search_role"),
+        search_location=payload.get("search_location"),
+    )
+
+
+def _scrape_reed_for_roles(roles: List[str], where: str, run_stats: Dict[str, Any]) -> List[Any]:
+    """
+    Conservative Reed scraping: per role+location, 1 page by default, throttled.
+
+    ReedScraper contract (per your baseline):
+    returns posting-shaped dicts with:
+      title, company_name, location_text, postcode, min_rate, max_rate,
+      rate_type, contract_type, source_site="reed", external_id, url,
+      posted_date, raw_json
+    """
+    out: List[Any] = []
+
+    if not REED_ENABLED:
+        return out
+
+    if not REED_API_KEY:
+        run_stats.setdefault("errors", [])
+        run_stats["errors"].append("REED_ENABLED=1 but REED_API_KEY is missing.")
+        return out
+
+    try:
+        from app.scrapers.reed import ReedScraper  # type: ignore
+    except Exception as e:
+        run_stats.setdefault("errors", [])
+        run_stats["errors"].append(f"Failed to import ReedScraper: {e}")
+        return out
+
+    for role in roles:
+        scraper = ReedScraper(
+            api_key=REED_API_KEY,
+            keywords=role,
+            location_name=where,
+            distance_from_location=REED_DISTANCE,
+            results_per_page=min(max(REED_RESULTS_PER_PAGE, 1), 100),
+            max_pages=max(REED_MAX_PAGES, 1),
+            throttle_seconds=max(REED_THROTTLE_SECONDS, 0.5),
+        )
+
+        payloads = scraper.scrape() or []
+        for p in payloads:
+            if isinstance(p, dict):
+                p.setdefault("source_site", "reed")
+                p["search_role"] = role
+                p["search_location"] = where
+                out.append(_payload_to_rec_obj(p))
+            else:
+                # If reed ever returns objects later, still support them.
+                try:
+                    setattr(p, "search_role", role)
+                    setattr(p, "search_location", where)
+                except Exception:
+                    pass
+                out.append(p)
+
+    return out
+
+
 # ---------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------
@@ -305,6 +400,12 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
             "postings_imported_success": 0,
             "postings_import_failed": 0,
             "summaries_created": 0,
+            # Additive stats (does not affect behaviour)
+            "sources": {
+                "adzuna": {"rows_scraped": 0, "created": 0, "updated": 0},
+                "reed": {"rows_scraped": 0, "created": 0, "updated": 0},
+            },
+            "errors": [],
         }
 
         rows_scraped = 0
@@ -315,10 +416,12 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
                 import_ons_earnings_to_db(ONS_IMPORT_YEAR)
 
             for where in wheres:
-                scraped = _scrape_adzuna_for_roles(roles, where)
-                rows_scraped += len(scraped)
+                # ---- Adzuna (existing source) ----
+                scraped_adzuna = _scrape_adzuna_for_roles(roles, where)
+                rows_scraped += len(scraped_adzuna)
+                run_stats["sources"]["adzuna"]["rows_scraped"] += len(scraped_adzuna)
 
-                for rec in scraped:
+                for rec in scraped_adzuna:
                     _, created = _upsert_posting_from_scraper_record(
                         "adzuna",
                         rec,
@@ -327,9 +430,32 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
                     )
                     if created:
                         run_stats["postings_created"] += 1
+                        run_stats["sources"]["adzuna"]["created"] += 1
                     else:
                         run_stats["postings_updated"] += 1
+                        run_stats["sources"]["adzuna"]["updated"] += 1
 
+                # ---- Reed (optional second source) ----
+                if REED_ENABLED:
+                    scraped_reed = _scrape_reed_for_roles(roles, where, run_stats)
+                    rows_scraped += len(scraped_reed)
+                    run_stats["sources"]["reed"]["rows_scraped"] += len(scraped_reed)
+
+                    for rec in scraped_reed:
+                        _, created = _upsert_posting_from_scraper_record(
+                            "reed",
+                            rec,
+                            getattr(rec, "search_role", None),
+                            getattr(rec, "search_location", None),
+                        )
+                        if created:
+                            run_stats["postings_created"] += 1
+                            run_stats["sources"]["reed"]["created"] += 1
+                        else:
+                            run_stats["postings_updated"] += 1
+                            run_stats["sources"]["reed"]["updated"] += 1
+
+            # Import any postings not yet imported (all sources)
             postings = JobPosting.query.filter(JobPosting.imported.is_(False)).all()
             for p in postings:
                 try:
@@ -350,6 +476,9 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
 
             run_stats["coverage"] = _coverage_warnings(days=7)
 
+            # keep existing keys updated
+            run_stats["rows_scraped"] = rows_scraped
+
             msg = f"OK. Scraped={rows_scraped}, Imported={records_created}"
             _finish_log(log, "success", msg, rows_scraped, records_created, run_stats)
             return {"ok": True, "message": msg}
@@ -357,6 +486,7 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
         except Exception as e:
             db.session.rollback()
             run_stats["coverage"] = _coverage_warnings(days=7)
+            run_stats["rows_scraped"] = rows_scraped
             _finish_log(log, "error", str(e), rows_scraped, records_created, run_stats)
             return {"ok": False, "message": str(e)}
 
