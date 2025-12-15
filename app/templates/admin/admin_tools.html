@@ -63,7 +63,8 @@
           <p class="text-sm text-gray-600">Run scrapers and preview results.</p>
         </a>
 
-        <a href="{{ url_for('admin.admin_job_scrape') }}" class="card p-5">
+        <!-- ✅ FIXED: Jobs now points to admin.admin_jobs -->
+        <a href="{{ url_for('admin.admin_jobs') }}" class="card p-5">
           <h3 class="font-semibold">Jobs</h3>
           <p class="text-sm text-gray-600">View ingested postings, filter, and import to the core dataset.</p>
         </a>
@@ -73,7 +74,8 @@
           <p class="text-sm text-gray-600 mb-3">Load ASHE median hourly pay for ONS vs advertised comparisons.</p>
 
           <div class="space-y-3">
-            <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}" class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
+            <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}"
+                  class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
               <div class="text-xs text-gray-600">
                 <div class="font-medium text-gray-800">Import latest full year</div>
                 <div>Auto-select latest completed ASHE dataset.</div>
@@ -81,7 +83,8 @@
               <button type="submit" class="btn btn-primary btn-sm">Run import</button>
             </form>
 
-            <form method="post" action="{{ url_for('admin.run_ons_import') }}" class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
+            <form method="post" action="{{ url_for('admin.run_ons_import') }}"
+                  class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
               <div class="text-xs text-gray-600">
                 <div class="font-medium text-gray-800">Legacy import</div>
                 <div>Imports ASHE for the year immediately before the current one.</div>
