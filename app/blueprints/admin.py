@@ -143,6 +143,39 @@ def _get_coverage_window(start_date: date, end_date_exclusive: date):
 
     return sector_rows, location_rows
 
+def get_weekly_source_coverage(days: int = 7):
+    """
+    Per-source coverage for the coverage.html 'Source Coverage' table.
+    Uses the same window logic as get_weekly_coverage().
+    """
+    start_date = date.today() - timedelta(days=days)
+    end_excl = date.today() + timedelta(days=1)
+
+    # If your JobSummaryDaily table doesn't have source_site for any reason,
+    # fail gracefully.
+    if not hasattr(JobSummaryDaily, "source_site"):
+        return []
+
+    rows = (
+        db.session.query(
+            JobSummaryDaily.source_site.label("source_site"),
+            func.sum(JobSummaryDaily.adverts_count).label("adverts"),
+            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay"),
+            func.count(func.distinct(JobSummaryDaily.date)).label("days_seen"),
+            func.count(func.distinct(JobSummaryDaily.sector)).label("sector_count"),
+            func.count(func.distinct(JobSummaryDaily.county)).label("location_count"),
+        )
+        .filter(JobSummaryDaily.date >= start_date)
+        .filter(JobSummaryDaily.date < end_excl)
+        .group_by(JobSummaryDaily.source_site)
+        .order_by(func.sum(JobSummaryDaily.adverts_count).desc())
+        .all()
+    )
+
+    return rows
+
+
+
 
 def get_weekly_coverage(days: int = 7):
     start_date = date.today() - timedelta(days=days)
@@ -1516,6 +1549,9 @@ def admin_coverage():
     coverage = get_weekly_coverage(days=days)
     diff = get_weekly_coverage_diff()
 
+    # NEW: per-source coverage (Adzuna vs Reed)
+    sources = get_weekly_source_coverage(days=days)
+
     # Build lookup dicts so templates can do .get()
     sector_delta_map = {d["sector"]: d.get("delta", 0) for d in diff.get("sector_diff", [])}
     location_delta_map = {d["county"]: d.get("delta", 0) for d in diff.get("location_diff", [])}
@@ -1532,7 +1568,11 @@ def admin_coverage():
         location_diff=diff["location_diff"],          # list (table-ready)
         sector_delta_map=sector_delta_map,            # dict (lookup-ready)
         location_delta_map=location_delta_map,        # dict (lookup-ready)
+
+        # NEW:
+        sources=sources,
     )
+
 
 
 @bp.route("/coverage/export")
