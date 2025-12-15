@@ -3,186 +3,71 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-2 sm:px-4 py-6">
-  <!-- Page header -->
+
+  <!-- Header -->
   <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div>
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
         Admin Tools
       </h1>
       <p class="mt-1 text-sm text-gray-500">
-        Operational controls for data imports, job role hygiene, companies, and system health.
+        Operational controls for ingestion, data quality and system health.
       </p>
     </div>
     <div class="text-xs text-gray-400 uppercase tracking-wide">
-      <span class="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 bg-gray-50">
+      <span class="inline-flex items-center rounded-full border px-3 py-1 bg-gray-50">
         <span class="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"></span>
         Superuser Console
       </span>
     </div>
   </header>
 
-  <div class="space-y-8">
+  <div class="space-y-10">
 
-    <!-- Overview & Monitoring -->
+    <!-- Overview -->
     <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          Overview &amp; Monitoring
-        </h2>
-        <span class="text-[11px] text-gray-400">Dashboards, logs &amp; scheduled jobs</span>
-      </div>
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        Overview & Monitoring
+      </h2>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-        <!-- Dashboard -->
-        <a href="{{ url_for('dashboard.dashboard') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-blue-50 flex items-center justify-center">
-                <span class="text-blue-500 text-lg">📊</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Dashboard</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Topline KPIs, charts and recent activity across sectors and counties.
+        <a href="{{ url_for('dashboard.dashboard') }}" class="card p-5">
+          <h3 class="font-semibold">Dashboard</h3>
+          <p class="text-sm text-gray-600">KPIs, trends and recent activity.</p>
+        </a>
+
+        <a href="{{ url_for('dashboard.insights') }}" class="card p-5">
+          <h3 class="font-semibold">Insights</h3>
+          <p class="text-sm text-gray-600">Deep-dive analytics.</p>
+        </a>
+
+        <a href="{{ url_for('admin.admin_coverage') }}" class="card p-5">
+          <h3 class="font-semibold">Coverage Health</h3>
+          <p class="text-sm text-gray-600">
+            Weak sectors: {{ coverage_tile.weak_sectors if coverage_tile is defined else "—" }},
+            locations: {{ coverage_tile.weak_locations if coverage_tile is defined else "—" }}
           </p>
         </a>
 
-        <!-- Insights -->
-        <a href="{{ url_for('dashboard.insights') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-indigo-50 flex items-center justify-center">
-                <span class="text-indigo-500 text-lg">🧠</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Insights</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Deep-dive analytics and AI-powered commentary on the pay rate dataset.
-          </p>
+        <a href="{{ url_for('admin.admin_leads') }}" class="card p-5">
+          <h3 class="font-semibold">Leads</h3>
+          <p class="text-sm text-gray-600">Access requests & waitlist.</p>
         </a>
 
-        <!-- Coverage Health -->
-        <a href="{{ url_for('admin.admin_coverage') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              {% set cov_status = (coverage_tile.status if coverage_tile is defined else 'amber') %}
-              {% set dot_class =
-                'bg-emerald-500' if cov_status == 'green'
-                else 'bg-amber-500' if cov_status == 'amber'
-                else 'bg-rose-500'
-              %}
-              {% set badge_class =
-                'bg-emerald-50 text-emerald-700 border-emerald-200' if cov_status == 'green'
-                else 'bg-amber-50 text-amber-700 border-amber-200' if cov_status == 'amber'
-                else 'bg-rose-50 text-rose-700 border-rose-200'
-              %}
-
-              <div class="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center">
-                <span class="text-slate-600 text-lg">🛡️</span>
-              </div>
-              <div>
-                <h3 class="text-sm font-semibold text-gray-900">Coverage Health</h3>
-                <p class="text-xs text-gray-500">
-                  Last {{ coverage_tile.window_days if coverage_tile is defined else 7 }} days
-                </p>
-              </div>
-            </div>
-
-            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold {{ badge_class }}">
-              <span class="h-2 w-2 rounded-full {{ dot_class }}"></span>
-              {{ cov_status|upper }}
-            </span>
-          </div>
-
-          <p class="text-gray-600 text-sm">
-            Weak sectors: <span class="font-semibold">{{ coverage_tile.weak_sectors if coverage_tile is defined else "—" }}</span>
-            &nbsp;·&nbsp;
-            Weak locations: <span class="font-semibold">{{ coverage_tile.weak_locations if coverage_tile is defined else "—" }}</span>
-          </p>
-
-          <div class="mt-3 text-xs text-gray-400">
-            Open weekly coverage →
-          </div>
+        <a href="{{ url_for('admin.ai_logs') }}" class="card p-5">
+          <h3 class="font-semibold">AI Logs</h3>
+          <p class="text-sm text-gray-600">Audit AI outputs and prompts.</p>
         </a>
 
-        <!-- Leads -->
-        <a href="{{ url_for('admin.admin_leads') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-fuchsia-50 flex items-center justify-center">
-                <span class="text-fuchsia-600 text-lg">📮</span>
-              </div>
-              <div>
-                <h3 class="text-sm font-semibold text-gray-900">Leads</h3>
-                <p class="text-xs text-gray-500">Waitlist &amp; access requests</p>
-              </div>
-            </div>
-
-            {# If you later pass new_access_count into admin_tools(), this badge will light up #}
-            {% if new_access_count is defined and new_access_count %}
-              <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
-                {{ new_access_count }} new
-              </span>
-            {% endif %}
-          </div>
-          <p class="text-gray-600 text-sm">
-            Review submissions from the landing page, update access-request status, and export CSVs.
-          </p>
+        <a href="{{ url_for('admin.cron_runs') }}" class="card p-5">
+          <h3 class="font-semibold">Cron Runs</h3>
+          <p class="text-sm text-gray-600">Scheduled job history.</p>
         </a>
 
-        <!-- AI Logs -->
-        <a href="{{ url_for('admin.ai_logs') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-purple-50 flex items-center justify-center">
-                <span class="text-purple-500 text-lg">📜</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">AI Logs</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Review all AI analyses, filters used and generated output for audit.
-          </p>
-        </a>
-
-        <!-- Cron Runs -->
-        <a href="{{ url_for('admin.cron_runs') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-amber-50 flex items-center justify-center">
-                <span class="text-amber-500 text-lg">⏱️</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Cron Runs</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            History of scheduled jobs with manual run controls and status messages.
-          </p>
-        </a>
-
-        <!-- DB Health -->
-        <a href="{{ url_for('admin.db_health') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center">
-                <span class="text-slate-500 text-lg">🗄️</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">DB Health</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Connection health, backend type and table inventory for quick diagnostics.
-          </p>
+        <a href="{{ url_for('admin.db_health') }}" class="card p-5">
+          <h3 class="font-semibold">DB Health</h3>
+          <p class="text-sm text-gray-600">Database diagnostics.</p>
         </a>
 
       </div>
@@ -190,92 +75,24 @@
 
     <!-- Data & Imports -->
     <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          Data &amp; Imports
-        </h2>
-        <span class="text-[11px] text-gray-400">External feeds &amp; raw job data</span>
-      </div>
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        Data & Imports
+      </h2>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-        <!-- Job Scrape -->
-        <a href="{{ url_for('admin.admin_job_scrape') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-teal-50 flex items-center justify-center">
-                <span class="text-teal-500 text-lg">🕷️</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Job Scrape</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Run scrapers with specific roles/locations and preview results before import.
-          </p>
+        <a href="{{ url_for('admin.admin_job_scrape') }}" class="card p-5">
+          <h3 class="font-semibold">Job Scrape</h3>
+          <p class="text-sm text-gray-600">Run scrapers and preview results.</p>
         </a>
 
-        <!-- Jobs -->
-        <a href="{{ url_for('admin.admin_jobs') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-cyan-50 flex items-center justify-center">
-                <span class="text-cyan-500 text-lg">📥</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Jobs</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Manage imported postings, review raw adverts and control which jobs enter the core dataset.
-          </p>
-        </a>
+        <div class="card p-5">
+          <h3 class="font-semibold">ONS Earnings Import</h3>
+          <p class="text-sm text-gray-600 mb-3">Import ASHE pay benchmarks.</p>
 
-        <!-- ONS Earnings Import -->
-        <div class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-emerald-50 flex items-center justify-center">
-                <span class="text-emerald-500 text-lg">📈</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">ONS Earnings Import</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm mb-3">
-            Load ASHE median hourly pay from Nomis to enable ONS vs advertised pay comparisons.
-          </p>
-
-          <div class="space-y-3">
-
-            <!-- New helper-based import -->
-            <form method="post"
-                  action="{{ url_for('admin.run_ons_import_manual') }}"
-                  class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2 bg-gray-50/60">
-              <div class="text-xs text-gray-600">
-                <p class="font-medium text-gray-800">Import latest full year</p>
-                <p>Automatically selects the latest completed ASHE dataset.</p>
-              </div>
-              <button type="submit" class="btn btn-primary btn-sm">
-                Run import
-              </button>
-            </form>
-
-            <!-- Legacy import -->
-            <form action="{{ url_for('admin.run_ons_import') }}"
-                  method="POST"
-                  class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2 bg-gray-50/60">
-              <div class="text-xs text-gray-600">
-                <p class="font-medium text-gray-800">Legacy import</p>
-                <p>Imports ASHE for the year immediately before the current one.</p>
-              </div>
-              <button
-                type="submit"
-                class="btn btn-secondary btn-sm">
-                Run legacy
-              </button>
-            </form>
-
-          </div>
+          <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}">
+            <button class="btn btn-primary btn-sm">Run latest ASHE import</button>
+          </form>
         </div>
 
       </div>
@@ -283,127 +100,46 @@
 
     <!-- Job Role Hygiene -->
     <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          Job Role Hygiene
-        </h2>
-        <span class="text-[11px] text-gray-400">Canonicalisation &amp; mappings</span>
-      </div>
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        Job Role Hygiene
+      </h2>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-        <!-- Canonicalise Job Roles -->
-        <div class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-rose-50 flex items-center justify-center">
-                <span class="text-rose-500 text-lg">🧹</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Canonicalise Job Roles</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm mb-3">
-            Run the AI canonicaliser to group similar raw job titles into standardised roles.
+        <form method="post" action="{{ url_for('admin.run_job_role_canonicaliser_now') }}" class="card p-5">
+          <h3 class="font-semibold mb-2">Canonicalise Job Roles</h3>
+          <p class="text-sm text-gray-600 mb-3">
+            Group messy titles into standard roles.
           </p>
-          <form action="{{ url_for('admin.run_job_role_canonicaliser_now') }}"
-                method="POST"
-                class="mt-auto flex justify-end">
-            <button
-              type="submit"
-              class="btn btn-primary btn-sm">
-              Run now
-            </button>
-          </form>
-        </div>
+          <button type="submit" class="btn btn-primary btn-sm">Run canonicaliser</button>
+        </form>
 
-        <!-- Job Role Cleaner -->
-        <a href="{{ url_for('dashboard.admin_job_roles') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-orange-50 flex items-center justify-center">
-                <span class="text-orange-500 text-lg">🧾</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Job Role Cleaner</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm mb-3">
-            Browse distinct job_role values, see counts and map messy titles to clean canonical labels.
+        <a href="{{ url_for('dashboard.admin_job_roles') }}" class="card p-5">
+          <h3 class="font-semibold">Job Role Cleaner</h3>
+          <p class="text-sm text-gray-600">
+            Map raw titles to canonical roles.
           </p>
-          <span class="mt-auto inline-flex justify-end">
-            <span class="btn btn-secondary btn-sm">
-              Open cleaner
-            </span>
-          </span>
         </a>
-
-        <!-- Create Job Role Mapping Table -->
-        <div class="card p-5 hover:shadow-md transition flex flex-col border border-dashed border-amber-200 bg-amber-50/50">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-amber-100 flex items-center justify-center">
-                <span class="text-amber-600 text-lg">🧱</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Mapping Table Helper</h3>
-            </div>
-          </div>
-          <p class="text-xs text-amber-800 mb-3">
-            One-off helper to create the <code>job_role_mappings</code> table if it&apos;s missing.
-            Safe to run multiple times; it won&apos;t overwrite existing data.
-          </p>
-          <form method="get"
-                action="{{ url_for('admin.create_job_role_mapping_table') }}"
-                class="mt-auto flex justify-end">
-            <button type="submit" class="btn btn-secondary btn-sm">
-              Create table
-            </button>
-          </form>
-        </div>
 
       </div>
     </section>
 
-    <!-- System & Access -->
+    <!-- System -->
     <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          System &amp; Access
-        </h2>
-        <span class="text-[11px] text-gray-400">Companies &amp; user management</span>
-      </div>
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        System & Access
+      </h2>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-        <!-- Companies -->
-        <a href="{{ url_for('admin.admin_companies') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-sky-50 flex items-center justify-center">
-                <span class="text-sky-500 text-lg">🏢</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">Companies</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Clean up company IDs, edit canonical names and manage map logos for competitor views.
-          </p>
+        <a href="{{ url_for('admin.admin_companies') }}" class="card p-5">
+          <h3 class="font-semibold">Companies</h3>
+          <p class="text-sm text-gray-600">Manage canonical company records.</p>
         </a>
 
-        <!-- User Management -->
-        <a href="{{ url_for('admin.manage_users') }}"
-           class="card p-5 hover:shadow-md transition flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="h-8 w-8 rounded-xl bg-lime-50 flex items-center justify-center">
-                <span class="text-lime-500 text-lg">👤</span>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-900">User Management</h3>
-            </div>
-          </div>
-          <p class="text-gray-600 text-sm">
-            Add, edit or remove users and adjust admin levels and access scope.
-          </p>
+        <a href="{{ url_for('admin.manage_users') }}" class="card p-5">
+          <h3 class="font-semibold">User Management</h3>
+          <p class="text-sm text-gray-600">Admins and permissions.</p>
         </a>
 
       </div>
