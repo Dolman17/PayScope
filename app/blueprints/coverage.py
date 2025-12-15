@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from datetime import date, timedelta
 from sqlalchemy import func
 
 from extensions import db
-from models import JobSummaryDaily
+from models import JobSummaryDaily, JobPosting
 
 
 def _has_col(model, name: str) -> bool:
@@ -56,54 +58,65 @@ def get_weekly_coverage_snapshot(days: int = 7) -> dict:
 
 def get_weekly_source_coverage(days: int = 7) -> list[dict]:
     """
-    NEW: Source coverage for coverage.html.
+    Source coverage for coverage.html.
 
-    Expected output rows (per source_site):
+    IMPORTANT: Your JobSummaryDaily model currently has no source_site, so this
+    is derived from JobPosting (which does have source_site). This means Reed
+    shows up immediately without changing summaries.
+
+    Output rows (per source_site):
       - source_site
-      - adverts (sum)
-      - days_seen (distinct days)
-      - median_pay (avg of daily medians as a safe proxy)
-      - sector_count (distinct sectors)
-      - location_count (distinct counties) if county exists else 0
+      - adverts (count of postings in window)
+      - days_seen (distinct posted_date; fallback to scraped_at date)
+      - median_pay (proxy via avg(midpoint(min,max)) when possible)
+      - sector_count (distinct JobPosting.sector if available; else 0)
+      - location_count (distinct outward code from postcode if available; else 0)
     """
-    # If source_site doesn't exist on JobSummaryDaily, we can't compute this.
-    if not _has_col(JobSummaryDaily, "source_site"):
-        return []
+    start_date = date.today() - timedelta(days=days)
+    end_excl = date.today() + timedelta(days=1)
 
-    start = date.today() - timedelta(days=days)
+    has_sector = _has_col(JobPosting, "sector")
+    has_postcode = _has_col(JobPosting, "postcode")
 
-    # Optional fields (not all envs may have them)
-    has_adverts = _has_col(JobSummaryDaily, "adverts")
-    has_median = _has_col(JobSummaryDaily, "median_pay")
-    has_county = _has_col(JobSummaryDaily, "county")
-    has_sector = _has_col(JobSummaryDaily, "sector")
-
-    adverts_expr = func.sum(JobSummaryDaily.adverts).label("adverts") if has_adverts else func.count().label("adverts")
-    median_expr = func.avg(JobSummaryDaily.median_pay).label("median_pay") if has_median else func.null().label("median_pay")
-
-    sector_count_expr = (
-        func.count(func.distinct(JobSummaryDaily.sector)).label("sector_count")
-        if has_sector
-        else func.literal(0).label("sector_count")
+    # Use posted_date if present, else scraped_at date (cast to date)
+    day_expr = func.coalesce(
+        JobPosting.posted_date,
+        func.date(JobPosting.scraped_at),
     )
 
-    location_count_expr = (
-        func.count(func.distinct(JobSummaryDaily.county)).label("location_count")
-        if has_county
-        else func.literal(0).label("location_count")
-    )
+    # Pay proxy: midpoint if both present, else whichever exists, else NULL
+    pay_expr = func.avg(
+        func.coalesce(
+            (JobPosting.min_rate + JobPosting.max_rate) / 2.0,
+            JobPosting.min_rate,
+            JobPosting.max_rate,
+        )
+    ).label("median_pay")
+
+    if has_sector:
+        sector_count_expr = func.count(func.distinct(JobPosting.sector)).label("sector_count")
+    else:
+        sector_count_expr = func.literal(0).label("sector_count")
+
+    if has_postcode:
+        outward_expr = func.upper(func.split_part(func.trim(JobPosting.postcode), " ", 1))
+        location_count_expr = func.count(func.distinct(outward_expr)).label("location_count")
+    else:
+        location_count_expr = func.literal(0).label("location_count")
 
     rows = (
         db.session.query(
-            JobSummaryDaily.source_site.label("source_site"),
-            adverts_expr,
-            func.count(func.distinct(JobSummaryDaily.date)).label("days_seen"),
-            median_expr,
+            JobPosting.source_site.label("source_site"),
+            func.count(JobPosting.id).label("adverts"),
+            func.count(func.distinct(day_expr)).label("days_seen"),
+            pay_expr,
             sector_count_expr,
             location_count_expr,
         )
-        .filter(JobSummaryDaily.date >= start)
-        .group_by(JobSummaryDaily.source_site)
+        .filter(day_expr >= start_date)
+        .filter(day_expr < end_excl)
+        .group_by(JobPosting.source_site)
+        .order_by(func.count(JobPosting.id).desc())
         .all()
     )
 
@@ -114,12 +127,16 @@ def get_weekly_source_coverage(days: int = 7) -> list[dict]:
                 "source_site": getattr(r, "source_site", None),
                 "adverts": int(getattr(r, "adverts", 0) or 0),
                 "days_seen": int(getattr(r, "days_seen", 0) or 0),
-                "median_pay": (float(getattr(r, "median_pay", 0)) if getattr(r, "median_pay", None) is not None else None),
+                "median_pay": (
+                    float(getattr(r, "median_pay", 0))
+                    if getattr(r, "median_pay", None) is not None
+                    else None
+                ),
                 "sector_count": int(getattr(r, "sector_count", 0) or 0),
                 "location_count": int(getattr(r, "location_count", 0) or 0),
             }
         )
 
-    # Sort: most adverts first, then name
+    # Sort: most adverts first, then source name
     out.sort(key=lambda x: (-(x.get("adverts") or 0), (x.get("source_site") or "")))
     return out
