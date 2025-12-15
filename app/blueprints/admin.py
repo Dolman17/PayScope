@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import os
 import json
-from datetime import datetime, date
+import re
+from datetime import datetime, date, timedelta
 from functools import wraps
 
 from flask import (
@@ -34,6 +35,9 @@ from models import (
     ensure_default_organisation,
     WaitlistSignup,
     AccessRequest,
+    WeeklyMarketChange,
+    JobSummaryDaily,
+    WeeklyInsight
 )
 
 from .utils import (
@@ -50,8 +54,7 @@ from app.importers.job_importer import import_posting_to_record
 from ons_importer import import_ons_earnings_to_db, import_latest_ons_earnings_for_cron
 from app.blueprints.coverage import get_weekly_coverage_snapshot
 
-
-from . import pay_compare  # relative import of the module you just edited
+from . import pay_compare  # relative import
 
 # Blueprint MUST be defined before any @bp.route decorator
 bp = Blueprint("admin", __name__)
@@ -66,6 +69,14 @@ def superuser_required(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+# Optional OpenAI client (fail-safe)
+try:
+    from openai import OpenAI
+    _openai_client = OpenAI()
+except Exception:
+    _openai_client = None
+
 
 
 # -------------------------------------------------------------------
@@ -97,9 +108,23 @@ def _safe_json_loads(value):
         return None
 
 
-from datetime import date, timedelta
-from sqlalchemy import func
-from models import JobSummaryDaily
+def _monday_of(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _pick_col(model, options: list[str]):
+    cols = model.__table__.columns
+    for name in options:
+        if name in cols:
+            return cols[name]
+    return None
+
+
+def _safe_str(v):
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def _get_coverage_window(start_date: date, end_date_exclusive: date):
@@ -143,6 +168,7 @@ def _get_coverage_window(start_date: date, end_date_exclusive: date):
 
     return sector_rows, location_rows
 
+
 def get_weekly_source_coverage(days: int = 7):
     """
     Per-source coverage for the coverage.html 'Source Coverage' table.
@@ -173,8 +199,6 @@ def get_weekly_source_coverage(days: int = 7):
     )
 
     return rows
-
-
 
 
 def get_weekly_coverage(days: int = 7):
@@ -255,8 +279,6 @@ def get_weekly_coverage_diff():
         "sector_diff": sorted(sector_diff, key=lambda x: x["delta"]),
         "location_diff": sorted(location_diff, key=lambda x: x["delta"]),
     }
-
-
 def upsert_job_record(record, search_role=None, search_location=None) -> JobPosting:
     """
     Insert or update a JobPosting based on (source_site, external_id) or URL.
@@ -301,6 +323,168 @@ def upsert_job_record(record, search_role=None, search_location=None) -> JobPost
             job.raw_json = json.dumps({"repr": repr(record.raw_json)})
 
     return job
+
+def _ai_enabled() -> bool:
+    return _openai_client is not None and bool(os.getenv("OPENAI_API_KEY"))
+
+def _clamp_text(s: str | None, max_len: int = 1200) -> str | None:
+    if not s:
+        return s
+    s = str(s).strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
+def _format_change_summary(item) -> str:
+    # item is WeeklyMarketChange
+    metric = (item.metric_type or "").strip().lower()
+    direction = (item.direction or "").strip().lower()
+    role = item.job_role or "Unknown role"
+    loc = item.location or "Unknown location"
+
+    dv = item.delta_value
+    dp = item.delta_percent
+    prev = item.value_previous
+    cur = item.value_current
+
+    parts = [f"{role} — {loc}", f"metric={metric}", f"direction={direction}"]
+    if prev is not None and cur is not None:
+        parts.append(f"prev={prev}")
+        parts.append(f"cur={cur}")
+    if dv is not None:
+        parts.append(f"delta_value={dv}")
+    if dp is not None:
+        parts.append(f"delta_percent={dp}")
+
+    if item.sector:
+        parts.append(f"sector={item.sector}")
+    if item.confidence_level is not None:
+        parts.append(f"confidence_level={item.confidence_level}")
+
+    return " | ".join(parts)
+
+def _ai_generate_weekly_overview(week_start: date, week_end: date, featured_items: list) -> dict:
+    """
+    Returns: {"headline": str, "overview": str, "model": str}
+    """
+    if not _ai_enabled():
+        raise RuntimeError("AI not configured (missing OpenAI client or OPENAI_API_KEY).")
+
+    model = os.getenv("PAYSOPE_AI_MODEL", "gpt-4o-mini")  # typo-safe env name doesn’t matter; override below
+    model = os.getenv("PAYSCOPE_AI_MODEL", model)
+
+    items_text = "\n".join([f"- { _format_change_summary(it) }" for it in featured_items])
+
+    system = (
+        "You write short, grounded UK labour-market briefings.\n"
+        "Rules:\n"
+        "- Do not invent causes. If you suggest drivers, frame as possibilities.\n"
+        "- Be concise and practical.\n"
+        "- If changes look extreme, note data-thin risk.\n"
+        "- Use plain English.\n"
+    )
+
+    user = (
+        f"Create a weekly briefing for PayScope.\n"
+        f"Week: {week_start.isoformat()} to {week_end.isoformat()}.\n\n"
+        "Featured changes (structured facts):\n"
+        f"{items_text}\n\n"
+        "Output JSON with keys:\n"
+        "headline: 1 sentence\n"
+        "overview: 3–5 bullet points (use • bullets)\n"
+        "watchouts: 1–2 bullets if needed (use • bullets), else empty string\n"
+    )
+
+    resp = _openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.4,
+        max_tokens=450,
+    )
+
+    text = (resp.choices[0].message.content or "").strip()
+
+    # Best-effort JSON extraction (model sometimes wraps)
+    m = re.search(r"\{.*\}", text, flags=re.S)
+    json_blob = m.group(0) if m else None
+
+    try:
+        data = json.loads(json_blob or text)
+    except Exception:
+        # fallback: store raw in overview
+        data = {
+            "headline": f"Weekly market changes for {week_start.strftime('%d %b %Y')}",
+            "overview": text,
+            "watchouts": "",
+        }
+
+    headline = _clamp_text(data.get("headline"), 200)
+    overview = _clamp_text(data.get("overview"), 2000)
+    watchouts = _clamp_text(data.get("watchouts"), 1200)
+
+    combined = overview or ""
+    if watchouts:
+        combined = (combined + "\n\nWatch-outs:\n" + watchouts).strip()
+
+    return {"headline": headline or "", "overview": combined, "model": model}
+
+def _ai_generate_item_narrative(item) -> dict:
+    """
+    Returns: {"narrative": str, "driver_tags": str|None, "model": str}
+    """
+    if not _ai_enabled():
+        raise RuntimeError("AI not configured (missing OpenAI client or OPENAI_API_KEY).")
+
+    model = os.getenv("PAYSCOPE_AI_MODEL", "gpt-4o-mini")
+
+    system = (
+        "You write 1–2 sentence narratives for a weekly labour-market update card.\n"
+        "Rules:\n"
+        "- Use ONLY the provided numbers.\n"
+        "- No made-up causes. If you suggest drivers, frame as 'could' / 'may'.\n"
+        "- Mention caution if change is extreme or volumes may be small.\n"
+        "- Keep it business-briefing tone.\n"
+    )
+
+    facts = _format_change_summary(item)
+
+    user = (
+        "Write a 1–2 sentence narrative for this featured change.\n"
+        "Also output 1 short 'driver_tags' string (comma-separated) from: "
+        "seasonality, data_thin, local_spike, sector_shift, wage_pressure, hiring_freeze, unclear.\n\n"
+        f"Facts:\n{facts}\n\n"
+        "Output JSON with keys: narrative, driver_tags"
+    )
+
+    resp = _openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.4,
+        max_tokens=220,
+    )
+
+    text = (resp.choices[0].message.content or "").strip()
+    m = re.search(r"\{.*\}", text, flags=re.S)
+    json_blob = m.group(0) if m else None
+
+    try:
+        data = json.loads(json_blob or text)
+    except Exception:
+        data = {"narrative": text, "driver_tags": "unclear"}
+
+    narrative = _clamp_text(data.get("narrative"), 800)
+    driver_tags = _clamp_text(data.get("driver_tags"), 200)
+
+    return {"narrative": narrative or "", "driver_tags": driver_tags, "model": model}
+
+
+
 
 
 # -------------------------------------------------------------------
@@ -365,9 +549,6 @@ def manage_users():
     if request.method == "POST":
         action = request.form.get("action")
 
-        # ----------------------------------------------------
-        # ADD USER
-        # ----------------------------------------------------
         if action == "add":
             from werkzeug.security import generate_password_hash
 
@@ -380,16 +561,10 @@ def manage_users():
             elif db.session.query(User).filter_by(username=username).first():
                 flash("Username already exists.", "error")
             else:
-                # Attach new user to the same organisation as the current user,
-                # or fall back to the default org.
                 org = getattr(current_user, "organisation", None)
                 if org is None:
                     org = ensure_default_organisation()
 
-                # Derive org_role from admin_level:
-                #  - superuser (1)  -> owner
-                #  - admin (2)      -> admin
-                #  - normal (0)     -> member
                 if admin_level == 1:
                     org_role = "owner"
                 elif admin_level == 2:
@@ -415,9 +590,6 @@ def manage_users():
                 except Exception:
                     flash("Failed to add user.", "error")
 
-        # ----------------------------------------------------
-        # DELETE USER
-        # ----------------------------------------------------
         elif action == "delete":
             user_id = request.form.get("user_id")
             if not user_id:
@@ -436,9 +608,6 @@ def manage_users():
                 else:
                     flash("User not found.", "error")
 
-        # ----------------------------------------------------
-        # UPDATE USER (admin_level only for now)
-        # ----------------------------------------------------
         elif action == "update":
             user_id = request.form.get("user_id")
             admin_level = request.form.get("admin_level")
@@ -449,7 +618,6 @@ def manage_users():
                 if user:
                     user.admin_level = int(admin_level)
 
-                    # Optionally keep org_role roughly in sync:
                     if user.admin_level == 1:
                         user.org_role = "owner"
                     elif user.admin_level == 2:
@@ -466,7 +634,6 @@ def manage_users():
                 else:
                     flash("User not found.", "error")
 
-    
     users = User.query.options(joinedload(User.organisation)).all()
     return render_template("manage_users.html", users=users)
 
@@ -474,7 +641,6 @@ def manage_users():
 @bp.route("/seed-default-org")
 @login_required
 def seed_default_org():
-    # Only admins/superusers
     if getattr(current_user, "admin_level", 0) not in (1, 2):
         abort(403)
 
@@ -514,9 +680,7 @@ def backfill_counties():
     updated = 0
     skipped = 0
 
-    q = JobRecord.query.filter(
-        (JobRecord.county == None) | (JobRecord.county == "")  # noqa: E711
-    )
+    q = JobRecord.query.filter((JobRecord.county == None) | (JobRecord.county == ""))  # noqa: E711
     limit = request.args.get("limit", type=int)
     if limit:
         q = q.limit(limit)
@@ -537,10 +701,7 @@ def backfill_counties():
 
     try:
         commit_or_rollback()
-        flash(
-            f"✅ County backfill complete. Updated: {updated}, Skipped: {skipped}",
-            "success",
-        )
+        flash(f"✅ County backfill complete. Updated: {updated}, Skipped: {skipped}", "success")
     except Exception:
         flash("Failed to save backfill results.", "error")
     return redirect(url_for("upload.upload"))
@@ -554,8 +715,6 @@ def backfill_counties():
 def run_ons_import():
     if getattr(current_user, "admin_level", 0) != 1:
         abort(403)
-
-    from models import OnsEarnings  # local import to avoid cycles
 
     db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI")
     print("🔎 ONS IMPORT using DB URI:", db_uri)
@@ -612,6 +771,7 @@ def debug_pay_explorer_json():
     )
     return jsonify(data)
 
+
 # -------------------------------------------------------------------
 # LEADS (Waitlist + Access Requests)
 # -------------------------------------------------------------------
@@ -646,7 +806,6 @@ def admin_leads():
             )
         )
 
-    # Keep it snappy in UI
     waitlist = waitlist_query.limit(500).all()
     access_requests = access_query.limit(500).all()
 
@@ -730,8 +889,6 @@ def admin_leads_export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
 # -------------------------------------------------------------------
 # ONS IMPORT – BUTTON 2 (new helper-based route)
 # -------------------------------------------------------------------
@@ -762,15 +919,9 @@ def run_ons_import_manual():
     return redirect(url_for("admin.admin_tools"))
 
 
-# -------------------------------------------------------------------
-# Simple ONS inspection helper
-# -------------------------------------------------------------------
 @bp.route("/inspect/ons")
 @superuser_required
 def inspect_ons():
-    from sqlalchemy import func
-    from models import OnsEarnings, db
-
     grouped = (
         db.session.query(
             OnsEarnings.year.label("year"),
@@ -822,21 +973,13 @@ def inspect_ons():
     )
 
 
-# -------------------------------------------------------------------
-# Pay Explorer / ONS mapping debug endpoint
-# -------------------------------------------------------------------
 @bp.route("/debug/pay-explorer-mapping")
 @login_required
 @superuser_required
 def debug_pay_explorer_mapping():
     days = request.args.get("days", default=30, type=int)
     rows, ons_year = pay_compare.build_pay_explorer_debug_snapshot(days=days)
-    return jsonify(
-        {
-            "ons_year": ons_year,
-            "rows": rows,
-        }
-    )
+    return jsonify({"ons_year": ons_year, "rows": rows})
 
 
 # -------------------------------------------------------------------
@@ -856,11 +999,7 @@ def admin_companies():
         if action == "merge":
             target_slug = (request.form.get("target_company_id") or "").strip()
             source_raw = (request.form.get("source_company_ids") or "").strip()
-            source_slugs = [
-                s.strip()
-                for s in source_raw.replace("\n", ",").split(",")
-                if s.strip()
-            ]
+            source_slugs = [s.strip() for s in source_raw.replace("\n", ",").split(",") if s.strip()]
 
             source_slugs = [s for s in source_slugs if s != target_slug]
             source_slugs = list(dict.fromkeys(source_slugs))
@@ -964,11 +1103,7 @@ def admin_companies():
             }
         )
 
-    return render_template(
-        "admin/companies.html",
-        rows=rows,
-        companies=all_companies,
-    )
+    return render_template("admin/companies.html", rows=rows, companies=all_companies)
 
 
 @bp.route("/companies/regenerate-ids")
@@ -1080,11 +1215,7 @@ def regeocode_jobs():
 
     try:
         commit_or_rollback()
-        flash(
-            f"✅ Re-geocoding complete. Updated: {updated}, "
-            f"cleared invalid locations: {cleared}",
-            "success",
-        )
+        flash(f"✅ Re-geocoding complete. Updated: {updated}, cleared invalid locations: {cleared}", "success")
     except Exception:
         flash("Failed to save re-geocoding results.", "error")
 
@@ -1120,13 +1251,7 @@ def ai_logs():
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     logs = pagination.items
 
-    return render_template(
-        "ai_logs.html",
-        logs=logs,
-        pagination=pagination,
-        q=q,
-        per_page=per_page,
-    )
+    return render_template("ai_logs.html", logs=logs, pagination=pagination, q=q, per_page=per_page)
 
 
 @bp.route("/ai-logs/<int:log_id>", methods=["GET"])
@@ -1151,222 +1276,13 @@ def ai_logs_get(log_id: int):
 @login_required
 @superuser_required
 def run_job_role_canonicaliser_now():
-    # Match the cron_runner signature you shared (trigger + limit).
     result = run_job_role_canonicaliser(trigger="admin", limit=100)
 
-    updated = (
-        result.get("updated")
-        or result.get("rows_updated")
-        or result.get("records_updated")
-        or 0
-    )
-    examined = (
-        result.get("examined")
-        or result.get("scanned")
-        or result.get("rows_scanned")
-        or 0
-    )
+    updated = result.get("updated") or result.get("rows_updated") or result.get("records_updated") or 0
+    examined = result.get("examined") or result.get("scanned") or result.get("rows_scanned") or 0
 
-    flash(
-        f"Job role canonicaliser updated {updated} rows "
-        f"(examined {examined}).",
-        "success",
-    )
+    flash(f"Job role canonicaliser updated {updated} rows (examined {examined}).", "success")
     return redirect(url_for("admin.cron_runs"))
-
-
-# -------------------------------------------------------------------
-# DIAGNOSE POSTCODES
-# -------------------------------------------------------------------
-@bp.route("/diagnose-postcodes")
-@login_required
-def diagnose_postcodes():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    from .utils import normalize_uk_postcode, geocode_postcode, inside_uk
-
-    results = []
-    seen = set()
-
-    for job in JobRecord.query.all():
-        raw = (job.postcode or "").strip()
-        if raw in seen:
-            continue
-        seen.add(raw)
-
-        normalized = normalize_uk_postcode(raw)
-        lat, lon = geocode_postcode(raw)
-
-        results.append(
-            {
-                "raw": raw,
-                "normalized": normalized,
-                "lat": lat,
-                "lon": lon,
-                "valid": lat is not None and lon is not None and inside_uk(lat, lon),
-            }
-        )
-
-    return jsonify(results)
-
-
-# -------------------------------------------------------------------
-# CLEAR JOB RECORDS
-# -------------------------------------------------------------------
-@bp.route("/clear-job-records")
-@login_required
-def clear_job_records():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    try:
-        deleted = JobRecord.query.delete()
-        commit_or_rollback()
-        flash(f"✅ Deleted {deleted} job records.", "success")
-    except Exception as e:  # noqa: BLE001
-        print(f"Error clearing job records: {e}")
-        flash("Failed to delete job records.", "error")
-
-    return redirect(url_for("upload.upload"))
-
-
-# -------------------------------------------------------------------
-# JOB POSTINGS LIST
-# -------------------------------------------------------------------
-@bp.route("/jobs")
-@login_required
-def admin_jobs():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    page = request.args.get("page", 1, type=int)
-    per_page = 50
-
-    query = JobPosting.query.order_by(JobPosting.scraped_at.desc())
-
-    source = request.args.get("source", type=str, default="").strip()
-    company = request.args.get("company", type=str, default="").strip()
-    title = request.args.get("title", type=str, default="").strip()
-    active_only = request.args.get("active", "1")
-
-    if source:
-        query = query.filter(JobPosting.source_site == source)
-    if company:
-        query = query.filter(JobPosting.company_name.ilike(f"%{company}%"))
-    if title:
-        query = query.filter(JobPosting.title.ilike(f"%{title}%"))
-    if active_only == "1":
-        query = query.filter(JobPosting.is_active.is_(True))
-
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    jobs = pagination.items
-
-    sources = (
-        db.session.query(JobPosting.source_site)
-        .distinct()
-        .order_by(JobPosting.source_site)
-        .all()
-    )
-    sources = [row[0] for row in sources if row[0]]
-
-    return render_template(
-        "admin/jobs.html",
-        jobs=jobs,
-        pagination=pagination,
-        sources=sources,
-        selected_source=source,
-        company_filter=company,
-        title_filter=title,
-        active_only=active_only,
-    )
-
-
-# -------------------------------------------------------------------
-# IMPORT SINGLE JOB POSTING → JobRecord
-# -------------------------------------------------------------------
-@bp.route("/jobs/import/<int:posting_id>", methods=["POST"])
-@login_required
-def admin_import_job(posting_id):
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    posting = JobPosting.query.get_or_404(posting_id)
-
-    if getattr(posting, "imported", False):
-        flash("This job has already been imported.", "warning")
-        return redirect(url_for("admin.admin_jobs"))
-
-    import_posting_to_record(posting)
-    db.session.commit()
-
-    flash("Job imported successfully into system records.", "success")
-    return redirect(url_for("admin.admin_jobs"))
-
-
-# -------------------------------------------------------------------
-# IMPORT ALL ACTIVE JOB POSTINGS → JobRecord
-# -------------------------------------------------------------------
-@bp.route("/admin/jobs/import-all", methods=["POST"])
-@login_required
-def admin_import_all_jobs():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    query = JobPosting.query
-
-    search = request.form.get("search") or request.args.get("search")
-    company = request.form.get("company") or request.args.get("company")
-    source = request.form.get("source") or request.args.get("source")
-    active_only = request.form.get("active_only") or request.args.get("active_only")
-
-    if search:
-        like = f"%{search}%"
-        query = query.filter(JobPosting.title.ilike(like))
-    if company:
-        like = f"%{company}%"
-        query = query.filter(JobPosting.company_name.ilike(like))
-    if source:
-        query = query.filter(JobPosting.source_site == source)
-    if active_only in ("1", "true", "True", True):
-        query = query.filter(JobPosting.is_active.is_(True))
-
-    postings = query.all()
-
-    imported_count = 0
-    skipped_already_imported = 0
-
-    for posting in postings:
-        if getattr(posting, "imported", False):
-            skipped_already_imported += 1
-            continue
-
-        import_posting_to_record(posting, enable_snap_to_postcode=False)
-        imported_count += 1
-
-    db.session.commit()
-
-    msg_parts = [f"Imported {imported_count} job(s)."]
-    if skipped_already_imported:
-        msg_parts.append(f"Skipped {skipped_already_imported} already-imported job(s).")
-
-    flash(" ".join(msg_parts), "success")
-
-    return redirect(url_for("admin.admin_jobs"))
-
-
-@bp.route("/admin/jobs/import/<int:posting_id>", methods=["POST"])
-@login_required
-def import_job(posting_id):
-    posting = JobPosting.query.get_or_404(posting_id)
-
-    from app.job_importer import import_posting_to_record as legacy_import_posting_to_record
-
-    record = legacy_import_posting_to_record(posting)
-    db.session.commit()
-
-    flash("Job imported successfully.", "success")
-    return redirect(url_for("admin.jobs_page"))
 
 
 # -------------------------------------------------------------------
@@ -1376,17 +1292,12 @@ def import_job(posting_id):
 @login_required
 @superuser_required
 def admin_tools():
-    # Coverage Health tile (last 7 days)
     cov = get_weekly_coverage(days=7)
 
     weak_sectors = int(cov["summary"].get("weak_sectors", 0) or 0)
     weak_locations = int(cov["summary"].get("weak_locations", 0) or 0)
     weak_total = weak_sectors + weak_locations
 
-    # Simple status rules:
-    # - green: no weak sectors/locations
-    # - amber: small number of weak items
-    # - red: many weak items
     if weak_total == 0:
         status = "green"
     elif weak_total <= 3:
@@ -1403,7 +1314,6 @@ def admin_tools():
     }
 
     return render_template("admin/admin_tools.html", coverage_tile=coverage_tile)
-
 
 
 # -------------------------------------------------------------------
@@ -1457,66 +1367,11 @@ def db_health():
 
 
 # -------------------------------------------------------------------
-# BACKFILL COMPANY IDS
-# -------------------------------------------------------------------
-@bp.route("/backfill-company-ids")
-@login_required
-def backfill_company_ids():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    from app.blueprints.utils import get_or_create_company_id
-
-    jobs = JobRecord.query.all()
-    updated = 0
-    skipped = 0
-
-    for job in jobs:
-        raw_name = (job.company_name or "").strip()
-
-        if not raw_name:
-            skipped += 1
-            continue
-
-        if job.company_id and job.company_id.strip():
-            skipped += 1
-            continue
-
-        new_id = get_or_create_company_id(raw_name)
-        job.company_id = new_id
-        updated += 1
-
-    try:
-        commit_or_rollback()
-        flash(f"Backfill complete — updated {updated}, skipped {skipped}.", "success")
-    except Exception as e:  # noqa: BLE001
-        flash("Failed to backfill company IDs.", "error")
-        print("Backfill error:", e)
-
-    return redirect(url_for("admin.admin_companies"))
-
-
-@bp.route("/utils/create-job-role-mapping-table")
-@login_required
-def create_job_role_mapping_table():
-    if not _require_superuser():
-        return redirect(url_for("home"))
-
-    JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
-    flash("JobRoleMapping table has been created (or already existed).", "success")
-    return redirect(url_for("dashboard.admin_job_roles"))
-
-
-# -------------------------------------------------------------------
 # CRON RUN HISTORY + RUN NOW
 # -------------------------------------------------------------------
 @bp.route("/cron-runs")
 @login_required
 def cron_runs():
-    """
-    Show history of cron runs (from cron_run_logs table).
-    Also attaches r.stats parsed from CronRunLog.run_stats so templates can render it.
-    """
     if not _require_superuser():
         return redirect(url_for("home"))
 
@@ -1527,16 +1382,10 @@ def cron_runs():
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     runs = pagination.items
 
-    # Attach parsed stats (safe; never breaks page)
     for r in runs:
         setattr(r, "stats", _safe_json_loads(getattr(r, "run_stats", None)) or {})
 
-    return render_template(
-        "admin/cron_runs.html",
-        runs=runs,
-        pagination=pagination,
-        per_page=per_page,
-    )
+    return render_template("admin/cron_runs.html", runs=runs, pagination=pagination, per_page=per_page)
 
 
 @bp.route("/coverage")
@@ -1548,11 +1397,8 @@ def admin_coverage():
 
     coverage = get_weekly_coverage(days=days)
     diff = get_weekly_coverage_diff()
-
-    # NEW: per-source coverage (Adzuna vs Reed)
     sources = get_weekly_source_coverage(days=days)
 
-    # Build lookup dicts so templates can do .get()
     sector_delta_map = {d["sector"]: d.get("delta", 0) for d in diff.get("sector_diff", [])}
     location_delta_map = {d["county"]: d.get("delta", 0) for d in diff.get("location_diff", [])}
 
@@ -1564,15 +1410,12 @@ def admin_coverage():
         locations=coverage["locations"],
         weak_sectors=coverage["weak_sectors"],
         weak_locations=coverage["weak_locations"],
-        sector_diff=diff["sector_diff"],              # list (table-ready)
-        location_diff=diff["location_diff"],          # list (table-ready)
-        sector_delta_map=sector_delta_map,            # dict (lookup-ready)
-        location_delta_map=location_delta_map,        # dict (lookup-ready)
-
-        # NEW:
+        sector_diff=diff["sector_diff"],
+        location_diff=diff["location_diff"],
+        sector_delta_map=sector_delta_map,
+        location_delta_map=location_delta_map,
         sources=sources,
     )
-
 
 
 @bp.route("/coverage/export")
@@ -1632,9 +1475,505 @@ def admin_coverage_heatmap():
         .all()
     )
 
+    return render_template("admin/coverage_heatmap.html", rows=rows)
+# -------------------------------------------------------------------
+# Legacy weekly admin route (kept intact)
+# -------------------------------------------------------------------
+@bp.route("/weekly", methods=["GET", "POST"])
+@login_required
+def admin_weekly_changes():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    today = date.today()
+    week_start = _monday_of(today)
+    week_end = week_start + timedelta(days=6)
+
+    qs = request.args.get("week_start")
+    if qs:
+        try:
+            week_start = date.fromisoformat(qs)
+            week_end = week_start + timedelta(days=6)
+        except Exception:
+            pass
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "add_manual":
+            metric_type = (request.form.get("metric_type") or "pay").strip()
+            job_role = (request.form.get("job_role") or "").strip() or None
+            sector = (request.form.get("sector") or "").strip() or None
+            location = (request.form.get("location") or "").strip() or None
+            direction = (request.form.get("direction") or "").strip() or None
+            headline = (request.form.get("headline") or "").strip()
+            interpretation = (request.form.get("interpretation") or "").strip() or None
+            confidence = request.form.get("confidence_level")
+            confidence_level = int(confidence) if confidence and confidence.isdigit() else None
+
+            def _to_float(v):
+                v = (v or "").strip()
+                if not v:
+                    return None
+                try:
+                    return float(v)
+                except Exception:
+                    return None
+
+            value_previous = _to_float(request.form.get("value_previous"))
+            value_current = _to_float(request.form.get("value_current"))
+            delta_value = _to_float(request.form.get("delta_value"))
+            delta_percent = _to_float(request.form.get("delta_percent"))
+
+            if not headline:
+                flash("Headline is required.", "error")
+            else:
+                row = WeeklyMarketChange(
+                    week_start=week_start,
+                    week_end=week_end,
+                    metric_type=metric_type,
+                    job_role=job_role,
+                    sector=sector,
+                    location=location,
+                    value_previous=value_previous,
+                    value_current=value_current,
+                    delta_value=delta_value,
+                    delta_percent=delta_percent,
+                    direction=direction,
+                    headline=headline,
+                    interpretation=interpretation,
+                    confidence_level=confidence_level,
+                    is_featured=True,
+                    is_published=False,
+                )
+                db.session.add(row)
+                commit_or_rollback()
+                flash("Added weekly insight.", "success")
+
+        elif action == "toggle_featured":
+            row_id = request.form.get("id")
+            row = db.session.get(WeeklyMarketChange, int(row_id)) if row_id else None
+            if row:
+                row.is_featured = not bool(row.is_featured)
+                commit_or_rollback()
+                flash("Updated featured status.", "success")
+
+        elif action == "publish_week":
+            items = (
+                db.session.query(WeeklyMarketChange)
+                .filter(WeeklyMarketChange.week_start == week_start)
+                .filter(WeeklyMarketChange.is_featured.is_(True))
+                .all()
+            )
+            for it in items:
+                it.is_published = True
+            commit_or_rollback()
+            flash("Published featured weekly insights.", "success")
+
+        return redirect(url_for("admin.admin_weekly_changes", week_start=week_start.isoformat()))
+
+    items = (
+        db.session.query(WeeklyMarketChange)
+        .filter(WeeklyMarketChange.week_start == week_start)
+        .order_by(desc(WeeklyMarketChange.is_featured), desc(WeeklyMarketChange.created_at))
+        .all()
+    )
+
+    featured = [x for x in items if x.is_featured]
+
     return render_template(
-        "admin/coverage_heatmap.html",
-        rows=rows,
+        "admin/weekly_changes.html",
+        week_start=week_start,
+        week_end=week_end,
+        items=items,
+        featured=featured,
+    )
+
+
+# -------------------------------------------------------------------
+# New Weekly Market Changes admin (newsroom-style)
+# -------------------------------------------------------------------
+@bp.route("/weekly-market-changes", methods=["GET", "POST"])
+@login_required
+def weekly_market_changes_admin():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    today = date.today()
+    week_start = _monday_of(today)
+    week_end = week_start + timedelta(days=6)
+
+    qs = (request.args.get("week_start") or "").strip()
+    if qs:
+        try:
+            week_start = date.fromisoformat(qs)
+            week_end = week_start + timedelta(days=6)
+        except Exception:
+            pass
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+
+        def _to_float(v):
+            v = (v or "").strip()
+            if not v:
+                return None
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        if action == "add":
+            metric_type = (request.form.get("metric_type") or "pay").strip()
+            direction = (request.form.get("direction") or "").strip() or None
+
+            headline = (request.form.get("headline") or "").strip()
+            interpretation = (request.form.get("interpretation") or "").strip() or None
+
+            job_role = (request.form.get("job_role") or "").strip() or None
+            sector = (request.form.get("sector") or "").strip() or None
+            location = (request.form.get("location") or "").strip() or None
+
+            value_previous = _to_float(request.form.get("value_previous"))
+            value_current = _to_float(request.form.get("value_current"))
+            delta_value = _to_float(request.form.get("delta_value"))
+            delta_percent = _to_float(request.form.get("delta_percent"))
+
+            conf = (request.form.get("confidence_level") or "").strip()
+            confidence_level = int(conf) if conf.isdigit() else None
+
+            is_featured = (request.form.get("is_featured") == "1")
+            is_published = (request.form.get("is_published") == "1")
+
+            if not headline:
+                flash("Headline is required.", "error")
+            else:
+                row = WeeklyMarketChange(
+                    week_start=week_start,
+                    week_end=week_end,
+                    metric_type=metric_type,
+                    job_role=job_role,
+                    sector=sector,
+                    location=location,
+                    value_previous=value_previous,
+                    value_current=value_current,
+                    delta_value=delta_value,
+                    delta_percent=delta_percent,
+                    direction=direction,
+                    headline=headline,
+                    interpretation=interpretation,
+                    confidence_level=confidence_level,
+                    is_featured=is_featured,
+                    is_published=is_published,
+                )
+                db.session.add(row)
+                commit_or_rollback()
+                flash("Weekly item added.", "success")
+
+        elif action == "toggle_featured":
+            row_id = request.form.get("id")
+            row = db.session.get(WeeklyMarketChange, int(row_id)) if row_id else None
+            if row:
+                row.is_featured = not bool(row.is_featured)
+                commit_or_rollback()
+                flash("Updated featured status.", "success")
+
+        elif action == "toggle_published":
+            row_id = request.form.get("id")
+            row = db.session.get(WeeklyMarketChange, int(row_id)) if row_id else None
+            if row:
+                row.is_published = not bool(row.is_published)
+                commit_or_rollback()
+                flash("Updated published status.", "success")
+
+        elif action == "publish_week":
+            items = (
+                db.session.query(WeeklyMarketChange)
+                .filter(WeeklyMarketChange.week_start == week_start)
+                .filter(WeeklyMarketChange.is_featured.is_(True))
+                .all()
+            )
+            for it in items:
+                it.is_published = True
+            commit_or_rollback()
+            flash("Published all featured items for the week.", "success")
+
+
+        elif action == "generate_ai":
+            # Generate per-item narratives + top weekly brief for featured items
+            featured_items = (
+                db.session.query(WeeklyMarketChange)
+                .filter(WeeklyMarketChange.week_start == week_start)
+                .filter(WeeklyMarketChange.is_featured.is_(True))
+                .order_by(desc(WeeklyMarketChange.created_at))
+                .all()
+            )
+
+            if not featured_items:
+                flash("No featured items to generate narratives for.", "error")
+                return redirect(url_for("admin.weekly_market_changes_admin", week_start=week_start.isoformat()))
+
+            if not _ai_enabled():
+                flash("AI not configured. Set OPENAI_API_KEY (and optionally PAYSCOPE_AI_MODEL).", "error")
+                return redirect(url_for("admin.weekly_market_changes_admin", week_start=week_start.isoformat()))
+
+            force = (request.form.get("force") == "1")
+
+            # Per-item narratives
+            generated_count = 0
+            item_failures = 0
+
+            for it in featured_items:
+                # Skip if already generated (unless force)
+                if (not force) and getattr(it, "ai_narrative", None):
+                    continue
+
+                try:
+                    out = _ai_generate_item_narrative(it)
+
+                    # Write safely (in case migrations aren't applied yet)
+                    if hasattr(it, "ai_narrative"):
+                        it.ai_narrative = (out.get("narrative") or "").strip() or None
+                    if hasattr(it, "ai_driver_tags"):
+                        it.ai_driver_tags = (out.get("driver_tags") or "").strip() or None
+                    if hasattr(it, "ai_model"):
+                        it.ai_model = (out.get("model") or "").strip() or None
+
+                    # Timestamp column name (matches your model: ai_updated_at)
+                    if hasattr(it, "ai_updated_at"):
+                        it.ai_updated_at = datetime.utcnow()
+
+                    generated_count += 1
+
+                except Exception as e:  # noqa: BLE001
+                    item_failures += 1
+                    print("AI item narrative error:", e)
+
+            # Weekly overview (WeeklyInsight)
+            weekly_failed = False
+            try:
+                week_out = _ai_generate_weekly_overview(week_start, week_end, featured_items)
+
+                weekly = (
+                    db.session.query(WeeklyInsight)
+                    .filter(WeeklyInsight.week_start == week_start)
+                    .first()
+                )
+                if weekly is None:
+                    weekly = WeeklyInsight(week_start=week_start, week_end=week_end)
+                    db.session.add(weekly)
+
+                weekly.week_end = week_end
+                weekly.headline = (week_out.get("headline") or "").strip()
+                weekly.overview = (week_out.get("overview") or "").strip()
+                weekly.ai_model = (week_out.get("model") or "").strip() or None
+                weekly.ai_generated_at = datetime.utcnow()
+
+            except Exception as e:  # noqa: BLE001
+                weekly_failed = True
+                print("AI weekly overview error:", e)
+
+            try:
+                commit_or_rollback()
+
+                if weekly_failed and generated_count > 0:
+                    flash(
+                        f"Generated {generated_count} item narrative(s), but weekly overview failed. Check logs.",
+                        "warning",
+                    )
+                elif weekly_failed and generated_count == 0:
+                    flash("AI generation failed (no narratives saved). Check logs.", "error")
+                else:
+                    msg = f"AI narratives generated for {generated_count} featured item(s)."
+                    if item_failures:
+                        msg += f" ({item_failures} failed — see logs.)"
+                    flash(msg, "success")
+
+            except Exception as e:  # noqa: BLE001
+                print("Failed saving AI narratives:", e)
+                flash("Failed saving AI narratives.", "error")
+
+    
+
+
+
+        elif action == "generate_candidates":
+            # Column auto-detection
+            c_day = _pick_col(JobSummaryDaily, ["day", "date", "summary_date", "run_date"])
+            c_role = _pick_col(JobSummaryDaily, ["job_role_group", "job_role", "role", "canonical_role"])
+            c_loc = _pick_col(JobSummaryDaily, ["location", "region", "county", "area"])
+            c_sector = _pick_col(JobSummaryDaily, ["sector", "sector_group"])
+
+            # Prefer avg/median pay if present (your table uses median_pay_rate)
+            c_pay = _pick_col(JobSummaryDaily, ["avg_hourly", "avg_hourly_pay", "hourly_avg", "avg_rate", "median_pay_rate"])
+            # Prefer adverts_count if present (your table uses adverts_count)
+            c_cnt = _pick_col(JobSummaryDaily, ["posting_count", "count", "total", "n_postings", "job_count", "adverts_count"])
+
+            missing = []
+            if c_day is None:
+                missing.append("date/day")
+            if c_role is None:
+                missing.append("role")
+            if c_loc is None:
+                missing.append("location/region/county")
+            if c_pay is None and c_cnt is None:
+                missing.append("median_pay_rate OR adverts_count")
+            if missing:
+                flash("Cannot generate candidates — missing JobSummaryDaily columns: " + ", ".join(missing), "error")
+                return redirect(url_for("admin.weekly_market_changes_admin", week_start=week_start.isoformat()))
+
+            prev_start = week_start - timedelta(days=7)
+            prev_end = week_start - timedelta(days=1)
+
+            group_cols = [c_role, c_loc]
+            if c_sector is not None:
+                group_cols.append(c_sector)
+
+            q_cur = (
+                db.session.query(
+                    c_role.label("role"),
+                    c_loc.label("loc"),
+                    (c_sector.label("sector") if c_sector is not None else func.null().label("sector")),
+                    (func.avg(c_pay).label("pay") if c_pay is not None else func.null().label("pay")),
+                    (func.sum(c_cnt).label("cnt") if c_cnt is not None else func.null().label("cnt")),
+                )
+                .filter(c_day >= week_start, c_day <= week_end)
+                .group_by(*group_cols)
+            )
+
+            q_prev = (
+                db.session.query(
+                    c_role.label("role"),
+                    c_loc.label("loc"),
+                    (c_sector.label("sector") if c_sector is not None else func.null().label("sector")),
+                    (func.avg(c_pay).label("pay") if c_pay is not None else func.null().label("pay")),
+                    (func.sum(c_cnt).label("cnt") if c_cnt is not None else func.null().label("cnt")),
+                )
+                .filter(c_day >= prev_start, c_day <= prev_end)
+                .group_by(*group_cols)
+            )
+
+            cur_rows = {(r.role, r.loc, r.sector): r for r in q_cur.all()}
+            prev_rows = {(r.role, r.loc, r.sector): r for r in q_prev.all()}
+
+            candidates = []
+            keys = set(cur_rows.keys()) | set(prev_rows.keys())
+
+            for key in keys:
+                role, loc, sector = key
+                cur = cur_rows.get(key)
+                prev = prev_rows.get(key)
+
+                cur_pay = float(cur.pay) if cur and cur.pay is not None else None
+                prev_pay = float(prev.pay) if prev and prev.pay is not None else None
+
+                cur_cnt = float(cur.cnt) if cur and cur.cnt is not None else None
+                prev_cnt = float(prev.cnt) if prev and prev.cnt is not None else None
+
+                if cur_pay is not None and prev_pay is not None and prev_pay > 0:
+                    dv = cur_pay - prev_pay
+                    dp = (dv / prev_pay) * 100.0
+                    candidates.append({"metric_type": "pay", "role": role, "loc": loc, "sector": sector, "prev": prev_pay, "cur": cur_pay, "dv": dv, "dp": dp})
+
+                if cur_cnt is not None and prev_cnt is not None and prev_cnt > 0:
+                    dv = cur_cnt - prev_cnt
+                    dp = (dv / prev_cnt) * 100.0
+                    candidates.append({"metric_type": "volume", "role": role, "loc": loc, "sector": sector, "prev": prev_cnt, "cur": cur_cnt, "dv": dv, "dp": dp})
+
+            def top_n(metric, n):
+                items = [c for c in candidates if c["metric_type"] == metric]
+                items.sort(key=lambda x: abs(x["dv"]), reverse=True)
+                return items[:n]
+
+            top = top_n("pay", 25) + top_n("volume", 25)
+
+            inserted = 0
+            for c in top:
+                role = _safe_str(c["role"])
+                loc = _safe_str(c["loc"])
+                sector = _safe_str(c.get("sector"))
+
+                dv = float(c["dv"])
+                dp = float(c["dp"])
+                direction = "up" if dv > 0 else "down" if dv < 0 else "flat"
+
+                if c["metric_type"] == "pay":
+                    headline = f"{role} — {loc}: {dv:+.2f} ({dp:+.1f}%)"
+                else:
+                    headline = f"{role} — {loc}: volume {dv:+.0f} ({dp:+.1f}%)"
+
+                exists = (
+                    db.session.query(WeeklyMarketChange.id)
+                    .filter(WeeklyMarketChange.week_start == week_start)
+                    .filter(WeeklyMarketChange.metric_type == c["metric_type"])
+                    .filter(WeeklyMarketChange.job_role == role)
+                    .filter(WeeklyMarketChange.location == loc)
+                    .filter(WeeklyMarketChange.headline == headline)
+                    .first()
+                )
+                if exists:
+                    continue
+
+                row = WeeklyMarketChange(
+                    week_start=week_start,
+                    week_end=week_end,
+                    metric_type=c["metric_type"],
+                    job_role=role,
+                    location=loc,
+                    sector=sector,
+                    value_previous=c["prev"],
+                    value_current=c["cur"],
+                    delta_value=dv,
+                    delta_percent=dp,
+                    direction=direction,
+                    headline=headline,
+                    interpretation=None,
+                    confidence_level=None,
+                    is_featured=False,
+                    is_published=False,
+                )
+                db.session.add(row)
+                inserted += 1
+
+            commit_or_rollback()
+            flash(f"Generated {inserted} candidate items (draft).", "success")
+
+        elif action == "delete":
+            row_id = request.form.get("id")
+            row = db.session.get(WeeklyMarketChange, int(row_id)) if row_id else None
+            if row:
+                db.session.delete(row)
+                commit_or_rollback()
+                flash("Deleted item.", "success")
+
+        return redirect(url_for("admin.weekly_market_changes_admin", week_start=week_start.isoformat()))
+
+    items = (
+        db.session.query(WeeklyMarketChange)
+        .filter(WeeklyMarketChange.week_start == week_start)
+        .order_by(desc(WeeklyMarketChange.is_featured), desc(WeeklyMarketChange.created_at))
+        .all()
+    )
+
+    featured = [x for x in items if x.is_featured]
+    published_featured = [x for x in featured if x.is_published]
+
+    public_url = None
+    if published_featured:
+        public_url = url_for("insights.weekly_insight", week_start_iso=week_start.isoformat())
+
+    prev_week = (week_start - timedelta(days=7)).isoformat()
+    next_week = (week_start + timedelta(days=7)).isoformat()
+
+    return render_template(
+        "admin/weekly_market_changes.html",
+        week_start=week_start,
+        week_end=week_end,
+        items=items,
+        featured=featured,
+        public_url=public_url,
+        prev_week=prev_week,
+        next_week=next_week,
     )
 
 
@@ -1644,7 +1983,6 @@ def cron_run_now():
     if not _require_superuser():
         return redirect(url_for("home"))
 
-    # Keep compatibility with the cron runner entrypoint if present
     from cron_runner import run_scheduled_jobs
 
     started_at = datetime.utcnow()
@@ -1663,8 +2001,6 @@ def cron_run_now():
         message=message,
         started_at=started_at,
         finished_at=finished_at,
-        # run_stats intentionally omitted here because run_scheduled_jobs() may
-        # return different shapes; cron_runner itself writes rich run_stats.
     )
     db.session.add(log_row)
     commit_or_rollback()

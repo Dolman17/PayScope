@@ -326,6 +326,79 @@ class UploadBatch(db.Model):
     errors_json = db.Column(db.Text, nullable=True)  # aggregated errors per row
 
 
+# models.py
+from datetime import datetime, date
+from extensions import db
+
+from datetime import datetime
+
+class WeeklyMarketChange(db.Model):
+    __tablename__ = "weekly_market_changes"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    week_start = db.Column(db.Date, nullable=False, index=True)
+    week_end = db.Column(db.Date, nullable=False, index=True)
+
+    # 'pay', 'vacancy', 'volume', 'coverage'
+    metric_type = db.Column(db.String(30), nullable=False, index=True)
+
+    job_role = db.Column(db.String(120), nullable=True, index=True)
+    sector = db.Column(db.String(120), nullable=True, index=True)
+    location = db.Column(db.String(120), nullable=True, index=True)
+
+    value_previous = db.Column(db.Numeric(10, 2), nullable=True)
+    value_current = db.Column(db.Numeric(10, 2), nullable=True)
+    delta_value = db.Column(db.Numeric(10, 2), nullable=True)
+    delta_percent = db.Column(db.Numeric(6, 2), nullable=True)
+
+    # 'up', 'down', 'flat'
+    direction = db.Column(db.String(10), nullable=True, index=True)
+
+    headline = db.Column(db.Text, nullable=False)
+    interpretation = db.Column(db.Text, nullable=True)
+
+    # 1–5
+    confidence_level = db.Column(db.SmallInteger, nullable=True)
+
+    is_featured = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    is_published = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+
+    # -----------------------------
+    # AI narrative fields (NEW)
+    # -----------------------------
+    ai_narrative = db.Column(db.Text, nullable=True)          # The per-item narrative paragraph(s)
+    ai_driver_tags = db.Column(db.String(255), nullable=True) # Comma-separated tags: e.g. "tight labour, holiday uplift"
+    ai_model = db.Column(db.String(80), nullable=True)        # e.g. "gpt-4o-mini"
+    ai_updated_at = db.Column(db.DateTime, nullable=True)     # When the AI fields were generated
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index("ix_wmc_week_metric", "week_start", "metric_type"),
+    )
+
+
+class WeeklyInsight(db.Model):
+    __tablename__ = "weekly_insights"
+
+    id = db.Column(db.Integer, primary_key=True)
+    week_start = db.Column(db.Date, nullable=False, unique=True, index=True)
+    week_end = db.Column(db.Date, nullable=False)
+
+    headline = db.Column(db.String(200), nullable=True)
+    overview = db.Column(db.Text, nullable=True)              # the top-of-page brief (paragraph/bullets)
+
+    ai_generated_at = db.Column(db.DateTime, nullable=True)
+    ai_model = db.Column(db.String(64), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
