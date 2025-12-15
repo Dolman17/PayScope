@@ -111,6 +111,32 @@
           </div>
         </a>
 
+        <!-- Leads -->
+        <a href="{{ url_for('admin.admin_leads') }}"
+           class="card p-5 hover:shadow-md transition flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="h-8 w-8 rounded-xl bg-fuchsia-50 flex items-center justify-center">
+                <span class="text-fuchsia-600 text-lg">📮</span>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900">Leads</h3>
+                <p class="text-xs text-gray-500">Waitlist &amp; access requests</p>
+              </div>
+            </div>
+
+            {# If you later pass new_access_count into admin_tools(), this badge will light up #}
+            {% if new_access_count is defined and new_access_count %}
+              <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+                {{ new_access_count }} new
+              </span>
+            {% endif %}
+          </div>
+          <p class="text-gray-600 text-sm">
+            Review submissions from the landing page, update access-request status, and export CSVs.
+          </p>
+        </a>
+
         <!-- AI Logs -->
         <a href="{{ url_for('admin.ai_logs') }}"
            class="card p-5 hover:shadow-md transition flex flex-col">
@@ -386,6 +412,3 @@
   </div>
 </div>
 {% endblock %}
-
-
-

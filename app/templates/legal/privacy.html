@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Privacy • PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-10">
+  <div class="card bg-white/[0.03] border-white/10 p-6">
+    <h1 class="text-2xl font-bold text-white">Privacy Policy</h1>
+    <p class="text-sm text-gray-400 mt-2">Last updated: {{ (today.strftime("%-d %b %Y") if today is defined else "—") }}</p>
+
+    <div class="mt-6 space-y-4 text-sm text-gray-300 leading-relaxed">
+      <p>
+        PayScope is a pay insights platform built using public job advertisements and official public datasets.
+        We do not sell personal data.
+      </p>
+
+      <h2 class="text-white font-semibold text-base mt-6">What we collect</h2>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Waitlist signups: email address (and optional notes).</li>
+        <li>Access requests: email address (optional) and request notes.</li>
+      </ul>
+
+      <h2 class="text-white font-semibold text-base mt-6">What we don’t collect</h2>
+      <ul class="list-disc list-inside space-y-1">
+        <li>No scraping of personal profiles.</li>
+        <li>No collection of jobseeker personal data from third-party platforms.</li>
+      </ul>
+
+      <h2 class="text-white font-semibold text-base mt-6">How we use your data</h2>
+      <ul class="list-disc list-inside space-y-1">
+        <li>To respond to access requests and manage early access.</li>
+        <li>To notify you about PayScope updates if you join the waitlist.</li>
+      </ul>
+
+      <h2 class="text-white font-semibold text-base mt-6">Contact</h2>
+      <p>
+        For privacy questions or removal requests, email
+        <a class="underline underline-offset-4 hover:text-gray-100" href="mailto:{{ contact_email or 'hello@payscope.uk' }}">{{ contact_email or 'hello@payscope.uk' }}</a>.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

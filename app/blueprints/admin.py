@@ -32,7 +32,10 @@ from models import (
     OnsEarnings,
     JobRoleMapping,
     ensure_default_organisation,
+    WaitlistSignup,
+    AccessRequest,
 )
+
 from .utils import (
     commit_or_rollback,
     normalize_uk_postcode,
@@ -575,6 +578,125 @@ def debug_pay_explorer_json():
         group_by="county",
     )
     return jsonify(data)
+
+# -------------------------------------------------------------------
+# LEADS (Waitlist + Access Requests)
+# -------------------------------------------------------------------
+@bp.route("/leads", methods=["GET"])
+@login_required
+def admin_leads():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    q = (request.args.get("q") or "").strip()
+    tab = (request.args.get("tab") or "waitlist").strip().lower()
+    tab = tab if tab in ("waitlist", "access") else "waitlist"
+
+    waitlist_query = WaitlistSignup.query.order_by(WaitlistSignup.created_at.desc())
+    access_query = AccessRequest.query.order_by(AccessRequest.created_at.desc())
+
+    if q:
+        like = f"%{q}%"
+        waitlist_query = waitlist_query.filter(
+            or_(
+                WaitlistSignup.email.ilike(like),
+                WaitlistSignup.notes.ilike(like),
+                WaitlistSignup.source.ilike(like),
+            )
+        )
+        access_query = access_query.filter(
+            or_(
+                AccessRequest.email.ilike(like),
+                AccessRequest.notes.ilike(like),
+                AccessRequest.source.ilike(like),
+                AccessRequest.status.ilike(like),
+            )
+        )
+
+    # Keep it snappy in UI
+    waitlist = waitlist_query.limit(500).all()
+    access_requests = access_query.limit(500).all()
+
+    new_access_count = AccessRequest.query.filter(AccessRequest.status == "new").count()
+
+    return render_template(
+        "admin/leads.html",
+        q=q,
+        tab=tab,
+        waitlist=waitlist,
+        access_requests=access_requests,
+        new_access_count=new_access_count,
+    )
+
+
+@bp.route("/leads/access/<int:request_id>/status", methods=["POST"])
+@login_required
+def admin_leads_update_access_status(request_id: int):
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    new_status = (request.form.get("status") or "").strip().lower()
+    if new_status not in ("new", "triaged", "approved", "rejected"):
+        flash("Invalid status.", "error")
+        return redirect(url_for("admin.admin_leads", tab="access"))
+
+    row = db.session.get(AccessRequest, request_id)
+    if not row:
+        flash("Access request not found.", "error")
+        return redirect(url_for("admin.admin_leads", tab="access"))
+
+    row.status = new_status
+    try:
+        commit_or_rollback()
+        flash("Status updated.", "success")
+    except Exception:
+        flash("Failed to update status.", "error")
+
+    return redirect(url_for("admin.admin_leads", tab="access"))
+
+
+@bp.route("/leads/export.csv", methods=["GET"])
+@login_required
+def admin_leads_export_csv():
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    export_type = (request.args.get("type") or "waitlist").strip().lower()
+    export_type = export_type if export_type in ("waitlist", "access") else "waitlist"
+
+    filename_stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    if export_type == "waitlist":
+        rows = WaitlistSignup.query.order_by(WaitlistSignup.created_at.desc()).all()
+        filename = f"payscope_waitlist_{filename_stamp}.csv"
+        header = "id,email,notes,source,created_at\n"
+
+        def gen():
+            yield header
+            for r in rows:
+                notes = (r.notes or "").replace('"', '""')
+                source = (r.source or "").replace('"', '""')
+                yield f'{r.id},"{r.email}","{notes}","{source}","{r.created_at.isoformat()}"\n'
+
+    else:
+        rows = AccessRequest.query.order_by(AccessRequest.created_at.desc()).all()
+        filename = f"payscope_access_requests_{filename_stamp}.csv"
+        header = "id,email,notes,source,status,created_at\n"
+
+        def gen():
+            yield header
+            for r in rows:
+                email = (r.email or "").replace('"', '""')
+                notes = (r.notes or "").replace('"', '""')
+                source = (r.source or "").replace('"', '""')
+                status = (r.status or "").replace('"', '""')
+                yield f'{r.id},"{email}","{notes}","{source}","{status}","{r.created_at.isoformat()}"\n'
+
+    return current_app.response_class(
+        gen(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # -------------------------------------------------------------------

@@ -68,6 +68,9 @@ def create_app():
     from .blueprints.main import bp as main_bp
     from .blueprints.api import bp as api_bp      # ⬅️ NEW IMPORT
     from .blueprints.marketing import marketing_bp
+    from .blueprints.public_landing import bp as public_bp
+
+
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -78,6 +81,7 @@ def create_app():
     app.register_blueprint(upload_bp)
     app.register_blueprint(api_bp, url_prefix="/api")  # now valid
     app.register_blueprint(marketing_bp)
+    app.register_blueprint(public_bp)
 
     # ---------------------------------------------------------
     # Home route

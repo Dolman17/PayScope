@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Leads • PayScope Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+  <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">Leads</h1>
+      <p class="mt-1 text-sm text-gray-400">Waitlist signups and access requests captured from the landing page.</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="{{ url_for('admin.admin_leads_export_csv', type='waitlist') }}" class="btn btn-secondary">
+        Export waitlist CSV
+      </a>
+      <a href="{{ url_for('admin.admin_leads_export_csv', type='access') }}" class="btn btn-secondary">
+        Export access CSV
+      </a>
+    </div>
+  </header>
+
+  <div class="card bg-white/[0.03] border-white/10 p-4 mb-4">
+    <form method="GET" action="{{ url_for('admin.admin_leads') }}" class="flex flex-col md:flex-row gap-2 md:items-center">
+      <input type="hidden" name="tab" value="{{ tab }}" />
+      <div class="flex-1">
+        <input name="q"
+               value="{{ q }}"
+               placeholder="Search email, notes, status…"
+               class="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-white/10" />
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" type="submit">Search</button>
+        <a class="btn btn-secondary" href="{{ url_for('admin.admin_leads', tab=tab) }}">Clear</a>
+      </div>
+    </form>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      <a href="{{ url_for('admin.admin_leads', tab='waitlist', q=q) }}"
+         class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs
+                {% if tab == 'waitlist' %}border-white/20 bg-white/10 text-white{% else %}border-white/10 bg-white/5 text-gray-300 hover:bg-white/10{% endif %}">
+        Waitlist
+        <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-gray-200">{{ waitlist|length }}</span>
+      </a>
+
+      <a href="{{ url_for('admin.admin_leads', tab='access', q=q) }}"
+         class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs
+                {% if tab == 'access' %}border-white/20 bg-white/10 text-white{% else %}border-white/10 bg-white/5 text-gray-300 hover:bg-white/10{% endif %}">
+        Access requests
+        <span class="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-gray-200">{{ access_requests|length }}</span>
+        {% if new_access_count %}
+          <span class="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200">{{ new_access_count }} new</span>
+        {% endif %}
+      </a>
+    </div>
+  </div>
+
+  {% if tab == "waitlist" %}
+    <div class="card bg-white/[0.03] border-white/10 p-0 overflow-hidden">
+      <div class="px-4 py-3 border-b border-white/10">
+        <div class="text-sm font-semibold text-white">Waitlist signups</div>
+        <div class="text-xs text-gray-400">Showing up to 500 newest records.</div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-white/[0.02] text-gray-300">
+            <tr>
+              <th class="text-left px-4 py-3">Email</th>
+              <th class="text-left px-4 py-3">Notes</th>
+              <th class="text-left px-4 py-3">Source</th>
+              <th class="text-left px-4 py-3">Created</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/10">
+            {% for r in waitlist %}
+              <tr class="hover:bg-white/[0.02]">
+                <td class="px-4 py-3 text-gray-100 font-medium">{{ r.email }}</td>
+                <td class="px-4 py-3 text-gray-300">
+                  <div class="max-w-xl truncate" title="{{ r.notes or '' }}">{{ r.notes or "—" }}</div>
+                </td>
+                <td class="px-4 py-3 text-gray-300">{{ r.source or "—" }}</td>
+                <td class="px-4 py-3 text-gray-300">
+                  {{ r.created_at.strftime("%d %b %Y %H:%M") if r.created_at else "—" }}
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td class="px-4 py-6 text-gray-400" colspan="4">No waitlist signups found.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  {% else %}
+    <div class="card bg-white/[0.03] border-white/10 p-0 overflow-hidden">
+      <div class="px-4 py-3 border-b border-white/10">
+        <div class="text-sm font-semibold text-white">Access requests</div>
+        <div class="text-xs text-gray-400">Update status as you triage. Showing up to 500 newest records.</div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-white/[0.02] text-gray-300">
+            <tr>
+              <th class="text-left px-4 py-3">Email</th>
+              <th class="text-left px-4 py-3">Notes</th>
+              <th class="text-left px-4 py-3">Source</th>
+              <th class="text-left px-4 py-3">Status</th>
+              <th class="text-left px-4 py-3">Created</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/10">
+            {% for r in access_requests %}
+              <tr class="hover:bg-white/[0.02]">
+                <td class="px-4 py-3 text-gray-100 font-medium">{{ r.email or "—" }}</td>
+                <td class="px-4 py-3 text-gray-300">
+                  <div class="max-w-xl truncate" title="{{ r.notes or '' }}">{{ r.notes or "—" }}</div>
+                </td>
+                <td class="px-4 py-3 text-gray-300">{{ r.source or "—" }}</td>
+
+                <td class="px-4 py-3">
+                  <form method="POST"
+                        action="{{ url_for('admin.admin_leads_update_access_status', request_id=r.id) }}"
+                        class="flex items-center gap-2">
+                    {{ csrf_token() if csrf_token is defined }}
+                    <select name="status"
+                            class="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-white/10">
+                      {% for s in ["new","triaged","approved","rejected"] %}
+                        <option value="{{ s }}" {% if (r.status or "new") == s %}selected{% endif %}>{{ s|capitalize }}</option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-secondary">Update</button>
+                  </form>
+                </td>
+
+                <td class="px-4 py-3 text-gray-300">
+                  {{ r.created_at.strftime("%d %b %Y %H:%M") if r.created_at else "—" }}
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td class="px-4 py-6 text-gray-400" colspan="5">No access requests found.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -152,6 +152,31 @@ class JobPosting(db.Model):
         db.Index("ix_job_postings_sector", "sector"),
     )
 
+# models.py (add near your other models)
+
+from datetime import datetime
+from extensions import db
+
+class WaitlistSignup(db.Model):
+    __tablename__ = "waitlist_signups"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False, index=True, unique=True)
+    source = db.Column(db.String(50), nullable=True)  # e.g. "landing"
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AccessRequest(db.Model):
+    __tablename__ = "access_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=True, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    source = db.Column(db.String(50), nullable=True)  # e.g. "landing"
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    status = db.Column(db.String(30), nullable=False, default="new")  # new/triaged/approved/rejected
+
 
 class Company(db.Model):
     __tablename__ = "companies"
