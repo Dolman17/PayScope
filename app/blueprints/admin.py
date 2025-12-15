@@ -536,6 +536,157 @@ def admin_job_scrape():
         records=records,
     )
 
+# -------------------------------------------------------------------
+# JOB POSTINGS (ingested adverts) — list + import
+# -------------------------------------------------------------------
+@bp.route("/jobs", methods=["GET"])
+@login_required
+def admin_jobs():
+    """
+    Admin page to view/filter ingested JobPosting rows and import them into JobRecord.
+    Renders: templates/admin/jobs.html
+    Endpoint: admin.admin_jobs
+    """
+    if not _require_superuser():
+        return redirect(url_for("home"))
+
+    # --- Filters (match jobs.html expectations) ---
+    selected_source = (request.args.get("source") or "").strip()
+    company_filter = (request.args.get("company") or "").strip()
+    title_filter = (request.args.get("title") or "").strip()
+    active_only = (request.args.get("active") or "").strip()  # "1" or ""
+
+    page = request.args.get("page", default=1, type=int)
+    per_page = 25
+
+    # Distinct sources for dropdown
+    sources = [
+        r[0] for r in
+        db.session.query(JobPosting.source_site)
+        .filter(JobPosting.source_site.isnot(None))
+        .distinct()
+        .order_by(JobPosting.source_site.asc())
+        .all()
+    ]
+
+    q = JobPosting.query
+
+    if selected_source:
+        q = q.filter(JobPosting.source_site == selected_source)
+
+    if company_filter:
+        q = q.filter(JobPosting.company_name.ilike(f"%{company_filter}%"))
+
+    if title_filter:
+        q = q.filter(JobPosting.title.ilike(f"%{title_filter}%"))
+
+    if active_only == "1":
+        q = q.filter(JobPosting.is_active.is_(True))
+
+    # Order newest first (scraped_at preferred; fallback to id)
+    if hasattr(JobPosting, "scraped_at"):
+        q = q.order_by(JobPosting.scraped_at.desc())
+    else:
+        q = q.order_by(JobPosting.id.desc())
+
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    jobs = pagination.items
+
+    return render_template(
+        "admin/jobs.html",
+        jobs=jobs,
+        pagination=pagination,
+        sources=sources,
+        selected_source=selected_source,
+        company_filter=company_filter,
+        title_filter=title_filter,
+        active_only=active_only,
+    )
+
+
+@bp.route("/jobs/<int:posting_id>/import", methods=["POST"])
+@login_required
+@superuser_required
+def admin_import_job(posting_id: int):
+    """
+    Import a single JobPosting into JobRecord.
+    Endpoint: admin.admin_import_job
+    """
+    posting = db.session.get(JobPosting, posting_id)
+    if not posting:
+        flash("Job posting not found.", "error")
+        return redirect(url_for("admin.admin_jobs"))
+
+    try:
+        import_posting_to_record(posting)  # already imported in this module :contentReference[oaicite:2]{index=2}
+
+        # Mark imported if the column exists (template expects job.imported)
+        if hasattr(posting, "imported"):
+            posting.imported = True
+
+        commit_or_rollback()
+        flash("Imported job posting.", "success")
+    except Exception as e:  # noqa: BLE001
+        db.session.rollback()
+        flash(f"Failed to import posting: {e}", "error")
+
+    return redirect(url_for("admin.admin_jobs"))
+
+
+@bp.route("/jobs/import-all", methods=["POST"])
+@login_required
+@superuser_required
+def admin_import_all_jobs():
+    """
+    Import all active JobPosting rows that haven't been imported yet (if 'imported' exists),
+    otherwise imports all active rows.
+    Endpoint: admin.admin_import_all_jobs
+    """
+    # Base query: active only
+    q = JobPosting.query.filter(JobPosting.is_active.is_(True))
+
+    # If 'imported' flag exists, only bring in those not yet imported
+    if hasattr(JobPosting, "imported"):
+        q = q.filter(or_(JobPosting.imported.is_(False), JobPosting.imported.is_(None)))
+
+    postings = q.all()
+
+    imported_count = 0
+    failed_count = 0
+
+    for p in postings:
+        try:
+            import_posting_to_record(p)
+            if hasattr(p, "imported"):
+                p.imported = True
+            imported_count += 1
+        except Exception as e:  # noqa: BLE001
+            failed_count += 1
+            # keep going; store error in logs
+            print(f"Import failed for posting_id={getattr(p, 'id', None)}: {e}")
+
+    try:
+        commit_or_rollback()
+        if failed_count:
+            flash(
+                f"Import complete: {imported_count} imported, {failed_count} failed (see logs).",
+                "warning",
+            )
+        else:
+            flash(f"Import complete: {imported_count} imported.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Import ran but failed saving changes.", "error")
+
+    return redirect(url_for("admin.admin_jobs"))
+
+
+
+
+
+
+
+
 
 # -------------------------------------------------------------------
 # USER MANAGEMENT
