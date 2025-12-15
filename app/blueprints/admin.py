@@ -637,6 +637,12 @@ def manage_users():
     users = User.query.options(joinedload(User.organisation)).all()
     return render_template("manage_users.html", users=users)
 
+@bp.route("/jobs", endpoint="admin_jobs")
+@login_required
+def admin_jobs():
+    # Backwards-compatible alias so templates don't break
+    return redirect(url_for("admin.admin_job_scrape"))
+
 
 @bp.route("/seed-default-org")
 @login_required
