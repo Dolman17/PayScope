@@ -2,39 +2,19 @@
 {% block title %}Admin Tools • PayScope{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-2 sm:px-4 py-6">
-
-  <!-- Header -->
-  <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-    <div>
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
-        Admin Tools
-      </h1>
-      <p class="mt-1 text-sm text-gray-500">
-        Operational controls for ingestion, data quality and system health.
-      </p>
-    </div>
-    <div class="text-xs text-gray-400 uppercase tracking-wide">
-      <span class="inline-flex items-center rounded-full border px-3 py-1 bg-gray-50">
-        <span class="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"></span>
-        Superuser Console
-      </span>
-    </div>
-  </header>
+<div class="max-w-6xl mx-auto px-6 py-10">
+  <h1 class="text-3xl font-bold mb-2">Admin Tools</h1>
+  <p class="text-gray-600 mb-8">Superuser controls for data imports, coverage health, job role hygiene and system diagnostics.</p>
 
   <div class="space-y-10">
 
     <!-- Overview -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-        Overview & Monitoring
-      </h2>
-
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Overview & Monitoring</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-
         <a href="{{ url_for('dashboard.dashboard') }}" class="card p-5">
           <h3 class="font-semibold">Dashboard</h3>
-          <p class="text-sm text-gray-600">KPIs, trends and recent activity.</p>
+          <p class="text-sm text-gray-600">KPIs, charts and recent activity.</p>
         </a>
 
         <a href="{{ url_for('dashboard.insights') }}" class="card p-5">
@@ -42,109 +22,113 @@
           <p class="text-sm text-gray-600">Deep-dive analytics.</p>
         </a>
 
-        <a href="{{ url_for('admin.admin_coverage') }}" class="card p-5">
-          <h3 class="font-semibold">Coverage Health</h3>
-          <p class="text-sm text-gray-600">
-            Weak sectors: {{ coverage_tile.weak_sectors if coverage_tile is defined else "—" }},
-            locations: {{ coverage_tile.weak_locations if coverage_tile is defined else "—" }}
-          </p>
+        <a href="{{ url_for('admin.weekly_market_changes_admin') }}" class="card p-5">
+          <h3 class="font-semibold">Weekly Market Changes</h3>
+          <p class="text-sm text-gray-600">Curate featured changes and generate weekly narratives.</p>
         </a>
 
-        <a href="{{ url_for('admin.admin_leads') }}" class="card p-5">
-          <h3 class="font-semibold">Leads</h3>
-          <p class="text-sm text-gray-600">Access requests & waitlist.</p>
+        <a href="{{ url_for('admin.admin_coverage') }}" class="card p-5">
+          <h3 class="font-semibold">Coverage Health</h3>
+          <p class="text-sm text-gray-600">Weekly sector + location coverage and weak-area alerts.</p>
         </a>
 
         <a href="{{ url_for('admin.ai_logs') }}" class="card p-5">
           <h3 class="font-semibold">AI Logs</h3>
-          <p class="text-sm text-gray-600">Audit AI outputs and prompts.</p>
+          <p class="text-sm text-gray-600">Audit trail for AI outputs and filters used.</p>
         </a>
 
         <a href="{{ url_for('admin.cron_runs') }}" class="card p-5">
           <h3 class="font-semibold">Cron Runs</h3>
-          <p class="text-sm text-gray-600">Scheduled job history.</p>
+          <p class="text-sm text-gray-600">History of scheduled jobs and manual run controls.</p>
         </a>
 
         <a href="{{ url_for('admin.db_health') }}" class="card p-5">
           <h3 class="font-semibold">DB Health</h3>
-          <p class="text-sm text-gray-600">Database diagnostics.</p>
+          <p class="text-sm text-gray-600">Quick diagnostics: connection, backend and tables.</p>
         </a>
 
+        <a href="{{ url_for('admin.admin_leads') }}" class="card p-5">
+          <h3 class="font-semibold">Leads</h3>
+          <p class="text-sm text-gray-600">Waitlist & access requests.</p>
+        </a>
       </div>
     </section>
 
     <!-- Data & Imports -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-        Data & Imports
-      </h2>
-
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Data & Imports</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-
         <a href="{{ url_for('admin.admin_job_scrape') }}" class="card p-5">
           <h3 class="font-semibold">Job Scrape</h3>
           <p class="text-sm text-gray-600">Run scrapers and preview results.</p>
         </a>
 
+        <a href="{{ url_for('admin.admin_jobs') }}" class="card p-5">
+          <h3 class="font-semibold">Jobs</h3>
+          <p class="text-sm text-gray-600">View ingested postings, filter, and import to the core dataset.</p>
+        </a>
+
         <div class="card p-5">
           <h3 class="font-semibold">ONS Earnings Import</h3>
-          <p class="text-sm text-gray-600 mb-3">Import ASHE pay benchmarks.</p>
+          <p class="text-sm text-gray-600 mb-3">Load ASHE median hourly pay for ONS vs advertised comparisons.</p>
 
-          <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}">
-            <button class="btn btn-primary btn-sm">Run latest ASHE import</button>
-          </form>
+          <div class="space-y-3">
+            <form method="post" action="{{ url_for('admin.run_ons_import_manual') }}" class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
+              <div class="text-xs text-gray-600">
+                <div class="font-medium text-gray-800">Import latest full year</div>
+                <div>Auto-select latest completed ASHE dataset.</div>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">Run import</button>
+            </form>
+
+            <form method="post" action="{{ url_for('admin.run_ons_import') }}" class="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 bg-gray-50">
+              <div class="text-xs text-gray-600">
+                <div class="font-medium text-gray-800">Legacy import</div>
+                <div>Imports ASHE for the year immediately before the current one.</div>
+              </div>
+              <button type="submit" class="btn btn-secondary btn-sm">Run legacy</button>
+            </form>
+          </div>
         </div>
-
       </div>
     </section>
 
     <!-- Job Role Hygiene -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-        Job Role Hygiene
-      </h2>
-
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Job Role Hygiene</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-
-        <form method="post" action="{{ url_for('admin.run_job_role_canonicaliser_now') }}" class="card p-5">
-          <h3 class="font-semibold mb-2">Canonicalise Job Roles</h3>
-          <p class="text-sm text-gray-600 mb-3">
-            Group messy titles into standard roles.
-          </p>
-          <button type="submit" class="btn btn-primary btn-sm">Run canonicaliser</button>
-        </form>
+        <div class="card p-5">
+          <h3 class="font-semibold">Canonicalise Job Roles</h3>
+          <p class="text-sm text-gray-600 mb-3">Run the canonicaliser to group messy titles into standard roles.</p>
+          <form method="post" action="{{ url_for('admin.run_job_role_canonicaliser_now') }}" class="flex justify-end">
+            <button type="submit" class="btn btn-primary btn-sm">Run now</button>
+          </form>
+        </div>
 
         <a href="{{ url_for('dashboard.admin_job_roles') }}" class="card p-5">
           <h3 class="font-semibold">Job Role Cleaner</h3>
-          <p class="text-sm text-gray-600">
-            Map raw titles to canonical roles.
-          </p>
+          <p class="text-sm text-gray-600">Browse job_role values and map to canonical labels.</p>
         </a>
-
       </div>
     </section>
 
-    <!-- System -->
+    <!-- System & Access -->
     <section>
-      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-        System & Access
-      </h2>
-
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">System & Access</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-
         <a href="{{ url_for('admin.admin_companies') }}" class="card p-5">
           <h3 class="font-semibold">Companies</h3>
-          <p class="text-sm text-gray-600">Manage canonical company records.</p>
+          <p class="text-sm text-gray-600">Manage company IDs, names and logos.</p>
         </a>
 
         <a href="{{ url_for('admin.manage_users') }}" class="card p-5">
           <h3 class="font-semibold">User Management</h3>
-          <p class="text-sm text-gray-600">Admins and permissions.</p>
+          <p class="text-sm text-gray-600">Add/edit/remove users and admin levels.</p>
         </a>
-
       </div>
     </section>
 
   </div>
 </div>
 {% endblock %}
+
