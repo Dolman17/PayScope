@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from collections import Counter
@@ -265,8 +266,19 @@ def _upsert_posting_from_scraper_record(
     return posting, True
 
 
-def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
+def _scrape_adzuna_for_roles(
+    roles: List[str],
+    where: str,
+    run_stats: Dict[str, Any],
+) -> List[Any]:
     out: List[Any] = []
+
+    # Upper-bound estimate: 1 API hit per page
+    estimated_hits = len(roles) * DEFAULT_MAX_PAGES
+    run_stats.setdefault("sources", {}).setdefault("adzuna", {})
+    run_stats["sources"]["adzuna"].setdefault("api_hits_estimated", 0)
+    run_stats["sources"]["adzuna"]["api_hits_estimated"] += estimated_hits
+
     for role in roles:
         scraper = AdzunaScraper(
             what=role,
@@ -274,11 +286,19 @@ def _scrape_adzuna_for_roles(roles: List[str], where: str) -> List[Any]:
             results_per_page=DEFAULT_RESULTS_PER_PAGE,
             max_pages=DEFAULT_MAX_PAGES,
         )
+
         batch = scraper.scrape() or []
+
         for r in batch:
             r.search_role = role
             r.search_location = where
+
         out.extend(batch)
+
+        # Gentle throttle to stay well under 25 req/min
+        if SLEEP_BETWEEN_QUERIES_SEC > 0:
+            time.sleep(SLEEP_BETWEEN_QUERIES_SEC)
+
     return out
 
 
@@ -402,7 +422,7 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
             "summaries_created": 0,
             # Additive stats (does not affect behaviour)
             "sources": {
-                "adzuna": {"rows_scraped": 0, "created": 0, "updated": 0},
+                "adzuna": {"rows_scraped": 0, "created": 0, "updated": 0, "api_hits_estimated": 0},
                 "reed": {"rows_scraped": 0, "created": 0, "updated": 0},
             },
             "errors": [],
@@ -417,7 +437,7 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
 
             for where in wheres:
                 # ---- Adzuna (existing source) ----
-                scraped_adzuna = _scrape_adzuna_for_roles(roles, where)
+                scraped_adzuna = _scrape_adzuna_for_roles(roles, where, run_stats)
                 rows_scraped += len(scraped_adzuna)
                 run_stats["sources"]["adzuna"]["rows_scraped"] += len(scraped_adzuna)
 
@@ -550,3 +570,4 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
 
 if __name__ == "__main__":
     print(run_scrape_import_and_summaries(trigger="manual"))
+
