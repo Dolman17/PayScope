@@ -5,11 +5,9 @@ import json
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from collections import Counter
 from types import SimpleNamespace
 
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 
 from app import create_app
 from extensions import db
@@ -24,6 +22,7 @@ from app.scrapers.adzuna import AdzunaScraper
 from app.importers.job_importer import import_posting_to_record
 
 from job_summaries import build_daily_job_summaries
+
 
 # Optional ONS import
 try:
@@ -60,9 +59,49 @@ REED_MAX_PAGES = int(os.getenv("REED_MAX_PAGES", "1"))                  # conser
 REED_DISTANCE = int(os.getenv("REED_DISTANCE", "10"))
 REED_THROTTLE_SECONDS = float(os.getenv("REED_THROTTLE_SECONDS", "1.0"))
 
+# ---------------------------------------------------------------------
+# Coverage-aware boosting (Reed-first)
+# ---------------------------------------------------------------------
+COVERAGE_BOOST_ENABLED = os.getenv("COVERAGE_BOOST_ENABLED", "1").lower() in ("1", "true", "yes")
+COVERAGE_BOOST_SOURCE = (os.getenv("COVERAGE_BOOST_SOURCE", "reed") or "reed").strip().lower()
+COVERAGE_BOOST_EXTRA_ROLES = int(os.getenv("COVERAGE_BOOST_EXTRA_ROLES", "6"))
+COVERAGE_BOOST_WINDOW_DAYS = int(os.getenv("COVERAGE_BOOST_WINDOW_DAYS", "7"))
+COVERAGE_BOOST_MIN_DAYS_SEEN = int(os.getenv("COVERAGE_BOOST_MIN_DAYS_SEEN", "2"))
+CRON_MAX_TOTAL_ROLES = int(os.getenv("CRON_MAX_TOTAL_ROLES", "18"))
+
+# Optional: override where list for boost only (comma-separated). If blank, uses today's wheres.
+COVERAGE_BOOST_WHERE = os.getenv("COVERAGE_BOOST_WHERE", "").strip()
+
+# Map sector labels (from JobSummaryDaily.sector) to role keywords to search.
+# Keep this small + editable. It’s steering, not taxonomy perfection.
+SECTOR_ROLE_MAP: Dict[str, List[str]] = {
+    # Care / health-ish
+    "Social Care": ["Support Worker", "Care Assistant", "Senior Support Worker", "Registered Manager", "Service Manager"],
+    "Healthcare": ["Nurse", "RGN", "RMN", "Healthcare Assistant"],
+
+    # Office / corp
+    "Admin & Office": ["Administrator", "Office Administrator", "Office Manager", "Receptionist", "Executive Assistant"],
+    "HR": ["HR Advisor", "Recruiter", "HR Administrator"],
+    "Finance": ["Accountant", "Finance Analyst", "Management Accountant"],
+
+    # Tech
+    "IT & Technology": ["Software Developer", "Web Developer", "Data Analyst", "BI Analyst"],
+
+    # Ops / logistics / retail
+    "Leadership & Management": ["Operations Manager", "Service Manager", "Store Manager"],
+    "Logistics": ["Warehouse Operative", "Driver", "FLT Driver"],
+    "Retail": ["Retail Assistant", "Store Manager"],
+
+    # Trades / construction
+    "Construction": ["Electrician", "Plumber", "Quantity Surveyor", "Site Manager"],
+
+    # Hospitality (often patchy – keep modest)
+    "Hospitality": ["Chef", "Kitchen Porter", "Bar Staff", "Waiting Staff"],
+}
+
 
 # ---------------------------------------------------------------------
-# Weekly coverage config (sectors + rotating locations)
+# Weekly coverage config (roles + rotating locations)
 # ---------------------------------------------------------------------
 # 0 = Monday ... 6 = Sunday
 DAY_CONFIG: Dict[int, Dict[str, Any]] = {
@@ -177,6 +216,13 @@ def _finish_log(
 
 
 def _coverage_warnings(days: int = 7) -> dict:
+    """
+    Backwards-compatible coverage block:
+    - weak_sectors_count
+    - weak_sectors (top 10 names)
+    PLUS:
+    - weak_sectors_detail: list[{sector, days_seen}]
+    """
     start = date.today() - timedelta(days=days)
 
     sector_days = (
@@ -189,13 +235,65 @@ def _coverage_warnings(days: int = 7) -> dict:
         .all()
     )
 
-    weak_sectors = [row.sector for row in sector_days if (row.days_seen or 0) < 2]
+    weak_detail = []
+    for row in sector_days:
+        d = int(getattr(row, "days_seen", 0) or 0)
+        if d < COVERAGE_BOOST_MIN_DAYS_SEEN:
+            weak_detail.append({"sector": row.sector, "days_seen": d})
+
+    # sort weakest first (0 days seen before 1 day seen)
+    weak_detail.sort(key=lambda x: x.get("days_seen", 0))
+
+    weak_sectors = [x["sector"] for x in weak_detail]
 
     return {
         "window_days": days,
         "weak_sectors_count": len(weak_sectors),
         "weak_sectors": weak_sectors[:10],
+        "weak_sectors_detail": weak_detail,
     }
+
+
+def _pick_coverage_boost_roles(coverage: dict, base_roles: List[str]) -> List[str]:
+    """
+    Take weak sectors and pick a small set of extra role queries to run.
+    Deterministic + capped (safe for ops).
+    """
+    if not COVERAGE_BOOST_ENABLED:
+        return []
+
+    weak_detail = coverage.get("weak_sectors_detail") or []
+    if not isinstance(weak_detail, list) or not weak_detail:
+        return []
+
+    # Build a weighted pool: 0 days => stronger push than 1 day
+    weighted_roles: List[str] = []
+    for row in weak_detail:
+        sector = (row or {}).get("sector")
+        days_seen = int((row or {}).get("days_seen") or 0)
+        roles = SECTOR_ROLE_MAP.get(str(sector), [])
+        if not roles:
+            continue
+
+        weight = 3 if days_seen <= 0 else 1
+        for r in roles:
+            weighted_roles.extend([r] * weight)
+
+    if not weighted_roles:
+        return []
+
+    picked: List[str] = []
+    seen = set(base_roles)
+
+    for r in weighted_roles:
+        if r in seen:
+            continue
+        picked.append(r)
+        seen.add(r)
+        if len(picked) >= max(COVERAGE_BOOST_EXTRA_ROLES, 0):
+            break
+
+    return picked
 
 
 def _get_existing_posting(source_site: str, external_id: str | None) -> Optional[JobPosting]:
@@ -288,14 +386,13 @@ def _scrape_adzuna_for_roles(
         )
 
         batch = scraper.scrape() or []
-
         for r in batch:
             r.search_role = role
             r.search_location = where
 
         out.extend(batch)
 
-        # Gentle throttle to stay well under 25 req/min
+        # Gentle throttle to stay well under per-minute limits
         if SLEEP_BETWEEN_QUERIES_SEC > 0:
             time.sleep(SLEEP_BETWEEN_QUERIES_SEC)
 
@@ -303,10 +400,6 @@ def _scrape_adzuna_for_roles(
 
 
 def _payload_to_rec_obj(payload: Dict[str, Any]) -> Any:
-    """
-    Reed returns dict payloads (Adzuna-shaped). Convert to a record-like object so the
-    existing upsert logic remains unchanged and low-risk.
-    """
     posted = payload.get("posted_date")
     if isinstance(posted, datetime):
         posted = posted.date()
@@ -331,15 +424,6 @@ def _payload_to_rec_obj(payload: Dict[str, Any]) -> Any:
 
 
 def _scrape_reed_for_roles(roles: List[str], where: str, run_stats: Dict[str, Any]) -> List[Any]:
-    """
-    Conservative Reed scraping: per role+location, 1 page by default, throttled.
-
-    ReedScraper contract (per your baseline):
-    returns posting-shaped dicts with:
-      title, company_name, location_text, postcode, min_rate, max_rate,
-      rate_type, contract_type, source_site="reed", external_id, url,
-      posted_date, raw_json
-    """
     out: List[Any] = []
 
     if not REED_ENABLED:
@@ -376,7 +460,6 @@ def _scrape_reed_for_roles(roles: List[str], where: str, run_stats: Dict[str, An
                 p["search_location"] = where
                 out.append(_payload_to_rec_obj(p))
             else:
-                # If reed ever returns objects later, still support them.
                 try:
                     setattr(p, "search_role", role)
                     setattr(p, "search_location", where)
@@ -385,6 +468,12 @@ def _scrape_reed_for_roles(roles: List[str], where: str, run_stats: Dict[str, An
                 out.append(p)
 
     return out
+
+
+def _boost_where_list(today_wheres: List[str]) -> List[str]:
+    if COVERAGE_BOOST_WHERE:
+        return [w.strip() for w in COVERAGE_BOOST_WHERE.split(",") if w.strip()]
+    return today_wheres
 
 
 # ---------------------------------------------------------------------
@@ -420,10 +509,19 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
             "postings_imported_success": 0,
             "postings_import_failed": 0,
             "summaries_created": 0,
-            # Additive stats (does not affect behaviour)
             "sources": {
                 "adzuna": {"rows_scraped": 0, "created": 0, "updated": 0, "api_hits_estimated": 0},
                 "reed": {"rows_scraped": 0, "created": 0, "updated": 0},
+            },
+            "coverage_boost": {
+                "enabled": COVERAGE_BOOST_ENABLED,
+                "source": COVERAGE_BOOST_SOURCE,
+                "window_days": COVERAGE_BOOST_WINDOW_DAYS,
+                "min_days_seen": COVERAGE_BOOST_MIN_DAYS_SEEN,
+                "extra_roles_target": COVERAGE_BOOST_EXTRA_ROLES,
+                "roles_picked": [],
+                "wheres_used": [],
+                "rows_scraped": 0,
             },
             "errors": [],
         }
@@ -432,12 +530,35 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
         records_created = 0
 
         try:
+            # ONS import (optional)
             if ONS_IMPORT_ENABLED and import_ons_earnings_to_db:
                 import_ons_earnings_to_db(ONS_IMPORT_YEAR)
 
+            # Compute coverage early so we can steer tonight’s run
+            coverage = _coverage_warnings(days=COVERAGE_BOOST_WINDOW_DAYS)
+            run_stats["coverage"] = coverage
+
+            # Pick coverage boost roles (kept separate from baseline roles)
+            boost_roles = _pick_coverage_boost_roles(coverage, base_roles=roles)
+
+            # Cap total roles (baseline + boost) so we never explode API usage
+            merged_roles = list(roles)
+            for r in boost_roles:
+                if r not in merged_roles:
+                    merged_roles.append(r)
+                if len(merged_roles) >= CRON_MAX_TOTAL_ROLES:
+                    break
+
+            # Log steering decisions
+            run_stats["coverage_boost"]["roles_picked"] = boost_roles[:]
+            run_stats["coverage_boost"]["wheres_used"] = _boost_where_list(wheres)
+
+            # -------------------------------
+            # Baseline scrape (as before)
+            # -------------------------------
             for where in wheres:
-                # ---- Adzuna (existing source) ----
-                scraped_adzuna = _scrape_adzuna_for_roles(roles, where, run_stats)
+                # ---- Adzuna ----
+                scraped_adzuna = _scrape_adzuna_for_roles(merged_roles, where, run_stats)
                 rows_scraped += len(scraped_adzuna)
                 run_stats["sources"]["adzuna"]["rows_scraped"] += len(scraped_adzuna)
 
@@ -455,9 +576,9 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
                         run_stats["postings_updated"] += 1
                         run_stats["sources"]["adzuna"]["updated"] += 1
 
-                # ---- Reed (optional second source) ----
+                # ---- Reed ----
                 if REED_ENABLED:
-                    scraped_reed = _scrape_reed_for_roles(roles, where, run_stats)
+                    scraped_reed = _scrape_reed_for_roles(merged_roles, where, run_stats)
                     rows_scraped += len(scraped_reed)
                     run_stats["sources"]["reed"]["rows_scraped"] += len(scraped_reed)
 
@@ -475,7 +596,46 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
                             run_stats["postings_updated"] += 1
                             run_stats["sources"]["reed"]["updated"] += 1
 
+            # -------------------------------
+            # Coverage boost pass (Reed-first)
+            # -------------------------------
+            # We *only* do this when boost_roles exist and Reed is enabled.
+            # By default we DO NOT add extra Adzuna calls.
+            if boost_roles and COVERAGE_BOOST_ENABLED:
+                boost_wheres = _boost_where_list(wheres)
+
+                if COVERAGE_BOOST_SOURCE in ("reed", "both") and REED_ENABLED:
+                    for where in boost_wheres:
+                        boosted = _scrape_reed_for_roles(boost_roles, where, run_stats)
+                        run_stats["coverage_boost"]["rows_scraped"] += len(boosted)
+
+                        rows_scraped += len(boosted)
+                        run_stats["sources"]["reed"]["rows_scraped"] += len(boosted)
+
+                        for rec in boosted:
+                            _, created = _upsert_posting_from_scraper_record(
+                                "reed",
+                                rec,
+                                getattr(rec, "search_role", None),
+                                getattr(rec, "search_location", None),
+                            )
+                            if created:
+                                run_stats["postings_created"] += 1
+                                run_stats["sources"]["reed"]["created"] += 1
+                            else:
+                                run_stats["postings_updated"] += 1
+                                run_stats["sources"]["reed"]["updated"] += 1
+
+                # Optional: allow adzuna boosting later if you explicitly enable it
+                if COVERAGE_BOOST_SOURCE in ("adzuna", "both"):
+                    run_stats["errors"].append(
+                        "Coverage boost for Adzuna is disabled by design unless you explicitly choose it. "
+                        "Set COVERAGE_BOOST_SOURCE=both or adzuna to enable."
+                    )
+
+            # -------------------------------
             # Import any postings not yet imported (all sources)
+            # -------------------------------
             postings = JobPosting.query.filter(JobPosting.imported.is_(False)).all()
             for p in postings:
                 try:
@@ -488,24 +648,26 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
 
             db.session.commit()
 
+            # Summaries (yesterday)
             target = date.today() - timedelta(days=1)
             run_stats["summaries_created"] = build_daily_job_summaries(
                 target_date=target,
                 delete_existing=True,
             )
 
-            run_stats["coverage"] = _coverage_warnings(days=7)
+            # refresh coverage post-run
+            run_stats["coverage_post_run"] = _coverage_warnings(days=COVERAGE_BOOST_WINDOW_DAYS)
 
             # keep existing keys updated
             run_stats["rows_scraped"] = rows_scraped
 
-            msg = f"OK. Scraped={rows_scraped}, Imported={records_created}"
+            msg = f"OK. Scraped={rows_scraped}, Imported={records_created}, BoostRoles={len(boost_roles)}"
             _finish_log(log, "success", msg, rows_scraped, records_created, run_stats)
             return {"ok": True, "message": msg}
 
         except Exception as e:
             db.session.rollback()
-            run_stats["coverage"] = _coverage_warnings(days=7)
+            run_stats["coverage_post_run"] = _coverage_warnings(days=COVERAGE_BOOST_WINDOW_DAYS)
             run_stats["rows_scraped"] = rows_scraped
             _finish_log(log, "error", str(e), rows_scraped, records_created, run_stats)
             return {"ok": False, "message": str(e)}
@@ -570,4 +732,5 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
 
 if __name__ == "__main__":
     print(run_scrape_import_and_summaries(trigger="manual"))
+
 
