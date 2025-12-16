@@ -2,231 +2,212 @@
 {% block title %}This Week in the UK Job Market • PayScope{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto px-3 sm:px-5 py-8">
+<div class="max-w-5xl mx-auto px-3 sm:px-6 py-10">
 
-  <!-- Hero -->
-  <section class="relative overflow-hidden rounded-3xl border border-slate-700/60 bg-gradient-to-b from-slate-900/70 to-slate-950/40 p-6 sm:p-8 mb-6">
-    <div class="absolute inset-0 pointer-events-none opacity-40"
-         style="background: radial-gradient(800px 400px at 20% 0%, rgba(1,96,177,0.25), transparent 60%),
-                        radial-gradient(700px 350px at 90% 30%, rgba(99,102,241,0.18), transparent 55%);">
-    </div>
+  {# -----------------------------
+     Share text + hashtags (static for now)
+     ----------------------------- #}
+  {% set hashtags = "#UKJobs #LabourMarket #PayBenchmarking #HiringTrends #WorkforceData #UKEconomy #PayScope" %}
+  {% set share_text =
+    "This Week in the UK Job Market — key pay and hiring shifts by role and location. " ~ hashtags
+  %}
 
-    <div class="relative">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div class="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/50 px-3 py-1 text-xs text-slate-300">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Weekly Insight
-          </div>
+  <!-- HERO -->
+  <section class="mb-8">
+    <div class="rounded-3xl border border-slate-700/60 bg-gradient-to-b from-slate-900/60 to-slate-950/40 p-6 sm:p-8 overflow-hidden relative">
+      <div class="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-[var(--brand)]/10 blur-3xl"></div>
+      <div class="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl"></div>
 
-          <h1 class="mt-3 text-2xl sm:text-4xl font-bold tracking-tight text-slate-100">
-            This Week in the UK Job Market
-          </h1>
+      <div class="relative">
+        <div class="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/50 px-3 py-1 text-xs text-slate-300">
+          <span class="h-2 w-2 rounded-full bg-[var(--brand)]"></span>
+          PayScope Weekly Insight
+        </div>
 
-          <p class="mt-2 text-sm sm:text-base text-slate-300/90 max-w-2xl leading-relaxed">
-            A human-readable summary of what changed — pay movement, vacancy pressure, and coverage shifts — curated from PayScope’s live job-market dataset.
-          </p>
+        <h1 class="mt-3 text-2xl sm:text-4xl font-bold tracking-tight text-slate-100">
+          This Week in the UK Job Market
+        </h1>
 
-          <p class="mt-3 text-xs text-slate-400">
-            Week:
-            <span class="text-slate-200 font-medium">{{ week_start.strftime("%d %b %Y") }}</span>
-            → <span class="text-slate-200 font-medium">{{ week_end.strftime("%d %b %Y") }}</span>
-          </p>
+        <p class="mt-2 text-sm sm:text-base text-slate-300/90 max-w-3xl leading-relaxed">
+          A short, decision-ready summary of the pay and hiring changes that matter — generated from live advertised job data across the UK.
+        </p>
 
-          <div class="mt-5 flex flex-wrap items-center gap-2">
-            <a href="{{ url_for('auth.login') }}"
-               class="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)]/15 border border-[var(--brand)]/30 px-4 py-2 text-sm text-[var(--brand)] hover:bg-[var(--brand)]/20 transition">
-              <span>Sign in</span>
-              <span aria-hidden="true">→</span>
+        <div class="mt-4 text-sm text-slate-400">
+          Week:
+          <span class="text-slate-200 font-medium">{{ week_start.strftime("%d %b %Y") }}</span>
+          <span class="mx-1 text-slate-600">→</span>
+          <span class="text-slate-200 font-medium">{{ week_end.strftime("%d %b %Y") }}</span>
+        </div>
+
+        <!-- CTA + SHARE -->
+        <div class="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
+          <a href="/"
+             class="inline-flex items-center justify-center rounded-xl bg-[var(--brand)]/15 border border-[var(--brand)]/30 px-4 py-2 text-sm font-semibold text-[var(--brand)] hover:bg-[var(--brand)]/20 transition">
+            Explore PayScope
+          </a>
+
+          <a href="mailto:hello@payscope.uk?subject={{ ('PayScope%20Weekly%20Insight%20—%20Request%20access') }}"
+             class="inline-flex items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800/50 transition">
+            Request access / demo
+          </a>
+
+          <div class="flex flex-wrap items-center gap-2 sm:ml-auto text-xs">
+            <span class="text-slate-500">Share:</span>
+
+            <a href="https://twitter.com/intent/tweet?text={{ share_text|urlencode }}&url={{ request.url|urlencode }}"
+               target="_blank" rel="noopener"
+               class="rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-1.5 text-slate-200 hover:bg-slate-800/50 transition">
+              X
             </a>
 
-            <a href="mailto:hello@payscope.uk?subject=PayScope%20access%20request"
-               class="inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/50 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800/50 transition">
-              Request access
-              <span aria-hidden="true">✉️</span>
-            </a>
-
-            <a href="{{ url_for('home') }}"
-               class="inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/20 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800/40 transition">
-              What is PayScope?
-              <span aria-hidden="true">↗</span>
+            <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ request.url|urlencode }}"
+               target="_blank" rel="noopener"
+               class="rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-1.5 text-slate-200 hover:bg-slate-800/50 transition">
+              LinkedIn
             </a>
           </div>
         </div>
 
-        <div class="mt-3 sm:mt-0 w-full sm:w-[320px]">
-          <div class="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-4">
-            <div class="text-xs text-slate-400 uppercase tracking-wide">How to use this</div>
-            <ul class="mt-2 space-y-2 text-sm text-slate-200/90">
-              <li class="flex gap-2">
-                <span class="mt-0.5 text-slate-400">•</span>
-                Scan the weekly brief for the headline story.
-              </li>
-              <li class="flex gap-2">
-                <span class="mt-0.5 text-slate-400">•</span>
-                Each featured change includes an AI narrative (when available).
-              </li>
-              <li class="flex gap-2">
-                <span class="mt-0.5 text-slate-400">•</span>
-                Want the underlying data & filters? Sign in for the dashboards.
-              </li>
-            </ul>
-          </div>
+        <!-- Visible hashtags (useful for copy/paste + previews) -->
+        <div class="mt-4 text-xs text-slate-500">
+          <span class="font-medium text-slate-400">Tags:</span>
+          <span class="ml-1">{{ hashtags }}</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Weekly AI brief -->
+  <!-- WEEKLY AI BRIEF -->
   {% if weekly_brief %}
-    <section class="mb-6 rounded-3xl border border-slate-700/60 bg-slate-900/35 p-5 sm:p-6">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <div class="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-xs text-slate-300">
-            <span aria-hidden="true">🧠</span>
-            Weekly Brief
+    <section class="mb-8">
+      <div class="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-5 sm:p-6">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="text-xs text-slate-400 uppercase tracking-wide">Weekly summary</div>
+            {% if weekly_brief.headline %}
+              <h2 class="mt-1 text-base sm:text-lg font-semibold text-slate-100">
+                {{ weekly_brief.headline }}
+              </h2>
+            {% endif %}
           </div>
-
-          {% if weekly_brief.headline %}
-            <h2 class="mt-3 text-base sm:text-lg font-semibold text-slate-100">
-              {{ weekly_brief.headline }}
-            </h2>
-          {% endif %}
+          <div class="text-[11px] text-slate-500">
+            AI-assisted • PayScope
+          </div>
         </div>
 
-        <div class="text-[11px] text-slate-500 whitespace-nowrap">
-          AI-generated • PayScope
-        </div>
+        {% if weekly_brief.overview %}
+          <div class="mt-3 text-sm sm:text-base text-slate-300/90 whitespace-pre-line leading-relaxed">
+            {{ weekly_brief.overview }}
+          </div>
+        {% else %}
+          <div class="mt-3 text-sm text-slate-400">
+            No overview text available for this week yet.
+          </div>
+        {% endif %}
       </div>
-
-      {% if weekly_brief.overview %}
-        <div class="mt-3 text-sm sm:text-base text-slate-300/90 whitespace-pre-line leading-relaxed">
-          {{ weekly_brief.overview }}
-        </div>
-      {% endif %}
     </section>
   {% endif %}
 
-  <!-- Featured items -->
-  <section class="mb-8">
-    <div class="flex items-end justify-between gap-3 mb-3">
+  <!-- FEATURED CHANGES -->
+  <section>
+    <div class="flex items-end justify-between gap-4 mb-4">
       <div>
-        <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wide">Featured Changes</h3>
-        <p class="text-xs text-slate-500 mt-1">Curated items that mattered this week (typically 5–8).</p>
+        <h3 class="text-lg font-semibold text-slate-100">Featured changes</h3>
+        <p class="text-sm text-slate-400">
+          The 5–8 shifts worth paying attention to right now.
+        </p>
       </div>
       <div class="text-xs text-slate-500">
         {{ items|length }} item{% if items|length != 1 %}s{% endif %}
       </div>
     </div>
 
-    <div class="space-y-3">
+    <div class="space-y-4">
       {% for it in items %}
-        {% set dir = (it.direction or '') %}
-        {% set dir_badge =
-          'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' if dir == 'up'
-          else 'bg-rose-500/10 text-rose-300 border-rose-500/20' if dir == 'down'
-          else 'bg-slate-500/10 text-slate-300 border-slate-500/20'
-        %}
-        <article class="group rounded-3xl border border-slate-700/60 bg-slate-900/25 p-5 sm:p-6 hover:bg-slate-900/35 transition">
+        <article class="rounded-2xl border border-slate-700/60 bg-slate-900/30 p-5">
           <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/40 px-2.5 py-1 text-[11px] text-slate-300">
-                  {{ it.metric_type }}
-                </span>
-
-                {% if it.direction %}
-                  <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] {{ dir_badge }}">
-                    {{ it.direction }}
-                  </span>
-                {% endif %}
-
-                {% if it.confidence_level %}
-                  <span class="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/30 px-2.5 py-1 text-[11px] text-slate-300">
-                    Confidence {{ it.confidence_level }}/5
-                  </span>
-                {% endif %}
-              </div>
-
-              <div class="mt-2 text-base sm:text-lg text-slate-100 font-semibold leading-snug">
+            <div class="min-w-0">
+              <div class="text-base sm:text-lg text-slate-100 font-semibold">
                 {{ it.headline }}
               </div>
 
-              <div class="mt-2 text-xs text-slate-400">
-                {% if it.job_role %}<span class="text-slate-200/90">{{ it.job_role }}</span>{% endif %}
-                {% if it.location %}{% if it.job_role %} • {% endif %}{{ it.location }}{% endif %}
-                {% if it.sector %}{% if it.job_role or it.location %} • {% endif %}{{ it.sector }}{% endif %}
-                {% if it.delta_value is not none %} • Δ {{ it.delta_value }}{% endif %}
-                {% if it.delta_percent is not none %} ({{ it.delta_percent }}%) {% endif %}
+              <div class="mt-1 text-xs text-slate-400 flex flex-wrap gap-x-2 gap-y-1">
+                <span class="inline-flex items-center rounded-full border border-slate-700/60 bg-slate-900/40 px-2 py-0.5">
+                  {{ it.metric_type }}
+                </span>
+                {% if it.direction %}<span>• {{ it.direction }}</span>{% endif %}
+                {% if it.job_role %}<span>• {{ it.job_role }}</span>{% endif %}
+                {% if it.location %}<span>• {{ it.location }}</span>{% endif %}
+                {% if it.sector %}<span>• {{ it.sector }}</span>{% endif %}
+                {% if it.delta_value is not none %}<span>• Δ {{ it.delta_value }}</span>{% endif %}
+                {% if it.delta_percent is not none %}<span>({{ it.delta_percent }}%)</span>{% endif %}
               </div>
             </div>
 
-            {% if it.ai_driver_tags %}
-              <div class="sm:text-right">
-                <div class="text-[11px] text-slate-500 uppercase tracking-wide">Drivers</div>
-                <div class="mt-1 text-xs text-slate-300">
-                  {{ it.ai_driver_tags }}
+            {% if it.confidence_level %}
+              <div class="shrink-0">
+                <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
+                  Confidence
+                  <span class="ml-1 font-semibold text-slate-100">{{ it.confidence_level }}/5</span>
                 </div>
               </div>
             {% endif %}
           </div>
 
-          <div class="mt-4">
-            {% if it.ai_narrative %}
-              <div class="text-sm sm:text-base text-slate-300 whitespace-pre-line leading-relaxed">
-                {{ it.ai_narrative }}
-              </div>
-            {% elif it.interpretation %}
-              <div class="text-sm sm:text-base text-slate-300/90 leading-relaxed">
-                {{ it.interpretation }}
-              </div>
-            {% else %}
-              <div class="text-sm text-slate-400">
-                No narrative provided for this item yet.
-              </div>
-            {% endif %}
-          </div>
+          {% if it.ai_narrative %}
+            <div class="mt-4 text-sm sm:text-base text-slate-300 whitespace-pre-line leading-relaxed">
+              {{ it.ai_narrative }}
+            </div>
+          {% elif it.interpretation %}
+            <div class="mt-4 text-sm sm:text-base text-slate-300/90 leading-relaxed">
+              {{ it.interpretation }}
+            </div>
+          {% endif %}
+
+          {% if it.ai_driver_tags %}
+            <div class="mt-3 text-xs text-slate-500">
+              <span class="text-slate-400 font-medium">Drivers:</span>
+              {{ it.ai_driver_tags }}
+            </div>
+          {% endif %}
         </article>
       {% endfor %}
     </div>
   </section>
 
-  <!-- Public CTA -->
-  <section class="rounded-3xl border border-slate-700/60 bg-slate-900/30 p-5 sm:p-6">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h3 class="text-base sm:text-lg font-semibold text-slate-100">
-          Want the underlying data, filters, and live benchmarking?
-        </h3>
-        <p class="mt-1 text-sm text-slate-300/90 max-w-2xl">
-          PayScope helps teams benchmark advertised pay, track vacancy pressure, and spot market movement — by role, sector, and location.
-        </p>
+  <!-- PUBLIC CTA FOOTER -->
+  <section class="mt-10">
+    <div class="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6">
+      <h3 class="text-lg font-semibold text-slate-100">What is PayScope?</h3>
+      <p class="mt-2 text-sm sm:text-base text-slate-300/90 leading-relaxed max-w-3xl">
+        PayScope helps teams benchmark advertised pay, monitor hiring pressure, and spot labour-market shifts by role and location —
+        using continuously ingested UK job data (not surveys).
+      </p>
+
+      <div class="mt-5 flex flex-col sm:flex-row gap-3">
+        <a href="/"
+           class="inline-flex items-center justify-center rounded-xl bg-[var(--brand)]/15 border border-[var(--brand)]/30 px-4 py-2 text-sm font-semibold text-[var(--brand)] hover:bg-[var(--brand)]/20 transition">
+          Learn more
+        </a>
+
+        <a href="mailto:hello@payscope.uk?subject={{ ('PayScope%20—%20Request%20demo%20or%20access') }}"
+           class="inline-flex items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/40 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800/50 transition">
+          Contact us
+        </a>
+
+        <div class="sm:ml-auto text-xs text-slate-500 flex items-center">
+          <span class="mr-2">Share tags:</span>
+          <span class="text-slate-400">{{ hashtags }}</span>
+        </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <a href="{{ url_for('auth.login') }}"
-           class="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)]/15 border border-[var(--brand)]/30 px-4 py-2 text-sm text-[var(--brand)] hover:bg-[var(--brand)]/20 transition">
-          Sign in
-          <span aria-hidden="true">→</span>
-        </a>
-        <a href="mailto:hello@payscope.uk?subject=PayScope%20demo%20request"
-           class="inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/40 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800/50 transition">
-          Request a demo
-          <span aria-hidden="true">📅</span>
-        </a>
+      <div class="mt-4 text-xs text-slate-500">
+        Data reflects advertised roles and may vary with posting volume. This page is an informational snapshot, not financial advice.
       </div>
-    </div>
-
-    <div class="mt-4 text-xs text-slate-500 leading-relaxed">
-      Note: Insights are derived from advertised roles and can vary with posting volume. PayScope is a benchmarking tool, not a wage-setting system.
     </div>
   </section>
 
-  <!-- Footer -->
-  <div class="mt-8 text-xs text-slate-500">
-    Data from PayScope — live UK job-market benchmarking.
-  </div>
-
 </div>
 {% endblock %}
+
 
