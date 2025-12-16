@@ -57,6 +57,10 @@ class AdzunaScraper(BaseScraper):
         # Debug toggle for API visibility (does NOT change behaviour)
         self.debug = os.getenv("ADZUNA_DEBUG", "0").strip() in ("1", "true", "True", "yes", "YES")
 
+        # Sleep between page requests (tiny throttle inside the scraper)
+        # This is independent of cron_runner's role-level throttle.
+        self.sleep_seconds = float(os.getenv("ADZUNA_SLEEP_SEC", "0.25"))
+
         if not self.app_id or not self.app_key:
             raise RuntimeError(
                 "AdzunaScraper: ADZUNA_APP_ID and ADZUNA_APP_KEY must be set."
@@ -171,7 +175,10 @@ class AdzunaScraper(BaseScraper):
                 else:
                     print(f"[Adzuna][DEBUG] unexpected json type={type(data)}")
 
-            time.sleep(0.25)
+            # Tiny sleep to avoid hammering
+            if self.sleep_seconds and self.sleep_seconds > 0:
+                time.sleep(self.sleep_seconds)
+
             return data
 
     # -------------------------------------------------------------------------
@@ -302,12 +309,20 @@ class AdzunaScraper(BaseScraper):
         )
 
     # -------------------------------------------------------------------------
-    # Public scrape() API
+    # Public scrape() API (adaptive paging)
     # -------------------------------------------------------------------------
     def scrape(self) -> List[JobRecord]:
+        """
+        Adaptive paging:
+        - Always fetch page 1 (unless error/empty)
+        - Only fetch page 2+ if the previous page was "full"
+          (i.e., results_count >= results_per_page)
+        This cuts pointless extra page calls for sparse searches.
+        """
         all_records: List[JobRecord] = []
 
-        for page in range(1, self.max_pages + 1):
+        page = 1
+        while page <= self.max_pages:
             data = self._fetch_page(page) or {}
 
             error_msg = data.get("error") if isinstance(data, dict) else None
@@ -321,15 +336,27 @@ class AdzunaScraper(BaseScraper):
             if not results:
                 break
 
+            mapped_this_page = 0
+
             for item in results:
                 try:
                     record = self._map_adzuna_result_to_record(item)
                     if not record.title or not record.url:
                         continue
                     all_records.append(record)
+                    mapped_this_page += 1
                 except Exception as exc:
                     print(f"AdzunaScraper: error mapping result: {exc}")
                     continue
 
+            # ✅ Adaptive paging rule:
+            # If we didn't get a full page back, don't request the next page.
+            # (Adzuna may return fewer than requested when results are sparse.)
+            if len(results) < self.results_per_page:
+                break
+
+            page += 1
+
         print(f"[Adzuna] total records mapped: {len(all_records)}")
         return all_records
+
