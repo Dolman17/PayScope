@@ -100,12 +100,27 @@
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Job Role Hygiene</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+
         <div class="card p-5">
-          <h3 class="font-semibold">Canonicalise Job Roles</h3>
-          <p class="text-sm text-gray-600 mb-3">Run the canonicaliser to group messy titles into standard roles.</p>
-          <form method="post" action="{{ url_for('admin.run_job_role_canonicaliser_now') }}" class="flex justify-end">
-            <button type="submit" class="btn btn-primary btn-sm">Run now</button>
-          </form>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h3 class="font-semibold">Canonicalise Job Roles</h3>
+              <p class="text-sm text-gray-600 mt-1">
+                Automatically runs hourly via the Railway worker scheduler (no manual run needed).
+              </p>
+            </div>
+
+            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+              Scheduled hourly
+            </span>
+          </div>
+
+          <div class="mt-4 flex items-center justify-between text-xs text-gray-500">
+            <span>View history in <span class="font-medium text-gray-700">Cron Runs</span>.</span>
+            <a href="{{ url_for('admin.cron_runs') }}" class="text-blue-700 hover:text-blue-900 font-medium">
+              Open Cron Runs →
+            </a>
+          </div>
         </div>
 
         <a href="{{ url_for('dashboard.admin_job_roles') }}" class="card p-5">
@@ -134,4 +149,5 @@
   </div>
 </div>
 {% endblock %}
+
 
