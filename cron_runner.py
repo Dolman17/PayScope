@@ -731,6 +731,24 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
 
 
 if __name__ == "__main__":
-    print(run_scrape_import_and_summaries(trigger="manual"))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="PayScope Cron Runner")
+    parser.add_argument(
+        "job",
+        nargs="?",
+        default="scrape-import",
+        choices=["scrape-import", "job-role-canonicaliser"],
+        help="Which job to run",
+    )
+    parser.add_argument("--trigger", default="manual", help="Trigger label for CronRunLog")
+    parser.add_argument("--limit", type=int, default=500, help="Limit for canonicaliser rows")
+    args = parser.parse_args()
+
+    if args.job == "job-role-canonicaliser":
+        print(run_job_role_canonicaliser(trigger=args.trigger, limit=args.limit))
+    else:
+        print(run_scrape_import_and_summaries(trigger=args.trigger))
+
 
 
