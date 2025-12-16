@@ -676,6 +676,46 @@ def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 # Job role canonicaliser
 # ---------------------------------------------------------------------
+def _clean_canonical_role(raw: str, text: str) -> str:
+    """
+    Defensive cleanup so we always store a plain label like:
+    'Support Worker', not a sentence.
+    """
+    if not text:
+        return raw.title()
+
+    t = str(text).strip()
+
+    # Strip surrounding quotes / code fences
+    if t.startswith("```"):
+        t = t.strip("`").strip()
+    t = t.strip().strip('"').strip("'")
+
+    # If the model returns a sentence, try to extract the label part
+    lower = t.lower()
+    for sep in (":", " is ", " - "):
+        if sep in lower:
+            parts = t.split(sep, 1)
+            if len(parts) == 2:
+                candidate = parts[1].strip().strip('"').strip("'")
+                if candidate:
+                    t = candidate
+                    lower = t.lower()
+
+    # Remove trailing punctuation
+    t = t.strip().strip(".").strip()
+
+    # Hard stop: if it's still long / sentencey, fall back
+    words = t.split()
+    if len(words) > 8:
+        return raw.title()
+
+    # Title-case unless it looks like an acronym-heavy role
+    if any(w.isupper() and len(w) <= 5 for w in words):
+        return " ".join(words)
+    return " ".join(w[:1].upper() + w[1:] for w in words if w)
+
+
 def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dict[str, Any]:
     app = create_app()
     with app.app_context():
@@ -683,49 +723,76 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
 
         updated = 0
         scanned = 0
+        ai_ok = 0
+        ai_fail = 0
 
         try:
+            print(f"[CANON] Starting trigger={trigger} limit={limit}", flush=True)
+
             rows = (
                 JobRoleMapping.query
                 .filter(
                     (JobRoleMapping.canonical_role.is_(None)) |
                     (func.trim(JobRoleMapping.canonical_role) == "") |
-                    (JobRoleMapping.canonical_role == JobRoleMapping.raw_value)
+                    (JobRoleMapping.canonical_role == JobRoleMapping.raw_value) |
+                    (func.lower(JobRoleMapping.canonical_role).like("the canonical%")) |
+                    (func.lower(JobRoleMapping.canonical_role).like("a canonical%"))
                 )
                 .limit(limit)
                 .all()
             )
 
             scanned = len(rows)
+            print(f"[CANON] Rows fetched: {scanned}", flush=True)
 
-            for m in rows:
+            for idx, m in enumerate(rows, start=1):
                 raw = (m.raw_value or "").strip()
                 if not raw:
                     continue
 
                 canonical = raw.title()
+
                 if _openai_client:
                     try:
                         resp = _openai_client.responses.create(
                             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                            input=f"Return a canonical job role for: {raw}",
+                            input=(
+                                "You are normalising job titles into a canonical UK job role label.\n"
+                                "Return ONLY the canonical role label as plain text.\n"
+                                "Rules:\n"
+                                "- Output must be 2–6 words.\n"
+                                "- No quotes, no punctuation, no prefixes like 'The canonical role is'.\n"
+                                "- Title Case.\n"
+                                "- If uncertain, return the cleaned title-case version of the input.\n"
+                                f"Input: {raw}\n"
+                                "Output:"
+                            ),
                         )
-                        canonical = (resp.output_text or canonical)[:255]
+                        canonical = _clean_canonical_role(raw, (resp.output_text or canonical)[:255])
+                        ai_ok += 1
                     except Exception:
-                        pass
+                        ai_fail += 1
+                        canonical = raw.title()
+
+                canonical = _clean_canonical_role(raw, canonical)
 
                 if m.canonical_role != canonical:
                     m.canonical_role = canonical
                     m.updated_at = _utcnow()
                     updated += 1
 
+                if idx % 25 == 0:
+                    print(f"[CANON] Progress {idx}/{scanned} updated={updated} ai_ok={ai_ok} ai_fail={ai_fail}", flush=True)
+
             db.session.commit()
-            msg = f"OK. Scanned={scanned}, Updated={updated}"
+            msg = f"OK. Scanned={scanned}, Updated={updated}, AI_OK={ai_ok}, AI_FAIL={ai_fail}"
+            print(f"[CANON] Done. {msg}", flush=True)
             _finish_log(log, "success", msg, 0, updated, None)
             return {"ok": True, "message": msg}
 
         except Exception as e:
             db.session.rollback()
+            print(f"[CANON] ERROR: {e}", flush=True)
             _finish_log(log, "error", str(e), 0, updated, None)
             return {"ok": False, "message": str(e)}
 
