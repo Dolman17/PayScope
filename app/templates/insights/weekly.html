@@ -5,7 +5,7 @@
 <div class="max-w-5xl mx-auto px-3 sm:px-6 py-10">
 
   {# -----------------------------
-     Share text + hashtags (static for now)
+     Share text + hashtags
      ----------------------------- #}
   {% set hashtags = "#UKJobs #LabourMarket #PayBenchmarking #HiringTrends #WorkforceData #UKEconomy #PayScope" %}
   {% set share_text =
@@ -68,7 +68,7 @@
           </div>
         </div>
 
-        <!-- Visible hashtags (useful for copy/paste + previews) -->
+        <!-- Visible hashtags -->
         <div class="mt-4 text-xs text-slate-500">
           <span class="font-medium text-slate-400">Tags:</span>
           <span class="ml-1">{{ hashtags }}</span>
@@ -77,10 +77,11 @@
     </div>
   </section>
 
-  <!-- WEEKLY AI BRIEF -->
+  <!-- WEEKLY AI BRIEF + TAKEAWAYS -->
   {% if weekly_brief %}
-    <section class="mb-8">
-      <div class="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-5 sm:p-6">
+    <section class="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Brief -->
+      <div class="lg:col-span-2 rounded-2xl border border-slate-700/60 bg-slate-900/40 p-5 sm:p-6">
         <div class="flex items-start justify-between gap-4">
           <div>
             <div class="text-xs text-slate-400 uppercase tracking-wide">Weekly summary</div>
@@ -105,6 +106,59 @@
           </div>
         {% endif %}
       </div>
+
+      <!-- Takeaways -->
+      <aside class="rounded-2xl border border-slate-700/60 bg-slate-900/30 p-5 sm:p-6">
+        <div class="text-xs text-slate-400 uppercase tracking-wide">Key takeaways</div>
+        <h3 class="mt-1 text-base font-semibold text-slate-100">What to pay attention to</h3>
+
+        <ul class="mt-4 space-y-2 text-sm text-slate-300/90">
+          {# If you later add weekly_brief.takeaways (list or newline string), we’ll use it #}
+          {% if weekly_brief.takeaways %}
+            {% if weekly_brief.takeaways is string %}
+              {% for line in weekly_brief.takeaways.split('\n') if line.strip() %}
+                <li class="flex gap-2">
+                  <span class="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--brand)]/80"></span>
+                  <span>{{ line }}</span>
+                </li>
+              {% endfor %}
+            {% else %}
+              {% for t in weekly_brief.takeaways %}
+                <li class="flex gap-2">
+                  <span class="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--brand)]/80"></span>
+                  <span>{{ t }}</span>
+                </li>
+              {% endfor %}
+            {% endif %}
+          {% elif weekly_brief.overview %}
+            {# Derive up to 4 bullets from the first non-empty lines of overview #}
+            {% set lines = weekly_brief.overview.split('\n') %}
+            {% set ns = namespace(n=0) %}
+            {% for line in lines %}
+              {% if ns.n < 4 and line.strip() %}
+                {% set cleaned = line.strip() %}
+                {% if cleaned|length > 3 %}
+                  <li class="flex gap-2">
+                    <span class="mt-1 h-1.5 w-1.5 rounded-full bg-[var(--brand)]/80"></span>
+                    <span>{{ cleaned }}</span>
+                  </li>
+                  {% set ns.n = ns.n + 1 %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+
+            {% if ns.n == 0 %}
+              <li class="text-slate-400">No takeaways available yet.</li>
+            {% endif %}
+          {% else %}
+            <li class="text-slate-400">No takeaways available yet.</li>
+          {% endif %}
+        </ul>
+
+        <div class="mt-4 rounded-xl border border-slate-700/60 bg-slate-950/20 p-3 text-xs text-slate-400">
+          Tip: Share this page with your team — the X/LinkedIn buttons include tags.
+        </div>
+      </aside>
     </section>
   {% endif %}
 
@@ -124,9 +178,74 @@
 
     <div class="space-y-4">
       {% for it in items %}
+
+        {# -----------------------------
+           Badge label + style
+           ----------------------------- #}
+        {% set badge_label = "Market update" %}
+        {% set badge_style = "border-slate-700/60 bg-slate-900/40 text-slate-200" %}
+
+        {% if it.metric_type == "pay" %}
+          {% if it.direction == "up" %}
+            {% set badge_label = "Pay ↑" %}
+            {% set badge_style = "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" %}
+          {% elif it.direction == "down" %}
+            {% set badge_label = "Pay ↓" %}
+            {% set badge_style = "border-rose-500/25 bg-rose-500/10 text-rose-200" %}
+          {% else %}
+            {% set badge_label = "Pay →" %}
+            {% set badge_style = "border-slate-700/60 bg-slate-900/40 text-slate-200" %}
+          {% endif %}
+        {% elif it.metric_type == "vacancy" %}
+          {% if it.direction == "up" %}
+            {% set badge_label = "Hiring pressure ↑" %}
+            {% set badge_style = "border-amber-500/25 bg-amber-500/10 text-amber-200" %}
+          {% elif it.direction == "down" %}
+            {% set badge_label = "Hiring pressure ↓" %}
+            {% set badge_style = "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" %}
+          {% else %}
+            {% set badge_label = "Hiring pressure →" %}
+            {% set badge_style = "border-slate-700/60 bg-slate-900/40 text-slate-200" %}
+          {% endif %}
+        {% elif it.metric_type == "volume" %}
+          {% if it.direction == "up" %}
+            {% set badge_label = "Posting volume ↑" %}
+            {% set badge_style = "border-sky-500/25 bg-sky-500/10 text-sky-200" %}
+          {% elif it.direction == "down" %}
+            {% set badge_label = "Posting volume ↓" %}
+            {% set badge_style = "border-purple-500/25 bg-purple-500/10 text-purple-200" %}
+          {% else %}
+            {% set badge_label = "Posting volume →" %}
+            {% set badge_style = "border-slate-700/60 bg-slate-900/40 text-slate-200" %}
+          {% endif %}
+        {% elif it.metric_type == "coverage" %}
+          {% if it.direction == "up" %}
+            {% set badge_label = "Coverage ↑" %}
+            {% set badge_style = "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" %}
+          {% elif it.direction == "down" %}
+            {% set badge_label = "Coverage ↓" %}
+            {% set badge_style = "border-rose-500/25 bg-rose-500/10 text-rose-200" %}
+          {% else %}
+            {% set badge_label = "Coverage →" %}
+            {% set badge_style = "border-slate-700/60 bg-slate-900/40 text-slate-200" %}
+          {% endif %}
+        {% endif %}
+
         <article class="rounded-2xl border border-slate-700/60 bg-slate-900/30 p-5">
           <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2 mb-2">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold {{ badge_style }}">
+                  {{ badge_label }}
+                </span>
+
+                {% if it.confidence_level %}
+                  <span class="inline-flex items-center rounded-full border border-slate-700/60 bg-slate-900/40 px-2.5 py-1 text-[11px] text-slate-300">
+                    Confidence <span class="ml-1 font-semibold text-slate-100">{{ it.confidence_level }}/5</span>
+                  </span>
+                {% endif %}
+              </div>
+
               <div class="text-base sm:text-lg text-slate-100 font-semibold">
                 {{ it.headline }}
               </div>
@@ -143,15 +262,6 @@
                 {% if it.delta_percent is not none %}<span>({{ it.delta_percent }}%)</span>{% endif %}
               </div>
             </div>
-
-            {% if it.confidence_level %}
-              <div class="shrink-0">
-                <div class="rounded-xl border border-slate-700/60 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
-                  Confidence
-                  <span class="ml-1 font-semibold text-slate-100">{{ it.confidence_level }}/5</span>
-                </div>
-              </div>
-            {% endif %}
           </div>
 
           {% if it.ai_narrative %}
@@ -202,12 +312,10 @@
       </div>
 
       <div class="mt-4 text-xs text-slate-500">
-        Data reflects advertised roles and may vary with posting volume. This page is an informational snapshot, not financial advice.
+        Data reflects advertised roles and may vary with posting volume. This page is an informational snapshot.
       </div>
     </div>
   </section>
 
 </div>
 {% endblock %}
-
-
