@@ -689,7 +689,7 @@
 
 {% block scripts %}
   <script>
-    const records = {{ records|tojson }};
+    const records = {{ (records or []) | tojson }};
     const currentFilters = {{ filters|tojson }};
     const stats = {{ stats|tojson }};
     const aiEndpoint = "/insights/ai-analyze";
