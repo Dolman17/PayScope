@@ -796,6 +796,54 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
             _finish_log(log, "error", str(e), 0, updated, None)
             return {"ok": False, "message": str(e)}
 
+# ---------------------------------------------------------------------
+# Rebuild JobSummaryDaily (override-aware)
+# ---------------------------------------------------------------------
+def run_rebuild_job_summaries(
+    trigger: str = "manual",
+    days_back: int = 90,
+) -> dict[str, any]:
+    from job_summaries import build_daily_job_summaries_range
+
+    app = create_app()
+    with app.app_context():
+        log = CronRunLog(
+            job_name="rebuild_job_summaries",
+            started_at=datetime.utcnow(),
+            status="running",
+            trigger=trigger,
+        )
+        db.session.add(log)
+        db.session.commit()
+
+        try:
+            end = date.today()
+            start = end - timedelta(days=days_back)
+
+            created = build_daily_job_summaries_range(
+                start_date=start,
+                end_date=end,
+                delete_existing=True,
+            )
+
+            log.finished_at = datetime.utcnow()
+            log.status = "success"
+            log.message = f"Rebuilt summaries from {start} to {end}"
+            log.records_created = created
+            db.session.commit()
+
+            return {"ok": True, "rows": created}
+
+        except Exception as e:
+            db.session.rollback()
+            log.finished_at = datetime.utcnow()
+            log.status = "error"
+            log.message = str(e)
+            db.session.commit()
+            return {"ok": False, "error": str(e)}
+
+
+
 
 if __name__ == "__main__":
     import argparse
