@@ -32,6 +32,21 @@
           <p class="text-sm text-gray-600">Weekly sector + location coverage and weak-area alerts.</p>
         </a>
 
+        <div class="card p-5">
+      <h3 class="font-semibold">Rebuild Job Summaries</h3>
+        <p class="text-sm text-gray-600 mb-3">
+        Recalculate daily summaries using the latest sector overrides.
+        </p>
+
+  <form method="post" action="{{ url_for('admin.admin_rebuild_summaries') }}">
+    <input type="hidden" name="days_back" value="90">
+    <button type="submit" class="btn btn-warning btn-sm">
+      Rebuild last 90 days
+    </button>
+  </form>
+</div>
+
+
         <a href="{{ url_for('admin.ai_logs') }}" class="card p-5">
           <h3 class="font-semibold">AI Logs</h3>
           <p class="text-sm text-gray-600">Audit trail for AI outputs and filters used.</p>
