@@ -8,14 +8,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import statistics
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 from sqlalchemy import func
 
 from extensions import db
-from models import JobRecord, JobSummaryDaily
+from models import JobRecord, JobSummaryDaily, resolve_sector_for_canonical_role
 
 
 def _percentile(sorted_values: List[float], fraction: float) -> float:
@@ -72,10 +72,18 @@ def build_daily_job_summaries(target_date: date, delete_existing: bool = True) -
             continue
 
         county = _safe_label(getattr(rec, "county", None), "Unknown")
-        sector = _safe_label(getattr(rec, "sector", None), "Unknown")
-        job_role_group = _safe_label(getattr(rec, "job_role_group", None), "") or _safe_label(
-            getattr(rec, "job_role", None), "Unknown"
-        )
+
+        # Determine the canonical role (job_role_group preferred; fallback to job_role)
+        job_role_group = _safe_label(getattr(rec, "job_role_group", None), "")
+        if not job_role_group:
+            job_role_group = _safe_label(getattr(rec, "job_role", None), "Unknown")
+
+        # ✅ Sector resolution:
+        # - If there's a manual override for this canonical role, use it
+        # - Else use whatever sector is stored on the record (if present)
+        # - Else default "Other"
+        sector_auto = getattr(rec, "sector", None)
+        sector = resolve_sector_for_canonical_role(job_role_group, sector_auto)
 
         key = (county, sector, job_role_group)
         buckets.setdefault(key, []).append(float(rec.pay_rate))

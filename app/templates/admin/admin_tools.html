@@ -127,6 +127,12 @@
           <h3 class="font-semibold">Job Role Cleaner</h3>
           <p class="text-sm text-gray-600">Browse job_role values and map to canonical labels.</p>
         </a>
+
+        <!-- ✅ NEW: Sector Cleaner -->
+        <a href="{{ url_for('dashboard.admin_role_sectors') }}" class="card p-5">
+          <h3 class="font-semibold">Sector Cleaner</h3>
+          <p class="text-sm text-gray-600">Assign “Other” roles to the correct sector using role → sector overrides.</p>
+        </a>
       </div>
     </section>
 
@@ -149,5 +155,3 @@
   </div>
 </div>
 {% endblock %}
-
-

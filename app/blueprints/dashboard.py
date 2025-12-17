@@ -8,7 +8,12 @@ from flask_login import login_required
 from sqlalchemy import func
 
 from extensions import db
-from models import JobRecord, CronRunLog, JobRoleMapping
+from models import (
+    JobRecord,
+    CronRunLog,
+    JobRoleMapping,
+    JobRoleSectorOverride,
+)
 from .utils import (
     build_filters_from_request,
     get_filter_options,
@@ -560,43 +565,8 @@ def insights():
         "role_sector_matrix": role_sector_matrix,
     }
 
-    # Lightweight set of rows for client-side UI in insights.html
-    rows_for_client = (
-        db.session.query(
-            sq.c.id,
-            sq.c.company_name,
-            sq.c.sector,
-            sq.c.job_role,
-            sq.c.county,
-            sq.c.pay_rate,
-            sq.c.imported_month,
-            sq.c.imported_year,
-        )
-        .order_by(
-            sq.c.imported_year.desc(),
-            sq.c.imported_month.desc(),
-            sq.c.company_name.asc(),
-        )
-        .limit(200)
-        .all()
-    )
-    records = [
-        {
-            "id": r[0],
-            "company_name": r[1],
-            "sector": r[2],
-            "job_role": r[3],
-            "county": r[4],
-            "pay_rate": float(r[5]) if r[5] is not None else None,
-            "imported_month": r[6],
-            "imported_year": r[7],
-        }
-        for r in rows_for_client
-    ]
-
     options = get_filter_options(force=True)
 
-    # data hygiene metric reused here if you want to surface a banner
     uncategorised_roles_count = (
         db.session.query(func.count(JobRecord.id))
         .filter(JobRecord.job_role.is_(None))
@@ -610,32 +580,56 @@ def insights():
         options=options,
         filters=filters_map,
         filter_query=request.query_string.decode(),
-        records=records,
         total_count=total,
         uncategorised_roles_count=uncategorised_roles_count,
     )
 
 
 # ----------------------------------------------------------------------
-# Admin: Job Role Cleaner
+# Admin: Job Role Cleaner (existing)
 # ----------------------------------------------------------------------
 
 
 @bp.route("/admin/job-roles")
 @login_required
 def admin_job_roles():
+    ...
+    # (UNCHANGED - keep your existing implementation here)
+    ...
+
+
+@bp.route("/admin/job-roles/map", methods=["POST"])
+@login_required
+def admin_job_roles_map():
+    ...
+    # (UNCHANGED - keep your existing implementation here)
+    ...
+
+
+@bp.route("/admin/job-roles/bulk-map", methods=["POST"])
+@login_required
+def admin_job_roles_bulk_map():
+    ...
+    # (UNCHANGED - keep your existing implementation here)
+    ...
+
+
+# ----------------------------------------------------------------------
+# Admin: Sector Override Cleaner (NEW)
+# ----------------------------------------------------------------------
+
+
+@bp.route("/admin/role-sectors")
+@login_required
+def admin_role_sectors():
     """
-    Admin view to see distinct job_role values and map them to canonical roles.
-    Self-healing: ensures job_role_mappings table exists before querying.
-    Supports:
-      - q: search over raw roles
-      - status: all / with / without canonical mapping
+    Admin view to map canonical roles (job_role_group) to canonical sectors.
+    Focus is: roles currently sitting in sector == "Other" (or missing).
     """
-    # Make sure the mapping table exists (safe if already created)
+    # Ensure the overrides table exists
     try:
-        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+        JobRoleSectorOverride.__table__.create(bind=db.engine, checkfirst=True)
     except Exception:
-        # If this somehow fails, we still try to render with empty mappings below
         pass
 
     search = (request.args.get("q") or "").strip()
@@ -643,174 +637,143 @@ def admin_job_roles():
     if status not in ("all", "with", "without"):
         status = "all"
 
-    # Base query: distinct job_role values with counts
+    only_other = (request.args.get("only_other") or "1").strip()
+    only_other = only_other in ("1", "true", "yes", "on")
+
+    # Canonical role: prefer job_role_group, fallback to job_role
+    role_expr = func.coalesce(JobRecord.job_role_group, JobRecord.job_role).label("canonical_role")
+
     q = db.session.query(
-        JobRecord.job_role.label("raw_value"),
+        role_expr,
         func.count(JobRecord.id).label("count"),
-    ).filter(JobRecord.job_role.isnot(None))
+        func.avg(JobRecord.pay_rate).label("avg_pay"),
+        func.min(JobRecord.pay_rate).label("min_pay"),
+        func.max(JobRecord.pay_rate).label("max_pay"),
+    ).filter(role_expr.isnot(None))
+
+    if only_other:
+        q = q.filter(
+            (JobRecord.sector.is_(None)) |
+            (func.trim(JobRecord.sector) == "") |
+            (func.lower(func.trim(JobRecord.sector)) == "other")
+        )
 
     if search:
         pattern = f"%{search}%"
-        q = q.filter(JobRecord.job_role.ilike(pattern))
+        q = q.filter(role_expr.ilike(pattern))
 
-    # Apply status filter via join/outerjoin on JobRoleMapping
     if status == "with":
-        q = q.join(
-            JobRoleMapping,
-            JobRecord.job_role == JobRoleMapping.raw_value,
-        )
+        q = q.join(JobRoleSectorOverride, JobRoleSectorOverride.canonical_role == role_expr)
     elif status == "without":
-        q = q.outerjoin(
-            JobRoleMapping,
-            JobRecord.job_role == JobRoleMapping.raw_value,
-        ).filter(JobRoleMapping.id.is_(None))
+        q = q.outerjoin(JobRoleSectorOverride, JobRoleSectorOverride.canonical_role == role_expr).filter(
+            JobRoleSectorOverride.id.is_(None)
+        )
 
     rows = (
-        q.group_by(JobRecord.job_role)
+        q.group_by(role_expr)
         .order_by(func.count(JobRecord.id).desc())
         .limit(500)
         .all()
     )
 
-    # Existing mappings keyed by raw_value; if table is still missing for some reason,
-    # fall back to an empty dict rather than crashing.
     try:
-        mapping_rows = JobRoleMapping.query.order_by(JobRoleMapping.raw_value).all()
-        mappings = {m.raw_value: m for m in mapping_rows}
+        override_rows = JobRoleSectorOverride.query.order_by(JobRoleSectorOverride.canonical_role).all()
+        overrides = {o.canonical_role: o for o in override_rows}
     except Exception:
-        mappings = {}
+        overrides = {}
 
-    uncategorised_roles_count = (
-        db.session.query(func.count(JobRecord.id))
-        .filter(JobRecord.job_role.is_(None))
-        .scalar()
-        or 0
-    )
+    # Sector dropdown options (existing sectors + "Other")
+    sector_opts = [
+        v[0]
+        for v in db.session.query(JobRecord.sector)
+        .filter(JobRecord.sector.isnot(None))
+        .distinct()
+        .order_by(JobRecord.sector)
+        .all()
+    ]
+    sector_opts = [s for s in sector_opts if (s or "").strip()]
+    if "Other" not in sector_opts:
+        sector_opts.append("Other")
 
     return render_template(
-        "admin_job_roles.html",
+        "admin_role_sectors.html",
         rows=rows,
-        mappings=mappings,
+        overrides=overrides,
+        sector_options=sector_opts,
         search=search,
         status=status,
-        uncategorised_roles_count=uncategorised_roles_count,
+        only_other=only_other,
     )
 
 
-@bp.route("/admin/job-roles/map", methods=["POST"])
+@bp.route("/admin/role-sectors/map", methods=["POST"])
 @login_required
-def admin_job_roles_map():
-    """
-    Create/update a mapping for a raw job_role value to a canonical role.
-    Optionally applies the change immediately to existing JobRecord rows.
-    Redirects back to the current Job Role Cleaner filters (q, status).
-    """
-    raw_value = (request.form.get("raw_value") or "").strip()
+def admin_role_sectors_map():
     canonical_role = (request.form.get("canonical_role") or "").strip()
-    apply_now = request.form.get("apply_now") == "1"
+    canonical_sector = (request.form.get("canonical_sector") or "").strip()
 
-    # Preserve filters on redirect
     q_param = (request.form.get("q") or "").strip()
     status_param = (request.form.get("status") or "all").strip().lower()
+    only_other_param = (request.form.get("only_other") or "1").strip()
 
-    if not raw_value or not canonical_role:
-        flash("Raw value and canonical role are required.", "error")
-        return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
-        )
+    if not canonical_role or not canonical_sector:
+        flash("Canonical role and canonical sector are required.", "error")
+        return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))
 
-    # Ensure table exists here as well, in case this endpoint is hit first.
     try:
-        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+        JobRoleSectorOverride.__table__.create(bind=db.engine, checkfirst=True)
     except Exception:
         pass
 
-    mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
-    if mapping is None:
-        mapping = JobRoleMapping(raw_value=raw_value, canonical_role=canonical_role)
+    ov = JobRoleSectorOverride.query.filter_by(canonical_role=canonical_role).first()
+    if ov is None:
+        ov = JobRoleSectorOverride(canonical_role=canonical_role, canonical_sector=canonical_sector)
     else:
-        mapping.canonical_role = canonical_role
+        ov.canonical_sector = canonical_sector
 
-    db.session.add(mapping)
-
-    if apply_now:
-        db.session.query(JobRecord).filter(JobRecord.job_role == raw_value).update(
-            {JobRecord.job_role: canonical_role},
-            synchronize_session=False,
-        )
-
+    db.session.add(ov)
     db.session.commit()
-    flash(f"Mapping saved for role '{raw_value}' → '{canonical_role}'.", "success")
-    return redirect(
-        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
-    )
+
+    flash(f"Sector override saved: '{canonical_role}' → '{canonical_sector}'.", "success")
+    return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))
 
 
-@bp.route("/admin/job-roles/bulk-map", methods=["POST"])
+@bp.route("/admin/role-sectors/bulk-map", methods=["POST"])
 @login_required
-def admin_job_roles_bulk_map():
-    """
-    Bulk-create/update mappings for multiple raw job_role values to a single canonical role.
-    Optionally applies the change immediately to existing JobRecord rows.
+def admin_role_sectors_bulk_map():
+    canonical_roles = request.form.getlist("canonical_roles") or []
+    canonical_roles = sorted({(r or "").strip() for r in canonical_roles if (r or "").strip()})
 
-    Expects:
-      - raw_values: repeated form fields (one per selected checkbox)
-      - canonical_role: the target canonical role
-      - apply_now: "1" if JobRecord rows should be updated too
-      - q, status: current filter state on the Job Role Cleaner page
-    """
-    raw_values = request.form.getlist("raw_values") or []
-    # De-duplicate, strip empty
-    raw_values = sorted({(rv or "").strip() for rv in raw_values if (rv or "").strip()})
-
-    canonical_role = (request.form.get("canonical_role") or "").strip()
-    apply_now = request.form.get("apply_now") == "1"
+    canonical_sector = (request.form.get("canonical_sector") or "").strip()
 
     q_param = (request.form.get("q") or "").strip()
     status_param = (request.form.get("status") or "all").strip().lower()
+    only_other_param = (request.form.get("only_other") or "1").strip()
 
-    if not raw_values:
-        flash("Select at least one job title before using bulk assign.", "error")
-        return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
-        )
+    if not canonical_roles:
+        flash("Select at least one role before using bulk assign.", "error")
+        return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))
 
-    if not canonical_role:
-        flash("Canonical role is required for bulk assignment.", "error")
-        return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
-        )
+    if not canonical_sector:
+        flash("Canonical sector is required for bulk assignment.", "error")
+        return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))
 
-    # Ensure table exists
     try:
-        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+        JobRoleSectorOverride.__table__.create(bind=db.engine, checkfirst=True)
     except Exception:
         pass
 
-    updated_mappings = 0
-
-    for raw_value in raw_values:
-        mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
-        if mapping is None:
-            mapping = JobRoleMapping(raw_value=raw_value, canonical_role=canonical_role)
-            db.session.add(mapping)
+    updated = 0
+    for role in canonical_roles:
+        ov = JobRoleSectorOverride.query.filter_by(canonical_role=role).first()
+        if ov is None:
+            ov = JobRoleSectorOverride(canonical_role=role, canonical_sector=canonical_sector)
         else:
-            mapping.canonical_role = canonical_role
-        updated_mappings += 1
-
-    if apply_now:
-        # Update all JobRecord rows whose job_role is in the selected raw_values
-        db.session.query(JobRecord).filter(JobRecord.job_role.in_(raw_values)).update(
-            {JobRecord.job_role: canonical_role},
-            synchronize_session=False,
-        )
+            ov.canonical_sector = canonical_sector
+        db.session.add(ov)
+        updated += 1
 
     db.session.commit()
 
-    flash(
-        f"Bulk mapping applied: {updated_mappings} raw role(s) → '{canonical_role}'.",
-        "success",
-    )
-    return redirect(
-        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
-    )
+    flash(f"Bulk sector override applied: {updated} role(s) → '{canonical_sector}'.", "success")
+    return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Role → Sector Overrides • PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-10 space-y-6">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold">Role → Sector Overrides</h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Fix roles landing in <span class="font-semibold text-slate-200">Other</span> by assigning a sector per canonical role (job_role_group).
+      </p>
+    </div>
+    <a href="{{ url_for('dashboard.admin_job_roles') }}" class="btn btn-secondary btn-sm">Job Role Cleaner</a>
+  </div>
+
+  <form method="get" class="flex flex-col md:flex-row md:items-end gap-3">
+    <div class="flex-1">
+      <label class="block text-xs text-slate-400 mb-1">Search canonical roles</label>
+      <input name="q" value="{{ search }}" class="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100" placeholder="e.g. Support Worker, Data Analyst" />
+    </div>
+
+    <div>
+      <label class="block text-xs text-slate-400 mb-1">Status</label>
+      <select name="status" class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100">
+        <option value="all" {% if status == "all" %}selected{% endif %}>All</option>
+        <option value="with" {% if status == "with" %}selected{% endif %}>With override</option>
+        <option value="without" {% if status == "without" %}selected{% endif %}>Without override</option>
+      </select>
+    </div>
+
+    <div class="flex items-center gap-2 pb-2">
+      <input type="hidden" name="only_other" value="0">
+      <input id="only_other" type="checkbox" name="only_other" value="1" {% if only_other %}checked{% endif %}>
+      <label for="only_other" class="text-sm text-slate-200">Only show “Other”</label>
+    </div>
+
+    <button class="btn btn-primary">Filter</button>
+  </form>
+
+  <div class="card p-5">
+    <form method="post" action="{{ url_for('dashboard.admin_role_sectors_bulk_map') }}" class="space-y-4">
+      <input type="hidden" name="q" value="{{ search }}">
+      <input type="hidden" name="status" value="{{ status }}">
+      <input type="hidden" name="only_other" value="{{ 1 if only_other else 0 }}">
+
+      <div class="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
+        <div class="text-sm text-slate-300">
+          Select rows then bulk assign a sector.
+        </div>
+        <div class="flex items-center gap-2">
+          <select name="canonical_sector" class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100">
+            <option value="">Select sector…</option>
+            {% for s in sector_options %}
+              <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-secondary btn-sm">Bulk assign</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-slate-400">
+            <tr class="border-b border-slate-800">
+              <th class="py-2 pr-2 text-left"><input type="checkbox" onclick="document.querySelectorAll('input[name=canonical_roles]').forEach(cb => cb.checked = this.checked)"></th>
+              <th class="py-2 pr-2 text-left">Canonical Role</th>
+              <th class="py-2 pr-2 text-right">Count</th>
+              <th class="py-2 pr-2 text-right">Avg</th>
+              <th class="py-2 pr-2 text-right">Min</th>
+              <th class="py-2 pr-2 text-right">Max</th>
+              <th class="py-2 pr-2 text-left">Override</th>
+              <th class="py-2 pr-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            {% for role, count, avg_pay, min_pay, max_pay in rows %}
+              {% set ov = overrides.get(role) %}
+              <tr>
+                <td class="py-2 pr-2">
+                  <input type="checkbox" name="canonical_roles" value="{{ role }}">
+                </td>
+                <td class="py-2 pr-2 text-slate-100">{{ role }}</td>
+                <td class="py-2 pr-2 text-right text-slate-200">{{ count }}</td>
+                <td class="py-2 pr-2 text-right text-slate-200">{{ "%.2f"|format(avg_pay or 0) }}</td>
+                <td class="py-2 pr-2 text-right text-slate-200">{{ "%.2f"|format(min_pay or 0) }}</td>
+                <td class="py-2 pr-2 text-right text-slate-200">{{ "%.2f"|format(max_pay or 0) }}</td>
+                <td class="py-2 pr-2">
+                  <form method="post" action="{{ url_for('dashboard.admin_role_sectors_map') }}" class="flex items-center gap-2">
+                    <input type="hidden" name="q" value="{{ search }}">
+                    <input type="hidden" name="status" value="{{ status }}">
+                    <input type="hidden" name="only_other" value="{{ 1 if only_other else 0 }}">
+                    <input type="hidden" name="canonical_role" value="{{ role }}">
+                    <select name="canonical_sector" class="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-slate-100">
+                      <option value="">Select…</option>
+                      {% for s in sector_options %}
+                        <option value="{{ s }}" {% if ov and ov.canonical_sector == s %}selected{% endif %}>{{ s }}</option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                  </form>
+                </td>
+                <td class="py-2 pr-2 text-right text-xs text-slate-500">
+                  {% if ov %}Saved{% else %}—{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -378,7 +378,6 @@ class WeeklyMarketChange(db.Model):
         db.Index("ix_wmc_week_metric", "week_start", "metric_type"),
     )
 
-
 class WeeklyInsight(db.Model):
     __tablename__ = "weekly_insights"
 
@@ -396,6 +395,51 @@ class WeeklyInsight(db.Model):
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class JobRoleSectorOverride(db.Model):
+    """
+    Manual mapping from a canonical role (job_role_group) to a canonical sector.
+    Used to fix cases where role ends up in "Other" sector.
+    """
+    __tablename__ = "job_role_sector_overrides"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # The canonical role label you use in analytics (typically JobRecord.job_role_group)
+    canonical_role = db.Column(db.String(255), unique=True, nullable=False, index=True)
+
+    # The sector you want this role to belong to
+    canonical_sector = db.Column(db.String(80), nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<JobRoleSectorOverride {self.canonical_role!r} -> {self.canonical_sector!r}>"
+
+
+def resolve_sector_for_canonical_role(canonical_role: str | None, fallback_sector: str | None) -> str:
+    """
+    Resolve sector using:
+      1) JobRoleSectorOverride(canonical_role) if present
+      2) fallback_sector if present/non-empty
+      3) "Other"
+    """
+    role = (canonical_role or "").strip()
+    if role:
+        try:
+            ov = JobRoleSectorOverride.query.filter_by(canonical_role=role).first()
+            if ov and (ov.canonical_sector or "").strip():
+                return ov.canonical_sector.strip()
+        except Exception:
+            # fail open: fall back to stored sector
+            pass
+
+    fb = (fallback_sector or "").strip()
+    return fb if fb else "Other"
+
+
 
 
 
