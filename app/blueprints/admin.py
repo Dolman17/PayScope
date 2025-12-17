@@ -1317,6 +1317,31 @@ def regenerate_company_ids():
 
     return redirect(url_for("admin.admin_companies"))
 
+@bp.route("/admin/rebuild-summaries", methods=["POST"])
+@login_required
+def admin_rebuild_summaries():
+    if not current_user.is_admin():
+        abort(403)
+
+    from cron_runner import run_rebuild_job_summaries
+
+    days_back = int(request.form.get("days_back", 90))
+    result = run_rebuild_job_summaries(
+        trigger=f"admin:{current_user.username}",
+        days_back=days_back,
+    )
+
+    if result.get("ok"):
+        flash(f"Rebuilt job summaries for last {days_back} days.", "success")
+    else:
+        flash("Failed to rebuild summaries. Check Cron Runs.", "error")
+
+    return redirect(url_for("admin.cron_runs"))
+
+
+
+
+
 
 # -------------------------------------------------------------------
 # REGEOCODE JOBS
