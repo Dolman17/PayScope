@@ -1,0 +1,15 @@
+FROM python:3.13-slim
+
+# Install pg_dump (Postgres client)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backup_to_dropbox.py .
+
+CMD ["python", "backup_to_dropbox.py"]
