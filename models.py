@@ -9,6 +9,12 @@ from sqlalchemy.exc import IntegrityError
 
 from extensions import db
 
+import shutil
+
+if not shutil.which("pg_dump"):
+    raise RuntimeError("pg_dump not found. Install postgresql-client in this service/container.")
+
+
 
 # -------------------------------------------------------------------
 # Core job/pay data
