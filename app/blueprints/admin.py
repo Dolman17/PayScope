@@ -681,11 +681,19 @@ def admin_import_all_jobs():
     return redirect(url_for("admin.admin_jobs"))
 
 
+import shutil
 
+def pg_dump_path() -> str | None:
+    return shutil.which("pg_dump")
 
-
-
-
+def require_pg_dump() -> str:
+    path = pg_dump_path()
+    if not path:
+        raise RuntimeError(
+            "pg_dump not found in this container. "
+            "Install postgresql-client (or add postgresql to Nixpacks packages)."
+        )
+    return path
 
 
 # -------------------------------------------------------------------

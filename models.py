@@ -9,13 +9,6 @@ from sqlalchemy.exc import IntegrityError
 
 from extensions import db
 
-import shutil
-
-if not shutil.which("pg_dump"):
-    raise RuntimeError("pg_dump not found. Install postgresql-client in this service/container.")
-
-
-
 # -------------------------------------------------------------------
 # Core job/pay data
 # -------------------------------------------------------------------
@@ -158,10 +151,6 @@ class JobPosting(db.Model):
         db.Index("ix_job_postings_sector", "sector"),
     )
 
-# models.py (add near your other models)
-
-from datetime import datetime
-from extensions import db
 
 class WaitlistSignup(db.Model):
     __tablename__ = "waitlist_signups"
@@ -237,7 +226,7 @@ class CronRunLog(db.Model):
     triggered_by = db.Column(db.String(150), nullable=True)
     trigger = db.Column(db.String(50), nullable=True)  # manual/cron/etc
     day_label = db.Column(db.String(20))
-    run_stats = db.Column(db.Text) 
+    run_stats = db.Column(db.Text)
 
 
 class OnsEarnings(db.Model):
@@ -332,12 +321,6 @@ class UploadBatch(db.Model):
     errors_json = db.Column(db.Text, nullable=True)  # aggregated errors per row
 
 
-# models.py
-from datetime import datetime, date
-from extensions import db
-
-from datetime import datetime
-
 class WeeklyMarketChange(db.Model):
     __tablename__ = "weekly_market_changes"
 
@@ -384,6 +367,7 @@ class WeeklyMarketChange(db.Model):
         db.Index("ix_wmc_week_metric", "week_start", "metric_type"),
     )
 
+
 class WeeklyInsight(db.Model):
     __tablename__ = "weekly_insights"
 
@@ -392,7 +376,7 @@ class WeeklyInsight(db.Model):
     week_end = db.Column(db.Date, nullable=False)
 
     headline = db.Column(db.String(200), nullable=True)
-    overview = db.Column(db.Text, nullable=True)              # the top-of-page brief (paragraph/bullets)
+    overview = db.Column(db.Text, nullable=True)  # the top-of-page brief (paragraph/bullets)
 
     ai_generated_at = db.Column(db.DateTime, nullable=True)
     ai_model = db.Column(db.String(64), nullable=True)
@@ -444,9 +428,6 @@ def resolve_sector_for_canonical_role(canonical_role: str | None, fallback_secto
 
     fb = (fallback_sector or "").strip()
     return fb if fb else "Other"
-
-
-
 
 
 # -------------------------------------------------------------------

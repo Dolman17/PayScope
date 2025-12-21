@@ -1,14 +1,21 @@
 FROM python:3.13-slim
 
-# Install pg_dump (Postgres client)
+# Faster, cleaner logs + fewer “why isn’t it printing?” moments
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Install pg_dump (Postgres client) + certs + tzdata
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client ca-certificates \
+  && apt-get install -y --no-install-recommends postgresql-client ca-certificates tzdata \
   && rm -rf /var/lib/apt/lists/*
+
+# (Optional) prove pg_dump exists at build-time
+RUN pg_dump --version
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 COPY backup_to_dropbox.py .
 
