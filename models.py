@@ -339,7 +339,10 @@ class WeeklyMarketChange(db.Model):
     value_previous = db.Column(db.Numeric(10, 2), nullable=True)
     value_current = db.Column(db.Numeric(10, 2), nullable=True)
     delta_value = db.Column(db.Numeric(10, 2), nullable=True)
-    delta_percent = db.Column(db.Numeric(6, 2), nullable=True)
+
+    # IMPORTANT:
+    # Was Numeric(6,2) which only supports up to 9999.99 and was overflowing on extreme % changes.
+    delta_percent = db.Column(db.Numeric(10, 2), nullable=True)
 
     # 'up', 'down', 'flat'
     direction = db.Column(db.String(10), nullable=True, index=True)
