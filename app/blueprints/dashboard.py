@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import func
 
 from extensions import db
@@ -63,6 +63,11 @@ def dashboard():
       - scrape stats from CronRunLog (today + last 7 days)
       - uncategorised_roles_count for basic data hygiene visibility
     """
+    # Restrict dashboard to superusers only
+    if not getattr(current_user, "is_superuser", None) or not current_user.is_superuser():
+        flash("You do not have access to the dashboard. Use the main workspace instead.", "error")
+        return redirect(url_for("auth.home"))
+
     # NOTE: dashboard.html uses name="role" for the job role filter.
     # We map that into "job_role" for build_filters_from_request.
     filters_map = {
@@ -958,5 +963,3 @@ def admin_role_sectors_bulk_map():
 
     flash(f"Bulk sector override applied: {updated} role(s) → '{canonical_sector}'.", "success")
     return redirect(url_for("dashboard.admin_role_sectors", q=q_param, status=status_param, only_other=only_other_param))
-
-

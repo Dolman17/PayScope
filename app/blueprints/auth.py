@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_user, logout_user
+from flask_login import login_user, logout_user, login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from extensions import db
@@ -20,7 +20,7 @@ def login():
 
     Behaviour:
     - Successful login redirects to ?next= if present and safe
-    - Otherwise redirects to the main dashboard
+    - Otherwise redirects to the post-login home page
     """
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -38,21 +38,32 @@ def login():
             if next_page and next_page.startswith("/"):
                 return redirect(next_page)
 
-            return redirect(url_for("dashboard.dashboard"))
+            # Default post-login landing page (not the dashboard)
+            return redirect(url_for("auth.home"))
 
         flash("Invalid username or password.", "error")
 
     return render_template("login.html")
 
 
-@bp.route("/logout")
+@bp.route("/home")
+@login_required
+def home():
+    """
+    Post-login landing page with tiles for key functions.
+    """
+    return render_template("home.html")
+
+
+@bp.route("/logout", methods=["POST"])
 def logout():
     """
-    Log the user out and return them to the login page.
+    Log the user out and return them to the public landing page.
     """
     logout_user()
     flash("Logged out.", "info")
-    return redirect(url_for("auth.login"))
+    # Go back to marketing / public index (index.html)
+    return redirect(url_for("public.landing"))
 
 
 @bp.route("/init-admin")

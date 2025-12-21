@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Home · PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-10">
+
+  <!-- Welcome / hero -->
+  <div class="hero-shell p-6 sm:p-8 lg:p-10 fade-in-on-scroll">
+    <div class="hero-orbit hero-orbit--teal"></div>
+    <div class="hero-orbit hero-orbit--blue"></div>
+    <div class="hero-orbit hero-orbit--amber"></div>
+
+    <div class="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+      <div>
+        <p class="text-xs font-semibold tracking-wide text-teal-300 uppercase mb-2">
+          PayScope workspace
+        </p>
+        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3">
+          Welcome back{% if current_user.is_authenticated %}, {{ current_user.username }}{% endif %}.
+        </h1>
+        <p class="text-sm sm:text-base text-gray-300 max-w-2xl">
+          Choose where to jump in: upload your own pay records, explore the live market,
+          or dive into insights and benchmarking. Your tools are all in one place.
+        </p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <a href="{{ url_for('upload.upload') }}" class="btn btn-primary text-sm">
+          Upload job records
+        </a>
+        <a href="{{ url_for('maps.pay_explorer') }}" class="btn btn-secondary text-sm">
+          Open Pay Explorer
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tiles -->
+  <section class="mt-10">
+    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">
+      Your PayScope tools
+    </h2>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Upload records -->
+      <a href="{{ url_for('upload.upload') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Upload
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Upload your own job records
+          </h3>
+          <p class="text-sm text-gray-300">
+            Import internal pay data (CSV / Excel), clean it, and link it to the live market.
+            Perfect for pay reviews and internal benchmarking.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          Go to upload →
+        </div>
+      </a>
+
+      <!-- Map View -->
+      <a href="{{ url_for('maps.map_sector_select') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Map
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Map View
+          </h3>
+          <p class="text-sm text-gray-300">
+            See pay, vacancy volume, and competition laid out on the map.
+            Spot hot spots, gaps, and outliers across regions.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          Open map →
+        </div>
+      </a>
+
+      <!-- Pay Explorer -->
+      <a href="{{ url_for('maps.pay_explorer') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Explorer
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Pay Explorer
+          </h3>
+          <p class="text-sm text-gray-300">
+            Drill into pay by role, sector, and county. Compare bands, distributions,
+            and trends to see where you’re ahead or behind the market.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          Open Pay Explorer →
+        </div>
+      </a>
+
+      <!-- Insights (analytics dashboard) -->
+      <a href="{{ url_for('dashboard.insights') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Insights
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Market insights & trends
+          </h3>
+          <p class="text-sm text-gray-300">
+            Summaries of rates, distributions, sector volatility, and trends over time.
+            Ideal for board packs and strategy conversations.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          View insights →
+        </div>
+      </a>
+
+      <!-- Records -->
+      <a href="{{ url_for('records.records') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Records
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Internal pay records
+          </h3>
+          <p class="text-sm text-gray-300">
+            Browse, filter, and export all imported records. Check specific roles, locations,
+            and employers against your benchmarks.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          Go to records →
+        </div>
+      </a>
+
+      <!-- Admin Tools (only meaningful for superusers, but safe link) -->
+      {% if current_user.is_authenticated and current_user.admin_level == 1 %}
+      <a href="{{ url_for('admin.admin_tools') }}" class="card card-hover p-5 flex flex-col justify-between h-full">
+        <div>
+          <p class="text-xs font-semibold text-teal-300 uppercase mb-2">
+            Admin
+          </p>
+          <h3 class="text-lg font-semibold text-white mb-2">
+            Admin tools & data health
+          </h3>
+          <p class="text-sm text-gray-300">
+            Access role mappings, sector overrides, cron run logs, and other admin utilities
+            to keep PayScope clean and reliable.
+          </p>
+        </div>
+        <div class="mt-4 text-xs text-teal-300 font-semibold">
+          Open admin tools →
+        </div>
+      </a>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

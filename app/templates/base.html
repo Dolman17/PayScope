@@ -133,11 +133,18 @@
       transform: translateY(-1px);
       border-color: rgba(56,189,248,0.6);
     }
+    .nav-chip--active{
+      background: rgba(45,212,191,0.12);
+      border-color: rgba(45,212,191,0.9);
+      color: #a5f3fc;
+      box-shadow: 0 0 0 1px rgba(45,212,191,0.45);
+    }
 
     .flash{
       padding:.75rem 1rem;
       border-radius:.75rem;
       font-weight:600;
+      transition: opacity .4s ease-out, transform .4s ease-out;
     }
     .flash-success{
       background: var(--success-bg);
@@ -150,6 +157,10 @@
     .flash-error{
       background: var(--error-bg);
       color: var(--error-fg);
+    }
+    .flash-fade-out{
+      opacity: 0;
+      transform: translateY(-2px);
     }
 
     .app-header{
@@ -289,6 +300,7 @@
 </head>
 
 <body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col">
+  {% set endpoint = request.endpoint or '' %}
 
   <!-- HEADER -->
   <header class="app-header">
@@ -433,14 +445,36 @@
       <div class="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2 text-xs">
         <span class="uppercase tracking-wide text-gray-500 mr-1">App</span>
 
-        <a href="{{ url_for('home') }}" class="nav-chip">Home</a>
-        <a href="{{ url_for('upload.upload') }}" class="nav-chip">Upload</a>
-        <a href="{{ url_for('maps.map_sector_select') }}" class="nav-chip">Map View</a>
-        <a href="{{ url_for('maps.pay_explorer') }}" class="nav-chip">Pay Explorer</a>
-        <a href="{{ url_for('records.records') }}" class="nav-chip">Records</a>
+        <a href="{{ url_for('auth.home') }}"
+           class="nav-chip {% if endpoint == 'auth.home' %}nav-chip--active{% endif %}">
+          Home
+        </a>
+
+        <a href="{{ url_for('upload.upload') }}"
+           class="nav-chip {% if endpoint.startswith('upload.') %}nav-chip--active{% endif %}">
+          Upload
+        </a>
+
+        <a href="{{ url_for('maps.map_sector_select') }}"
+           class="nav-chip {% if endpoint in ['maps.map_sector_select', 'maps.map_view', 'maps.compare_map'] %}nav-chip--active{% endif %}">
+          Map View
+        </a>
+
+        <a href="{{ url_for('maps.pay_explorer') }}"
+           class="nav-chip {% if endpoint.startswith('maps.pay_explorer') %}nav-chip--active{% endif %}">
+          Pay Explorer
+        </a>
+
+        <a href="{{ url_for('records.records') }}"
+           class="nav-chip {% if endpoint.startswith('records.') %}nav-chip--active{% endif %}">
+          Records
+        </a>
 
         {% if current_user.admin_level == 1 %}
-          <a href="{{ url_for('admin.admin_tools') }}" class="nav-chip">Admin Tools</a>
+          <a href="{{ url_for('admin.admin_tools') }}"
+             class="nav-chip {% if endpoint.startswith('admin.') %}nav-chip--active{% endif %}">
+            Admin Tools
+          </a>
         {% endif %}
       </div>
     </div>
@@ -453,7 +487,7 @@
       {% if messages %}
         {% for category, message in messages %}
           <div class="flash
-            {% if category == 'success' %} flash-success {% endif %}
+            {% if category == 'success' %} flash-success flash-auto-dismiss {% endif %}
             {% if category == 'error' %} flash-error {% endif %}
             {% if category == 'info' %} flash-info {% endif %}">
             {{ message }}
@@ -510,24 +544,39 @@
       return fetch(url, { ...options, headers });
     }
 
-    // Fade-in-on-scroll behaviour
+    // Fade-in-on-scroll + auto-dismiss flashes
     document.addEventListener("DOMContentLoaded", function () {
+      // Fade-in cards/sections
       const els = document.querySelectorAll(".fade-in-on-scroll");
-      if (!("IntersectionObserver" in window) || !els.length) return;
+      if ("IntersectionObserver" in window && els.length) {
+        const observer = new IntersectionObserver(
+          entries => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("is-visible");
+                observer.unobserve(entry.target);
+              }
+            });
+          },
+          { threshold: 0.15 }
+        );
+        els.forEach(el => observer.observe(el));
+      }
 
-      const observer = new IntersectionObserver(
-        entries => {
-          entries.forEach(entry => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("is-visible");
-              observer.unobserve(entry.target);
-            }
+      // Auto-dismiss success flashes after 5 seconds
+      const autoFlashes = document.querySelectorAll(".flash-auto-dismiss");
+      if (autoFlashes.length) {
+        setTimeout(() => {
+          autoFlashes.forEach(el => {
+            el.classList.add("flash-fade-out");
+            setTimeout(() => {
+              if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            }, 400);
           });
-        },
-        { threshold: 0.15 }
-      );
-
-      els.forEach(el => observer.observe(el));
+        }, 5000);
+      }
     });
   </script>
 
