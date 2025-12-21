@@ -15,6 +15,11 @@
 # Requirements:
 #   pip install requests
 #   Container must have: pg_dump (install postgresql-client in Dockerfile)
+#
+# Notes:
+# - Logs to stdout/stderr (Railway cron logs)
+# - Also logs to CronRunLog table if your app context & DB are available:
+#     job_name="daily_postgres_backup", trigger="cron"
 
 from __future__ import annotations
 
@@ -25,6 +30,52 @@ import subprocess
 from datetime import datetime, timezone
 
 import requests
+
+
+# ----------------------------
+# Optional app/DB logging (CronRunLog)
+# ----------------------------
+def _try_log_start() -> tuple[object | None, object | None]:
+    """
+    Best-effort: create a CronRunLog row if we can import and connect.
+    Returns (db, log_row) or (None, None) if unavailable.
+    """
+    try:
+        # These imports assume this script runs within your PayScope app environment
+        from extensions import db  # type: ignore
+        from models import CronRunLog  # type: ignore
+
+        log = CronRunLog(
+            job_name="daily_postgres_backup",
+            trigger="cron",
+            started_at=datetime.utcnow(),
+            status="running",
+        )
+        db.session.add(log)
+        db.session.commit()
+        return db, log
+    except Exception:
+        # Fail open: cron still runs; we just won't have DB log rows
+        return None, None
+
+
+def _try_log_finish(db: object | None, log: object | None, *, status: str, message: str) -> None:
+    """Best-effort: update CronRunLog row."""
+    if not db or not log:
+        return
+    try:
+        # log is a CronRunLog instance; keep it duck-typed
+        log.status = status
+        log.finished_at = datetime.utcnow()
+        log.message = message
+        db.session.add(log)
+        db.session.commit()
+    except Exception:
+        # Still fail open
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 # ----------------------------
@@ -68,72 +119,82 @@ def _dropbox_upload(token: str, dropbox_path: str, local_path: str) -> None:
 # Main
 # ----------------------------
 def main() -> None:
-    # Railway Postgres env vars (yours)
-    pghost = _require_env("PGHOST")
-    pgport = int(os.environ.get("PGPORT", "5432").strip())
-    dbname = _require_env("POSTGRES_DB")
-    dbuser = _require_env("POSTGRES_USER")
-    dbpass = _require_env("POSTGRES_PASSWORD")
+    db, log = _try_log_start()
 
-    # Dropbox env vars
-    dropbox_token = _require_env("DROPBOX_TOKEN")
-    dropbox_folder = os.environ.get("DROPBOX_FOLDER", "/payscope/PayScope/db_backups").strip()
-    if not dropbox_folder.startswith("/"):
-        dropbox_folder = "/" + dropbox_folder
-    dropbox_folder = dropbox_folder.rstrip("/")
-
-    # Preflight: pg_dump exists
-    pg_dump_path = shutil.which("pg_dump")
-    print("pg_dump path:", pg_dump_path)
-    if not pg_dump_path:
-        raise RuntimeError("pg_dump not found. Install postgresql-client in this container/service.")
-
-    # Print pg_dump version for auditability
     try:
-        ver = subprocess.check_output([pg_dump_path, "--version"]).decode().strip()
-        print(ver)
+        # Railway Postgres env vars (yours)
+        pghost = _require_env("PGHOST")
+        pgport = int(os.environ.get("PGPORT", "5432").strip())
+        dbname = _require_env("POSTGRES_DB")
+        dbuser = _require_env("POSTGRES_USER")
+        dbpass = _require_env("POSTGRES_PASSWORD")
+
+        # Dropbox env vars
+        dropbox_token = _require_env("DROPBOX_TOKEN")
+        dropbox_folder = os.environ.get("DROPBOX_FOLDER", "/payscope/PayScope/db_backups").strip()
+        if not dropbox_folder.startswith("/"):
+            dropbox_folder = "/" + dropbox_folder
+        dropbox_folder = dropbox_folder.rstrip("/")
+
+        # Preflight: pg_dump exists
+        pg_dump_path = shutil.which("pg_dump")
+        print("pg_dump path:", pg_dump_path)
+        if not pg_dump_path:
+            raise RuntimeError("pg_dump not found. Install postgresql-client in this container/service.")
+
+        # Print pg_dump version for auditability
+        try:
+            ver = subprocess.check_output(["pg_dump", "--version"]).decode().strip()
+            print(ver)
+        except Exception as e:
+            print("Warning: could not read pg_dump version:", repr(e))
+
+        # Preflight: can reach DB host/port
+        print(f"Checking TCP connectivity to Postgres: {pghost}:{pgport} ...")
+        _tcp_check(pghost, pgport, timeout=5)
+        print("✅ Postgres host/port reachable")
+
+        # Build filename + paths
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")
+        filename = f"payscope_{dbname}_{ts}.dump"  # pg_dump custom format output
+        local_path = f"/tmp/{filename}"
+        dropbox_path = f"{dropbox_folder}/{filename}"
+
+        # Run pg_dump (custom format is compressed + pg_restore friendly)
+        env = {
+            **os.environ,
+            "PGHOST": pghost,
+            "PGPORT": str(pgport),
+            "PGDATABASE": dbname,
+            "PGUSER": dbuser,
+            "PGPASSWORD": dbpass,
+        }
+
+        cmd = [
+            "pg_dump",
+            "--format=custom",
+            "--no-owner",
+            "--no-privileges",
+            "--file",
+            local_path,
+            dbname,
+        ]
+
+        print("Creating DB dump...")
+        subprocess.run(cmd, env=env, check=True)
+        print("✅ Dump created:", local_path)
+
+        # Upload to Dropbox
+        print("Uploading to Dropbox:", dropbox_path)
+        _dropbox_upload(dropbox_token, dropbox_path, local_path)
+        print("✅ Backup uploaded:", dropbox_path)
+
+        _try_log_finish(db, log, status="success", message=f"Backup uploaded to Dropbox: {dropbox_path}")
+
     except Exception as e:
-        print("Warning: could not read pg_dump version:", repr(e))
-
-    # Preflight: can reach DB host/port
-    print(f"Checking TCP connectivity to Postgres: {pghost}:{pgport} ...")
-    _tcp_check(pghost, pgport, timeout=5)
-    print("✅ Postgres host/port reachable")
-
-    # Build filename + paths
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")
-    filename = f"payscope_{dbname}_{ts}.dump"  # pg_dump custom format output
-    local_path = f"/tmp/{filename}"
-    dropbox_path = f"{dropbox_folder}/{filename}"
-
-    # Run pg_dump (custom format is compressed + pg_restore friendly)
-    env = {
-        **os.environ,
-        "PGHOST": pghost,
-        "PGPORT": str(pgport),
-        "PGDATABASE": dbname,
-        "PGUSER": dbuser,
-        "PGPASSWORD": dbpass,
-    }
-
-    cmd = [
-        pg_dump_path,
-        "--format=custom",
-        "--no-owner",
-        "--no-privileges",
-        "--file",
-        local_path,
-        dbname,
-    ]
-
-    print("Creating DB dump...")
-    subprocess.run(cmd, env=env, check=True)
-    print("✅ Dump created:", local_path)
-
-    # Upload to Dropbox
-    print("Uploading to Dropbox:", dropbox_path)
-    _dropbox_upload(dropbox_token, dropbox_path, local_path)
-    print("✅ Backup uploaded:", dropbox_path)
+        # Log failure (best effort) then re-raise so Railway marks cron as failed
+        _try_log_finish(db, log, status="error", message=f"{type(e).__name__}: {e}")
+        raise
 
 
 if __name__ == "__main__":
