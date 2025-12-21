@@ -486,8 +486,8 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
-          <div class="flash
-            {% if category == 'success' %} flash-success flash-auto-dismiss {% endif %}
+          <div class="flash flash-auto-dismiss
+            {% if category == 'success' %} flash-success {% endif %}
             {% if category == 'error' %} flash-error {% endif %}
             {% if category == 'info' %} flash-info {% endif %}">
             {{ message }}
@@ -504,7 +504,7 @@
     <!-- Legal links footer ONLY for public/landing pages -->
     {% if hide_nav %}
     <footer class="mt-24 border-t border-white/10">
-      <div class="max-w-7xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400">
+      <div class="max-w-7xl mx_auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400">
         <div>
           © {{ (today.year if today is defined else 2025) }} PayScope. All rights reserved.
         </div>
@@ -563,7 +563,7 @@
         els.forEach(el => observer.observe(el));
       }
 
-      // Auto-dismiss success flashes after 5 seconds
+      // Auto-dismiss ALL flashes after 5 seconds
       const autoFlashes = document.querySelectorAll(".flash-auto-dismiss");
       if (autoFlashes.length) {
         setTimeout(() => {
