@@ -1,4 +1,3 @@
-# app/blueprints/admin.py
 from __future__ import annotations
 
 import os
@@ -70,6 +69,7 @@ def superuser_required(f):
 
     return decorated_function
 
+
 # Optional OpenAI client (fail-safe)
 try:
     from openai import OpenAI
@@ -78,10 +78,21 @@ except Exception:
     _openai_client = None
 
 
-
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+def _home_url() -> str:
+    """
+    Logged-in landing route: prefer auth.home, then main.home, then home, else '/'.
+    """
+    for ep in ("auth.home", "main.home", "home"):
+        try:
+            return url_for(ep)
+        except Exception:
+            continue
+    return "/"
+
+
 def _require_superuser():
     if not current_user.is_authenticated or not current_user.is_superuser():
         flash("Access denied – superuser only.", "error")
@@ -279,6 +290,8 @@ def get_weekly_coverage_diff():
         "sector_diff": sorted(sector_diff, key=lambda x: x["delta"]),
         "location_diff": sorted(location_diff, key=lambda x: x["delta"]),
     }
+
+
 def upsert_job_record(record, search_role=None, search_location=None) -> JobPosting:
     """
     Insert or update a JobPosting based on (source_site, external_id) or URL.
@@ -324,8 +337,10 @@ def upsert_job_record(record, search_role=None, search_location=None) -> JobPost
 
     return job
 
+
 def _ai_enabled() -> bool:
     return _openai_client is not None and bool(os.getenv("OPENAI_API_KEY"))
+
 
 def _clamp_text(s: str | None, max_len: int = 1200) -> str | None:
     if not s:
@@ -334,6 +349,7 @@ def _clamp_text(s: str | None, max_len: int = 1200) -> str | None:
     if len(s) <= max_len:
         return s
     return s[: max_len - 3] + "..."
+
 
 def _format_change_summary(item) -> str:
     # item is WeeklyMarketChange
@@ -362,6 +378,7 @@ def _format_change_summary(item) -> str:
         parts.append(f"confidence_level={item.confidence_level}")
 
     return " | ".join(parts)
+
 
 def _ai_generate_weekly_overview(week_start: date, week_end: date, featured_items: list) -> dict:
     """
@@ -431,6 +448,7 @@ def _ai_generate_weekly_overview(week_start: date, week_end: date, featured_item
 
     return {"headline": headline or "", "overview": combined, "model": model}
 
+
 def _ai_generate_item_narrative(item) -> dict:
     """
     Returns: {"narrative": str, "driver_tags": str|None, "model": str}
@@ -482,11 +500,6 @@ def _ai_generate_item_narrative(item) -> dict:
     driver_tags = _clamp_text(data.get("driver_tags"), 200)
 
     return {"narrative": narrative or "", "driver_tags": driver_tags, "model": model}
-
-
-
-
-
 # -------------------------------------------------------------------
 # JOB SCRAPER PAGE (manual scrape)
 # -------------------------------------------------------------------
@@ -497,7 +510,7 @@ def admin_job_scrape():
     Admin page to manually trigger job scrapes with custom role + location parameters.
     """
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     role = request.form.get("role") or ""
     location = request.form.get("location") or ""
@@ -536,6 +549,7 @@ def admin_job_scrape():
         records=records,
     )
 
+
 # -------------------------------------------------------------------
 # JOB POSTINGS (ingested adverts) — list + import
 # -------------------------------------------------------------------
@@ -548,7 +562,7 @@ def admin_jobs():
     Endpoint: admin.admin_jobs
     """
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     # --- Filters (match jobs.html expectations) ---
     selected_source = (request.args.get("source") or "").strip()
@@ -618,7 +632,7 @@ def admin_import_job(posting_id: int):
         return redirect(url_for("admin.admin_jobs"))
 
     try:
-        import_posting_to_record(posting)  # already imported in this module :contentReference[oaicite:2]{index=2}
+        import_posting_to_record(posting)
 
         # Mark imported if the column exists (template expects job.imported)
         if hasattr(posting, "imported"):
@@ -703,7 +717,7 @@ def require_pg_dump() -> str:
 @login_required
 def manage_users():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -828,7 +842,7 @@ def seed_default_org():
 @login_required
 def backfill_counties():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     from geopy.geocoders import Nominatim
     from geopy.extra.rate_limiter import RateLimiter
@@ -929,8 +943,6 @@ def debug_pay_explorer_json():
         group_by="county",
     )
     return jsonify(data)
-
-
 # -------------------------------------------------------------------
 # LEADS (Waitlist + Access Requests)
 # -------------------------------------------------------------------
@@ -938,7 +950,7 @@ def debug_pay_explorer_json():
 @login_required
 def admin_leads():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     q = (request.args.get("q") or "").strip()
     tab = (request.args.get("tab") or "waitlist").strip().lower()
@@ -984,7 +996,7 @@ def admin_leads():
 @login_required
 def admin_leads_update_access_status(request_id: int):
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     new_status = (request.form.get("status") or "").strip().lower()
     if new_status not in ("new", "triaged", "approved", "rejected"):
@@ -1010,7 +1022,7 @@ def admin_leads_update_access_status(request_id: int):
 @login_required
 def admin_leads_export_csv():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     export_type = (request.args.get("type") or "waitlist").strip().lower()
     export_type = export_type if export_type in ("waitlist", "access") else "waitlist"
@@ -1048,6 +1060,8 @@ def admin_leads_export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
 # -------------------------------------------------------------------
 # ONS IMPORT – BUTTON 2 (new helper-based route)
 # -------------------------------------------------------------------
@@ -1148,7 +1162,7 @@ def debug_pay_explorer_mapping():
 @login_required
 def admin_companies():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     from app.blueprints.utils import _slugify  # reuse same slug logic for mapping
 
@@ -1269,7 +1283,7 @@ def admin_companies():
 @login_required
 def regenerate_company_ids():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     from app.blueprints.utils import _clean_company_name, _slugify
 
@@ -1325,6 +1339,7 @@ def regenerate_company_ids():
 
     return redirect(url_for("admin.admin_companies"))
 
+
 @bp.route("/admin/rebuild-summaries", methods=["POST"])
 @login_required
 def admin_rebuild_summaries():
@@ -1347,10 +1362,6 @@ def admin_rebuild_summaries():
     return redirect(url_for("admin.cron_runs"))
 
 
-
-
-
-
 # -------------------------------------------------------------------
 # REGEOCODE JOBS
 # -------------------------------------------------------------------
@@ -1358,7 +1369,7 @@ def admin_rebuild_summaries():
 @login_required
 def regeocode_jobs():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     geocode_postcode_cached.cache_clear()
 
@@ -1507,7 +1518,7 @@ def admin_tools():
 @login_required
 def db_health():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     uri = current_app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
     masked_uri = uri
@@ -1557,7 +1568,7 @@ def db_health():
 @login_required
 def cron_runs():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     page = request.args.get("page", 1, type=int)
     per_page = min(max(request.args.get("per_page", 25, type=int), 5), 100)
@@ -1660,6 +1671,8 @@ def admin_coverage_heatmap():
     )
 
     return render_template("admin/coverage_heatmap.html", rows=rows)
+
+
 # -------------------------------------------------------------------
 # Legacy weekly admin route (kept intact)
 # -------------------------------------------------------------------
@@ -1667,7 +1680,7 @@ def admin_coverage_heatmap():
 @login_required
 def admin_weekly_changes():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     today = date.today()
     week_start = _monday_of(today)
@@ -1781,7 +1794,7 @@ def admin_weekly_changes():
 @login_required
 def weekly_market_changes_admin():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     today = date.today()
     week_start = _monday_of(today)
@@ -1977,8 +1990,6 @@ def weekly_market_changes_admin():
                 print("Failed saving AI narratives:", e)
                 flash("Failed saving AI narratives.", "error")
 
-    
-
 
 
         elif action == "generate_candidates":
@@ -2165,7 +2176,7 @@ def weekly_market_changes_admin():
 @login_required
 def cron_run_now():
     if not _require_superuser():
-        return redirect(url_for("home"))
+        return redirect(_home_url())
 
     from cron_runner import run_scheduled_jobs
 
