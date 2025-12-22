@@ -10,7 +10,7 @@ from extensions import db
 from models import CronRunLog
 from job_summaries import build_daily_job_summaries
 
-DEFAULT_DAYS_BACK = int(os.getenv("SUMMARY_DAYS_BACK", "14"))
+DEFAULT_DAYS_BACK = int(os.getenv("SUMMARY_DAYS_BACK", "30"))
 JOB_NAME = os.getenv("SUMMARY_JOB_NAME", "job_summary_daily_rebuild")
 
 
