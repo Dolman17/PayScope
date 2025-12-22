@@ -13,7 +13,7 @@ from app.importers.job_importer import _derive_location_from_raw_json  # re-use 
 from app.blueprints.utils import normalize_uk_postcode, geocode_postcode_cached
 
 
-BATCH_LIMIT = int(os.getenv("HIST_LOC_BACKFILL_LIMIT", "2000"))
+BATCH_LIMIT = int(os.getenv("HIST_LOC_BACKFILL_LIMIT", "10000"))
 
 
 def _utcnow():
