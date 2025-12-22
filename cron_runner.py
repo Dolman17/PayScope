@@ -23,7 +23,6 @@ from app.importers.job_importer import import_posting_to_record
 
 from job_summaries import build_daily_job_summaries
 
-
 # Optional ONS import
 try:
     from ons_importer import import_ons_earnings_to_db
@@ -72,29 +71,47 @@ CRON_MAX_TOTAL_ROLES = int(os.getenv("CRON_MAX_TOTAL_ROLES", "18"))
 # Optional: override where list for boost only (comma-separated). If blank, uses today's wheres.
 COVERAGE_BOOST_WHERE = os.getenv("COVERAGE_BOOST_WHERE", "").strip()
 
+# ---------------------------------------------------------------------
+# Geo backfill config
+# ---------------------------------------------------------------------
+GEO_BACKFILL_LIMIT = int(os.getenv("GEO_BACKFILL_LIMIT", "2000"))
+GEO_BACKFILL_REVERSE_ENABLED = os.getenv("GEO_BACKFILL_REVERSE_ENABLED", "1").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+GEO_BACKFILL_REVERSE_DELAY = float(os.getenv("GEO_BACKFILL_REVERSE_DELAY", "1.0"))
+
 # Map sector labels (from JobSummaryDaily.sector) to role keywords to search.
 # Keep this small + editable. It’s steering, not taxonomy perfection.
 SECTOR_ROLE_MAP: Dict[str, List[str]] = {
     # Care / health-ish
-    "Social Care": ["Support Worker", "Care Assistant", "Senior Support Worker", "Registered Manager", "Service Manager"],
+    "Social Care": [
+        "Support Worker",
+        "Care Assistant",
+        "Senior Support Worker",
+        "Registered Manager",
+        "Service Manager",
+    ],
     "Healthcare": ["Nurse", "RGN", "RMN", "Healthcare Assistant"],
-
     # Office / corp
-    "Admin & Office": ["Administrator", "Office Administrator", "Office Manager", "Receptionist", "Executive Assistant"],
+    "Admin & Office": [
+        "Administrator",
+        "Office Administrator",
+        "Office Manager",
+        "Receptionist",
+        "Executive Assistant",
+    ],
     "HR": ["HR Advisor", "Recruiter", "HR Administrator"],
     "Finance": ["Accountant", "Finance Analyst", "Management Accountant"],
-
     # Tech
     "IT & Technology": ["Software Developer", "Web Developer", "Data Analyst", "BI Analyst"],
-
     # Ops / logistics / retail
     "Leadership & Management": ["Operations Manager", "Service Manager", "Store Manager"],
     "Logistics": ["Warehouse Operative", "Driver", "FLT Driver"],
     "Retail": ["Retail Assistant", "Store Manager"],
-
     # Trades / construction
     "Construction": ["Electrician", "Plumber", "Quantity Surveyor", "Site Manager"],
-
     # Hospitality (often patchy – keep modest)
     "Hospitality": ["Chef", "Kitchen Porter", "Bar Staff", "Waiting Staff"],
 }
@@ -108,62 +125,96 @@ DAY_CONFIG: Dict[int, Dict[str, Any]] = {
     0: {
         "label": "Mon",
         "roles": [
-            "Support Worker", "Care Assistant", "Senior Support Worker",
-            "Registered Manager", "Service Manager", "Operations Manager",
-            "Cleaner", "Housekeeper",
-            "Retail Assistant", "Store Manager",
+            "Support Worker",
+            "Care Assistant",
+            "Senior Support Worker",
+            "Registered Manager",
+            "Service Manager",
+            "Operations Manager",
+            "Cleaner",
+            "Housekeeper",
+            "Retail Assistant",
+            "Store Manager",
         ],
         "where": ["London", "Croydon", "Brighton", "Reading", "Milton Keynes"],
     },
     1: {
         "label": "Tue",
         "roles": [
-            "Nurse", "RGN", "RMN",
-            "Housing Officer", "Support Officer", "Tenancy Officer",
-            "Administrator", "Office Administrator", "Office Manager",
+            "Nurse",
+            "RGN",
+            "RMN",
+            "Housing Officer",
+            "Support Officer",
+            "Tenancy Officer",
+            "Administrator",
+            "Office Administrator",
+            "Office Manager",
         ],
         "where": ["Birmingham", "Coventry", "Leicester", "Nottingham", "Stoke-on-Trent"],
     },
     2: {
         "label": "Wed",
         "roles": [
-            "Software Developer", "Web Developer", "Data Analyst", "BI Analyst",
-            "Research Analyst", "Insight Analyst",
+            "Software Developer",
+            "Web Developer",
+            "Data Analyst",
+            "BI Analyst",
+            "Research Analyst",
+            "Insight Analyst",
         ],
         "where": ["Manchester", "Liverpool", "Preston", "Bolton", "Chester"],
     },
     3: {
         "label": "Thu",
         "roles": [
-            "Accountant", "Finance Analyst", "Management Accountant",
-            "HR Advisor", "Recruiter", "HR Administrator",
-            "Paralegal", "Legal Assistant",
+            "Accountant",
+            "Finance Analyst",
+            "Management Accountant",
+            "HR Advisor",
+            "Recruiter",
+            "HR Administrator",
+            "Paralegal",
+            "Legal Assistant",
         ],
         "where": ["Leeds", "Sheffield", "Bradford", "Hull", "York"],
     },
     4: {
         "label": "Fri",
         "roles": [
-            "Administrator", "Executive Assistant", "Receptionist",
-            "Customer Service Advisor", "Call Centre Agent",
-            "Marketing Executive", "Digital Marketing Executive", "Sales Executive",
+            "Administrator",
+            "Executive Assistant",
+            "Receptionist",
+            "Customer Service Advisor",
+            "Call Centre Agent",
+            "Marketing Executive",
+            "Digital Marketing Executive",
+            "Sales Executive",
         ],
         "where": ["Newcastle", "Sunderland", "Middlesbrough", "Durham", "Gateshead"],
     },
     5: {
         "label": "Sat",
         "roles": [
-            "Trainer", "Learning and Development Trainer", "Assessor",
-            "Teaching Assistant", "Tutor",
-            "Housing Officer", "Support Worker (Housing)",
+            "Trainer",
+            "Learning and Development Trainer",
+            "Assessor",
+            "Teaching Assistant",
+            "Tutor",
+            "Housing Officer",
+            "Support Worker (Housing)",
         ],
         "where": ["Bristol", "Bath", "Plymouth", "Exeter", "Swindon"],
     },
     6: {
         "label": "Sun",
         "roles": [
-            "Electrician", "Plumber", "Site Manager", "Quantity Surveyor",
-            "Warehouse Operative", "Operations Manager",
+            "Electrician",
+            "Plumber",
+            "Site Manager",
+            "Quantity Surveyor",
+            "Warehouse Operative",
+            "Operations Manager",
         ],
         "where": ["Glasgow", "Edinburgh", "Aberdeen", "Cardiff", "Belfast"],
     },
@@ -482,7 +533,6 @@ def _boost_where_list(today_wheres: List[str]) -> List[str]:
 def run_scrape_import_and_summaries(trigger: str = "manual") -> Dict[str, Any]:
     app = create_app()
     with app.app_context():
-
         override_roles = os.getenv("CRON_WHAT")
         override_where = os.getenv("CRON_WHERE")
 
@@ -730,13 +780,12 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
             print(f"[CANON] Starting trigger={trigger} limit={limit}", flush=True)
 
             rows = (
-                JobRoleMapping.query
-                .filter(
-                    (JobRoleMapping.canonical_role.is_(None)) |
-                    (func.trim(JobRoleMapping.canonical_role) == "") |
-                    (JobRoleMapping.canonical_role == JobRoleMapping.raw_value) |
-                    (func.lower(JobRoleMapping.canonical_role).like("the canonical%")) |
-                    (func.lower(JobRoleMapping.canonical_role).like("a canonical%"))
+                JobRoleMapping.query.filter(
+                    (JobRoleMapping.canonical_role.is_(None))
+                    | (func.trim(JobRoleMapping.canonical_role) == "")
+                    | (JobRoleMapping.canonical_role == JobRoleMapping.raw_value)
+                    | (func.lower(JobRoleMapping.canonical_role).like("the canonical%"))
+                    | (func.lower(JobRoleMapping.canonical_role).like("a canonical%"))
                 )
                 .limit(limit)
                 .all()
@@ -768,7 +817,10 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
                                 "Output:"
                             ),
                         )
-                        canonical = _clean_canonical_role(raw, (resp.output_text or canonical)[:255])
+                        canonical = _clean_canonical_role(
+                            raw,
+                            (resp.output_text or canonical)[:255],
+                        )
                         ai_ok += 1
                     except Exception:
                         ai_fail += 1
@@ -782,7 +834,10 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
                     updated += 1
 
                 if idx % 25 == 0:
-                    print(f"[CANON] Progress {idx}/{scanned} updated={updated} ai_ok={ai_ok} ai_fail={ai_fail}", flush=True)
+                    print(
+                        f"[CANON] Progress {idx}/{scanned} updated={updated} ai_ok={ai_ok} ai_fail={ai_fail}",
+                        flush=True,
+                    )
 
             db.session.commit()
             msg = f"OK. Scanned={scanned}, Updated={updated}, AI_OK={ai_ok}, AI_FAIL={ai_fail}"
@@ -796,13 +851,14 @@ def run_job_role_canonicaliser(trigger: str = "manual", limit: int = 500) -> Dic
             _finish_log(log, "error", str(e), 0, updated, None)
             return {"ok": False, "message": str(e)}
 
+
 # ---------------------------------------------------------------------
 # Rebuild JobSummaryDaily (override-aware)
 # ---------------------------------------------------------------------
 def run_rebuild_job_summaries(
     trigger: str = "manual",
     days_back: int = 90,
-) -> dict[str, any]:
+) -> dict[str, Any]:
     from job_summaries import build_daily_job_summaries_range
 
     app = create_app()
@@ -843,6 +899,190 @@ def run_rebuild_job_summaries(
             return {"ok": False, "error": str(e)}
 
 
+# ---------------------------------------------------------------------
+# Geo backfill: postcode, lat/lon, county
+# ---------------------------------------------------------------------
+def run_geo_backfill(trigger: str = "manual", limit: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Nightly geo backfill:
+    - normalises postcodes
+    - fills missing latitude/longitude from postcode
+    - snaps coord-only rows to nearest postcode
+    - reverse-geocodes county for rows missing JobRecord.county
+    """
+    app = create_app()
+    with app.app_context():
+        job_limit = int(limit or GEO_BACKFILL_LIMIT)
+        log = _start_log("geo_backfill", trigger, None)
+
+        stats: Dict[str, Any] = {
+            "limit": job_limit,
+            "processed": 0,
+            "geocoded_from_postcode": 0,
+            "snapped_from_latlon": 0,
+            "county_updated": 0,
+            "skipped_no_location": 0,
+            "errors": [],
+        }
+
+        try:
+            # Import here to avoid circular imports at module load time
+            from app.blueprints.utils import (
+                normalize_uk_postcode,
+                geocode_postcode_cached,
+                snap_to_nearest_postcode,
+            )
+
+            # Only rows that actually need work:
+            # - missing lat/lon OR missing/blank county
+            # - and we have *either* postcode or lat+lon to work with
+            needing = (
+                JobRecord.query.filter(
+                    (
+                        (JobRecord.latitude.is_(None))
+                        | (JobRecord.longitude.is_(None))
+                        | (JobRecord.county.is_(None))
+                        | (func.trim(JobRecord.county) == "")
+                    )
+                )
+                .filter(
+                    (JobRecord.postcode.isnot(None))
+                    | ((JobRecord.latitude.isnot(None)) & (JobRecord.longitude.isnot(None)))
+                )
+                .order_by(JobRecord.id.asc())
+                .limit(job_limit)
+                .all()
+            )
+
+            reverse = None
+            if GEO_BACKFILL_REVERSE_ENABLED:
+                try:
+                    from geopy.geocoders import Nominatim  # type: ignore
+                    from geopy.extra.rate_limiter import RateLimiter  # type: ignore
+
+                    geolocator = Nominatim(user_agent="payscope-geo-backfill")
+                    reverse = RateLimiter(
+                        geolocator.reverse,
+                        min_delay_seconds=GEO_BACKFILL_REVERSE_DELAY,
+                    )
+                except Exception as e:  # pragma: no cover - optional dependency
+                    stats["errors"].append(f"reverse_geocoder_init: {e!r}")
+                    reverse = None
+
+            for job in needing:
+                stats["processed"] += 1
+
+                postcode = (job.postcode or "").strip()
+                lat = job.latitude
+                lon = job.longitude
+
+                if not postcode and lat is None and lon is None:
+                    stats["skipped_no_location"] += 1
+                    continue
+
+                # 1) Normalise + geocode from postcode if coords missing
+                norm_pc: Optional[str] = None
+                if postcode:
+                    try:
+                        norm_pc = normalize_uk_postcode(postcode) or postcode
+                    except Exception as e:
+                        stats["errors"].append(f"normalize_pc id={job.id}: {e!r}")
+                        norm_pc = postcode
+
+                if norm_pc and (lat is None or lon is None):
+                    try:
+                        new_lat, new_lon = geocode_postcode_cached(norm_pc)
+                        if new_lat is not None and new_lon is not None:
+                            job.latitude = new_lat
+                            job.longitude = new_lon
+                            job.postcode = norm_pc
+                            lat, lon, postcode = new_lat, new_lon, norm_pc
+                            stats["geocoded_from_postcode"] += 1
+                    except Exception as e:
+                        stats["errors"].append(f"geocode_pc id={job.id}: {e!r}")
+
+                # 2) If we have coords but no postcode, snap to nearest postcode
+                if (not postcode) and job.latitude is not None and job.longitude is not None:
+                    try:
+                        snapped_pc, snapped_lat, snapped_lon = snap_to_nearest_postcode(
+                            job.latitude,
+                            job.longitude,
+                        )
+                        if snapped_pc:
+                            job.postcode = snapped_pc
+                            postcode = snapped_pc
+                        if snapped_lat is not None and snapped_lon is not None:
+                            job.latitude = snapped_lat
+                            job.longitude = snapped_lon
+                        stats["snapped_from_latlon"] += 1
+                    except Exception as e:
+                        stats["errors"].append(f"snap_pc id={job.id}: {e!r}")
+
+                # 3) Reverse-geocode county if still blank and we have coords
+                existing_county = (job.county or "").strip()
+                if reverse and not existing_county and job.latitude is not None and job.longitude is not None:
+                    try:
+                        loc = reverse((job.latitude, job.longitude), exactly_one=True)
+                        if loc:
+                            addr = loc.raw.get("address", {})
+                            county_name = (
+                                addr.get("county")
+                                or addr.get("state_district")
+                                or addr.get("state")
+                            )
+                            if county_name:
+                                job.county = county_name
+                                stats["county_updated"] += 1
+                    except Exception as e:
+                        stats["errors"].append(f"reverse_county id={job.id}: {e!r}")
+
+            db.session.commit()
+
+            msg = (
+                f"Geo backfill processed={stats['processed']}, "
+                f"geocoded={stats['geocoded_from_postcode']}, "
+                f"snapped={stats['snapped_from_latlon']}, "
+                f"county_updated={stats['county_updated']}"
+            )
+            _finish_log(log, "success", msg, 0, stats["processed"], stats)
+            return {"ok": True, "message": msg, "stats": stats}
+
+        except Exception as e:
+            db.session.rollback()
+            stats["errors"].append(repr(e))
+            _finish_log(log, "error", str(e), 0, 0, stats)
+            return {"ok": False, "error": str(e), "stats": stats}
+
+
+# ---------------------------------------------------------------------
+# Unified scheduled entrypoint (for Railway cron / admin button)
+# ---------------------------------------------------------------------
+def run_scheduled_jobs(trigger: str = "cron") -> Dict[str, Any]:
+    """
+    Run the standard nightly stack:
+    - scrape/import + summaries
+    - job role canonicaliser (optional via env)
+    - geo backfill (optional via env)
+    """
+    results: Dict[str, Any] = {}
+
+    results["scrape_import_and_summaries"] = run_scrape_import_and_summaries(trigger=trigger)
+
+    if os.getenv("CRON_RUN_CANONICALISER", "1").lower() in ("1", "true", "yes"):
+        canon_limit = int(os.getenv("CRON_CANON_LIMIT", "500"))
+        results["job_role_canonicaliser"] = run_job_role_canonicaliser(
+            trigger=f"{trigger}:canonicaliser",
+            limit=canon_limit,
+        )
+
+    if os.getenv("CRON_RUN_GEO_BACKFILL", "1").lower() in ("1", "true", "yes"):
+        gb_limit = int(os.getenv("GEO_BACKFILL_LIMIT", str(GEO_BACKFILL_LIMIT)))
+        results["geo_backfill"] = run_geo_backfill(
+            trigger=f"{trigger}:geo",
+            limit=gb_limit,
+        )
+
+    return results
 
 
 if __name__ == "__main__":
@@ -853,17 +1093,31 @@ if __name__ == "__main__":
         "job",
         nargs="?",
         default="scrape-import",
-        choices=["scrape-import", "job-role-canonicaliser"],
+        choices=["scrape-import", "job-role-canonicaliser", "rebuild-summaries", "geo-backfill", "scheduled"],
         help="Which job to run",
     )
     parser.add_argument("--trigger", default="manual", help="Trigger label for CronRunLog")
-    parser.add_argument("--limit", type=int, default=500, help="Limit for canonicaliser rows")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=500,
+        help="Limit for canonicaliser rows or geo backfill batch size",
+    )
+    parser.add_argument(
+        "--days-back",
+        type=int,
+        default=90,
+        help="Days back for rebuild-summaries job",
+    )
     args = parser.parse_args()
 
     if args.job == "job-role-canonicaliser":
         print(run_job_role_canonicaliser(trigger=args.trigger, limit=args.limit))
+    elif args.job == "rebuild-summaries":
+        print(run_rebuild_job_summaries(trigger=args.trigger, days_back=args.days_back))
+    elif args.job == "geo-backfill":
+        print(run_geo_backfill(trigger=args.trigger, limit=args.limit))
+    elif args.job == "scheduled":
+        print(run_scheduled_jobs(trigger=args.trigger))
     else:
         print(run_scrape_import_and_summaries(trigger=args.trigger))
-
-
-
