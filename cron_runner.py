@@ -16,6 +16,7 @@ from models import (
     JobPosting,
     JobRoleMapping,
     JobSummaryDaily,
+    JobRecord
 )
 
 from app.scrapers.adzuna import AdzunaScraper
