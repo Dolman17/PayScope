@@ -8,9 +8,16 @@
 #   POSTGRES_USER=postgres
 #   POSTGRES_PASSWORD=...
 #
-# And Dropbox env vars:
-#   DROPBOX_TOKEN=...
-#   DROPBOX_FOLDER=/payscope/PayScope/db_backups   (optional; default below)
+# Dropbox OAuth (recommended, long-lived via refresh):
+#   DROPBOX_APP_KEY=...
+#   DROPBOX_APP_SECRET=...
+#   DROPBOX_REFRESH_TOKEN=...
+#
+# Optional (legacy) fallback:
+#   DROPBOX_TOKEN=...   (short-lived; avoid if possible)
+#
+# Optional:
+#   DROPBOX_FOLDER=/payscope/PayScope/db_backups   (default below)
 #
 # Requirements:
 #   pip install requests
@@ -28,6 +35,7 @@ import shutil
 import socket
 import subprocess
 from datetime import datetime, timezone
+from typing import Optional, Tuple
 
 import requests
 
@@ -64,14 +72,12 @@ def _try_log_finish(db: object | None, log: object | None, *, status: str, messa
     if not db or not log:
         return
     try:
-        # log is a CronRunLog instance; keep it duck-typed
         log.status = status
         log.finished_at = datetime.utcnow()
         log.message = message
         db.session.add(log)
         db.session.commit()
     except Exception:
-        # Still fail open
         try:
             db.session.rollback()
         except Exception:
@@ -88,10 +94,63 @@ def _require_env(name: str) -> str:
     return v.strip()
 
 
+def _get_env(name: str) -> Optional[str]:
+    v = os.environ.get(name)
+    if not v or not v.strip():
+        return None
+    return v.strip()
+
+
 def _tcp_check(host: str, port: int, timeout: int = 5) -> None:
     """Fail fast if host/port is unreachable."""
     sock = socket.create_connection((host, port), timeout=timeout)
     sock.close()
+
+
+def _dropbox_get_access_token() -> Tuple[str, str]:
+    """
+    Get a valid Dropbox access token.
+
+    Preferred: OAuth refresh flow using:
+      DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN
+
+    Fallback: DROPBOX_TOKEN (legacy, short-lived, may expire)
+    Returns: (token, source) where source is "refresh" or "static"
+    """
+    app_key = _get_env("DROPBOX_APP_KEY")
+    app_secret = _get_env("DROPBOX_APP_SECRET")
+    refresh_token = _get_env("DROPBOX_REFRESH_TOKEN")
+
+    if app_key and app_secret and refresh_token:
+        r = requests.post(
+            "https://api.dropboxapi.com/oauth2/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": app_key,
+                "client_secret": app_secret,
+            },
+            timeout=30,
+        )
+        if r.status_code >= 300:
+            raise RuntimeError(f"Dropbox token refresh failed: {r.status_code} {r.text}")
+
+        data = r.json()
+        access_token = (data.get("access_token") or "").strip()
+        if not access_token:
+            raise RuntimeError(f"Dropbox token refresh response missing access_token: {data}")
+        return access_token, "refresh"
+
+    # Fallback (kept for backwards compatibility)
+    static = _get_env("DROPBOX_TOKEN")
+    if static:
+        return static, "static"
+
+    raise RuntimeError(
+        "Missing Dropbox credentials. Provide either:\n"
+        "  (A) DROPBOX_APP_KEY + DROPBOX_APP_SECRET + DROPBOX_REFRESH_TOKEN (recommended)\n"
+        "  (B) DROPBOX_TOKEN (legacy short-lived)"
+    )
 
 
 def _dropbox_upload(token: str, dropbox_path: str, local_path: str) -> None:
@@ -129,8 +188,7 @@ def main() -> None:
         dbuser = _require_env("POSTGRES_USER")
         dbpass = _require_env("POSTGRES_PASSWORD")
 
-        # Dropbox env vars
-        dropbox_token = _require_env("DROPBOX_TOKEN")
+        # Dropbox folder (path)
         dropbox_folder = os.environ.get("DROPBOX_FOLDER", "/payscope/PayScope/db_backups").strip()
         if not dropbox_folder.startswith("/"):
             dropbox_folder = "/" + dropbox_folder
@@ -184,15 +242,18 @@ def main() -> None:
         subprocess.run(cmd, env=env, check=True)
         print("✅ Dump created:", local_path)
 
+        # Get Dropbox access token (refresh preferred)
+        token, token_source = _dropbox_get_access_token()
+        print(f"Dropbox auth: using {'refresh-token flow' if token_source == 'refresh' else 'static token'}")
+
         # Upload to Dropbox
         print("Uploading to Dropbox:", dropbox_path)
-        _dropbox_upload(dropbox_token, dropbox_path, local_path)
+        _dropbox_upload(token, dropbox_path, local_path)
         print("✅ Backup uploaded:", dropbox_path)
 
         _try_log_finish(db, log, status="success", message=f"Backup uploaded to Dropbox: {dropbox_path}")
 
     except Exception as e:
-        # Log failure (best effort) then re-raise so Railway marks cron as failed
         _try_log_finish(db, log, status="error", message=f"{type(e).__name__}: {e}")
         raise
 
