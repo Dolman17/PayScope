@@ -1,7 +1,9 @@
 # app/importers/job_importer.py
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from typing import Any, Dict
 
 from extensions import db
 from models import JobRecord, JobPosting, SectorMapping
@@ -89,6 +91,93 @@ def classify_sector(job_title: str | None = None, company_name: str | None = Non
     return None
 
 
+# -------------------------------------------------------------------
+# Location helpers (derive from raw_json)
+# -------------------------------------------------------------------
+_COUNTRY_TOKENS = {
+    "uk",
+    "united kingdom",
+    "great britain",
+    "england",
+    "scotland",
+    "wales",
+    "northern ireland",
+}
+
+
+def _safe_load_raw_json(raw: Any) -> Dict[str, Any]:
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            return {}
+    return {}
+
+
+def _derive_location_from_raw_json(posting: JobPosting) -> Dict[str, Any]:
+    """
+    Try to derive postcode / county / lat / lon from the scraper payload.
+
+    - Adzuna: uses location.area + latitude/longitude
+    - Reed: uses locationName + latitude/longitude
+    """
+    data = _safe_load_raw_json(getattr(posting, "raw_json", None))
+    if not data:
+        return {}
+
+    source = (getattr(posting, "source_site", "") or "").lower()
+    out: Dict[str, Any] = {}
+
+    # Generic postcode key if present anywhere
+    pc = data.get("postcode") or data.get("post_code")
+    if isinstance(pc, str) and pc.strip():
+        out["postcode"] = pc.strip()
+
+    if source == "adzuna":
+        loc = data.get("location") or {}
+        area = loc.get("area") or []
+        if isinstance(area, list):
+            parts = [str(p).strip() for p in area if p]
+            # Strip out country-level tokens
+            non_country = [p for p in parts if p.lower() not in _COUNTRY_TOKENS]
+            # Heuristic: last = city, second-last = county/region
+            if len(non_country) >= 2:
+                out["county"] = non_country[-2]
+        # lat/lon
+        lat = data.get("latitude") or (loc.get("lat") if isinstance(loc, dict) else None)
+        lon = data.get("longitude") or (loc.get("lon") if isinstance(loc, dict) else None)
+        try:
+            if lat is not None and lon is not None:
+                out["latitude"] = float(lat)
+                out["longitude"] = float(lon)
+        except Exception:
+            pass
+
+    elif source == "reed":
+        loc_name = (data.get("locationName") or data.get("location") or "").strip()
+        if loc_name:
+            parts = [p.strip() for p in loc_name.split(",") if p.strip()]
+            # e.g. "Birmingham, West Midlands" -> county = "West Midlands"
+            if len(parts) >= 2:
+                out["county"] = parts[-1]
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+        try:
+            if lat is not None and lon is not None:
+                out["latitude"] = float(lat)
+                out["longitude"] = float(lon)
+        except Exception:
+            pass
+
+    return out
+
+
 def import_posting_to_record(
     posting: JobPosting,
     enable_snap_to_postcode: bool = True,
@@ -100,6 +189,7 @@ def import_posting_to_record(
     - Canonical sector mapping (SectorMapping)
     - Truncation to DB limits
     - Optional fallback sector classification if posting.sector is missing
+    - Location derivation from scrape payload (county / lat / lon / postcode)
     """
 
     # --- Company ID + name ---
@@ -118,13 +208,19 @@ def import_posting_to_record(
     imported_month = imported_at.strftime("%B")
     imported_year = imported_at.strftime("%Y")
 
-    # --- Postcode normalisation / geocoding ---
-    raw_postcode = (posting.postcode or "").strip()
-    norm_pc = normalize_uk_postcode(raw_postcode) if raw_postcode else ""
-    latitude = None
-    longitude = None
+    # --- Location from raw_json (Adzuna/Reed specific hints) ---
+    loc_info = _derive_location_from_raw_json(posting)
 
-    if norm_pc:
+    # --- Postcode normalisation / geocoding ---
+    raw_postcode = (posting.postcode or loc_info.get("postcode") or "").strip()
+    norm_pc = normalize_uk_postcode(raw_postcode) if raw_postcode else ""
+
+    # Prefer coords from the scrape payload if present
+    latitude = loc_info.get("latitude")
+    longitude = loc_info.get("longitude")
+
+    # If we still don't have coords but we do have a normalised postcode, geocode it
+    if norm_pc and (latitude is None or longitude is None):
         lat, lon = geocode_postcode_cached(norm_pc)
         if lat is not None and lon is not None:
             latitude, longitude = lat, lon
@@ -153,7 +249,7 @@ def import_posting_to_record(
     sector = _truncate(sector, MAX_SECTOR_LEN) or "Other"
 
     # --- County ---
-    raw_county = getattr(posting, "county", None)
+    raw_county = getattr(posting, "county", None) or loc_info.get("county")
     county = _truncate((raw_county or "").strip() or None, MAX_COUNTY_LEN)
 
     record = JobRecord(
