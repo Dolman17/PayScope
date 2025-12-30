@@ -2212,17 +2212,31 @@ def admin_status_json():
     """
     Lightweight health/status payload for the desktop PayScope Monitor.
 
-    - Optional header auth via X-PAYSCOPE-STATUS-TOKEN (env var PAYSCOPE_STATUS_TOKEN)
+    - Optional auth via:
+        * Header: X-PAYSCOPE-STATUS-TOKEN
+        * or query string: ?token=...
+      (only enforced if PAYSCOPE_STATUS_TOKEN is non-empty in the env)
     - Fast DB ping
     - Cheap table counts
     - Recent cron history
     """
-    # Optional token check (no token in env = open endpoint)
     token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
+
     if token_expected:
-        token_given = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
+        header_token = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
+        query_token = (request.args.get("token") or "").strip()
+        token_given = header_token or query_token
+
         if token_given != token_expected:
-            return jsonify({"ok": False, "error": "unauthorised"}), 401
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "unauthorised",
+                    "detail": "token mismatch",
+                    "have_header": bool(header_token),
+                    "have_query": bool(query_token),
+                }
+            ), 401
 
     started = datetime.utcnow()
 
