@@ -422,19 +422,19 @@ def _ai_generate_weekly_overview(week_start: date, week_end: date, featured_item
         max_tokens=450,
     )
 
-    text = (resp.choices[0].message.content or "").strip()
+    text_resp = (resp.choices[0].message.content or "").strip()
 
     # Best-effort JSON extraction (model sometimes wraps)
-    m = re.search(r"\{.*\}", text, flags=re.S)
+    m = re.search(r"\{.*\}", text_resp, flags=re.S)
     json_blob = m.group(0) if m else None
 
     try:
-        data = json.loads(json_blob or text)
+        data = json.loads(json_blob or text_resp)
     except Exception:
         # fallback: store raw in overview
         data = {
             "headline": f"Weekly market changes for {week_start.strftime('%d %b %Y')}",
-            "overview": text,
+            "overview": text_resp,
             "watchouts": "",
         }
 
@@ -487,19 +487,21 @@ def _ai_generate_item_narrative(item) -> dict:
         max_tokens=220,
     )
 
-    text = (resp.choices[0].message.content or "").strip()
-    m = re.search(r"\{.*\}", text, flags=re.S)
+    text_resp = (resp.choices[0].message.content or "").strip()
+    m = re.search(r"\{.*\}", text_resp, flags=re.S)
     json_blob = m.group(0) if m else None
 
     try:
-        data = json.loads(json_blob or text)
+        data = json.loads(json_blob or text_resp)
     except Exception:
-        data = {"narrative": text, "driver_tags": "unclear"}
+        data = {"narrative": text_resp, "driver_tags": "unclear"}
 
     narrative = _clamp_text(data.get("narrative"), 800)
     driver_tags = _clamp_text(data.get("driver_tags"), 200)
 
     return {"narrative": narrative or "", "driver_tags": driver_tags, "model": model}
+
+
 # -------------------------------------------------------------------
 # JOB SCRAPER PAGE (manual scrape)
 # -------------------------------------------------------------------
@@ -677,7 +679,7 @@ def admin_import_all_jobs():
         except Exception as e:  # noqa: BLE001
             failed_count += 1
             # keep going; store error in logs
-            print(f"Import failed for posting_id={getattr(p, 'id', None)}: {e}")
+            print(f"Import failed for posting_id={getattr(p, "id", None)}: {e}")
 
     try:
         commit_or_rollback()
@@ -943,6 +945,8 @@ def debug_pay_explorer_json():
         group_by="county",
     )
     return jsonify(data)
+
+
 # -------------------------------------------------------------------
 # LEADS (Waitlist + Access Requests)
 # -------------------------------------------------------------------
@@ -1562,106 +1566,6 @@ def db_health():
 
 
 # -------------------------------------------------------------------
-# LIVE STATUS JSON FOR DESKTOP MONITOR
-# -------------------------------------------------------------------
-@bp.route("/admin/status.json", methods=["GET"])
-def admin_status_json():
-    """
-    Machine-readable status snapshot for external monitoring (desktop mini-app).
-
-    Auth:
-      - Superuser session (current_user.is_superuser()), OR
-      - X-PAYSCOPE-STATUS-TOKEN header matching PAYSCOPE_STATUS_TOKEN env var.
-    """
-    token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
-    provided = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
-
-    session_ok = current_user.is_authenticated and getattr(current_user, "is_superuser", lambda: False)()
-    token_ok = bool(token_expected and provided and provided == token_expected)
-
-    if not (session_ok or token_ok):
-        return jsonify({"ok": False, "error": "unauthorised"}), 403
-
-    now = datetime.utcnow()
-
-    # DB health
-    db_ok = True
-    db_error = None
-    try:
-        db.session.execute(text("SELECT 1"))
-    except Exception as e:  # noqa: BLE001
-        db_ok = False
-        db_error = repr(e)
-
-    # Counts
-    job_records_count = db.session.query(func.count(JobRecord.id)).scalar() or 0
-
-    # New records in last 24h
-    since_24h = now - timedelta(hours=24)
-    try:
-        new_last_24h = (
-            db.session.query(func.count(JobRecord.id))
-            .filter(JobRecord.created_at >= since_24h)
-            .scalar()
-            or 0
-        )
-    except Exception:
-        new_last_24h = None
-
-    # Latest JobRecord timestamp
-    latest_job_record_at = None
-    try:
-        latest = db.session.query(func.max(JobRecord.created_at)).scalar()
-        latest_job_record_at = latest.isoformat() if latest else None
-    except Exception:
-        latest_job_record_at = None
-
-    # Recent cron runs
-    cron_rows = (
-        db.session.query(CronRunLog)
-        .order_by(CronRunLog.started_at.desc())
-        .limit(15)
-        .all()
-    )
-
-    def _cron_row(r: CronRunLog) -> dict:
-        started = getattr(r, "started_at", None)
-        finished = getattr(r, "finished_at", None)
-        err = getattr(r, "error_message", None) or getattr(r, "message", None) or ""
-        if err:
-            err = str(err)[:500]
-        return {
-            "job_name": getattr(r, "job_name", None),
-            "status": getattr(r, "status", None),
-            "trigger": getattr(r, "trigger", None),
-            "day_label": getattr(r, "day_label", None),
-            "started_at": started.isoformat() if started else None,
-            "finished_at": finished.isoformat() if finished else None,
-            "duration_s": getattr(r, "duration_s", None),
-            "error": err,
-        }
-
-    payload = {
-        "ok": True,
-        "ts": now.isoformat() + "Z",
-        "db_ok": db_ok,
-        "db_error": db_error,
-        "counts": {
-            "job_records": int(job_records_count),
-            "job_records_new_24h": int(new_last_24h) if new_last_24h is not None else None,
-        },
-        "freshness": {
-            "latest_job_record_created_at": latest_job_record_at,
-        },
-        "cron": {
-            "last_15": [_cron_row(r) for r in cron_rows],
-        },
-    }
-
-    return jsonify(payload), 200
-
-
-# -------------------------------------------------------------------
 # CRON RUN HISTORY + RUN NOW
 # -------------------------------------------------------------------
 @bp.route("/cron-runs")
@@ -1995,7 +1899,6 @@ def weekly_market_changes_admin():
             commit_or_rollback()
             flash("Published all featured items for the week.", "success")
 
-
         elif action == "generate_ai":
             # Generate per-item narratives + top weekly brief for featured items
             featured_items = (
@@ -2089,8 +1992,6 @@ def weekly_market_changes_admin():
             except Exception as e:  # noqa: BLE001
                 print("Failed saving AI narratives:", e)
                 flash("Failed saving AI narratives.", "error")
-
-
 
         elif action == "generate_candidates":
             # Column auto-detection
@@ -2302,3 +2203,174 @@ def cron_run_now():
 
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
+
+
+# -------------------------------------------------------------------
+# NEW: PUBLIC STATUS JSON ENDPOINT FOR DESKTOP MONITOR
+# -------------------------------------------------------------------
+@bp.route("/status.json", methods=["GET"])
+def admin_status_json():
+    """
+    Lightweight JSON health/status endpoint for the PayScope Monitor desktop app.
+
+    - Does NOT require login.
+    - If PAYSCOPE_STATUS_TOKEN is set (env or config), requires that token via:
+        Header: X-PAYSCOPE-STATUS-TOKEN
+      or query param `?token=...`
+    """
+    # Optional token check
+    expected = (
+        current_app.config.get("PAYSCOPE_STATUS_TOKEN")
+        or os.getenv("PAYSCOPE_STATUS_TOKEN")
+        or None
+    )
+    if expected:
+        supplied = (
+            request.headers.get("X-PAYSCOPE-STATUS-TOKEN")
+            or request.args.get("token")
+            or ""
+        )
+        if supplied != expected:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "status": "error",
+                        "error": "invalid token",
+                    }
+                ),
+                401,
+            )
+
+    now = datetime.utcnow()
+
+    # --- DB ping + basic metadata ---
+    ping_ok = False
+    ping_error = None
+    backend = None
+    tables = []
+    try:
+        db.session.execute(text("SELECT 1"))
+        ping_ok = True
+        inspector = inspect(db.engine)
+        tables = sorted(inspector.get_table_names())
+        backend = db.engine.name
+    except Exception as e:  # noqa: BLE001
+        ping_error = repr(e)
+
+    # --- Safe counts (best-effort) ---
+    def safe_count(model):
+        try:
+            return int(db.session.query(func.count(model.id)).scalar() or 0)
+        except Exception:
+            return None
+
+    user_count = safe_count(User)
+    job_record_count = safe_count(JobRecord)
+    job_posting_count = safe_count(JobPosting)
+    cron_run_count = safe_count(CronRunLog)
+
+    # --- Cron info (last run + recent errors) ---
+    last_run = None
+    recent_error_count = None
+    try:
+        last = (
+            CronRunLog.query
+            .order_by(CronRunLog.started_at.desc())
+            .first()
+        )
+        if last:
+            duration = None
+            if last.started_at and last.finished_at:
+                duration = (last.finished_at - last.started_at).total_seconds()
+            last_run = {
+                "job_name": last.job_name,
+                "status": last.status,
+                "started_at": last.started_at.isoformat() if last.started_at else None,
+                "finished_at": last.finished_at.isoformat() if last.finished_at else None,
+                "duration_seconds": duration,
+            }
+
+        day_ago = now - timedelta(days=1)
+        recent_error_count = (
+            CronRunLog.query
+            .filter(CronRunLog.started_at >= day_ago)
+            .filter(CronRunLog.status == "error")
+            .count()
+        )
+    except Exception:
+        pass
+
+    # --- Coverage state (reuse logic from admin_tools) ---
+    coverage_state = None
+    try:
+        cov = get_weekly_coverage(days=7)
+        weak_sectors = int(cov["summary"].get("weak_sectors", 0) or 0)
+        weak_locations = int(cov["summary"].get("weak_locations", 0) or 0)
+        weak_total = weak_sectors + weak_locations
+
+        if weak_total == 0:
+            cov_status = "green"
+n        elif weak_total <= 3:
+            cov_status = "amber"
+        else:
+            cov_status = "red"
+
+        coverage_state = {
+            "status": cov_status,
+            "weak_sectors": weak_sectors,
+            "weak_locations": weak_locations,
+            "weak_total": weak_total,
+        }
+    except Exception:
+        pass
+
+    # --- Overall status colour ---
+    status_colour = "green"
+    if not ping_ok:
+        status_colour = "red"
+    elif recent_error_count and recent_error_count > 0:
+        status_colour = "amber"
+    if coverage_state and coverage_state.get("status") == "red":
+        status_colour = "red"
+
+    env_name = (
+        os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("FLASK_ENV")
+        or current_app.config.get("ENV")
+    )
+    release = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("HEROKU_RELEASE_VERSION")
+        or None
+    )
+
+    payload = {
+        "ok": ping_ok,
+        "status": status_colour,
+        "timestamp_utc": now.isoformat() + "Z",
+        "app": {
+            "env": env_name,
+            "release": release,
+        },
+        "db": {
+            "ok": ping_ok,
+            "backend": backend,
+            "error": ping_error,
+            "tables": tables,
+            "tables_count": len(tables),
+        },
+        "counts": {
+            "users": user_count,
+            "job_records": job_record_count,
+            "job_postings": job_posting_count,
+            "cron_runs": cron_run_count,
+        },
+        "cron": {
+            "last_run": last_run,
+            "recent_error_count": recent_error_count,
+        },
+        "coverage": coverage_state,
+    }
+
+    return jsonify(payload)
