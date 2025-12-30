@@ -1,0 +1,149 @@
+{# app/templates/admin_job_roles_report.html #}
+{% extends "base.html" %}
+{% block title %}Job Role Mapping Report • PayScope{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6">
+  <!-- Header -->
+  <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
+        Job Role Mapping Report
+      </h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Overview of how raw job titles are normalised into canonical roles. Use this to spot
+        messy variants, gaps in coverage, and opportunities to merge or split roles.
+      </p>
+    </div>
+    <div class="flex flex-col items-start sm:items-end gap-2">
+      <div class="text-xs text-gray-400 uppercase tracking-wide">
+        <span class="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 bg-gray-50">
+          <span class="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"></span>
+          <span>Data Hygiene</span>
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-2 text-xs">
+        <a href="{{ url_for('dashboard.admin_job_roles_report_export') }}" class="btn btn-primary btn-sm">
+          Export CSV
+        </a>
+        <a href="{{ url_for('dashboard.admin_job_roles') }}" class="btn btn-secondary btn-sm">
+          Back to Job Role Cleaner
+        </a>
+        <a href="{{ url_for('admin.admin_tools') }}" class="btn btn-secondary btn-sm">
+          Back to Admin Tools
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Summary card -->
+  <section class="card mb-6">
+    <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-800">Canonical role coverage</h2>
+        <p class="text-xs text-gray-500">
+          One row per canonical role, showing how many raw titles map to it and how many
+          <code>JobRecord</code> rows they cover.
+        </p>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <th class="px-4 py-2">Canonical Role</th>
+            <th class="px-4 py-2 w-32 text-right">Raw Variants</th>
+            <th class="px-4 py-2 w-40 text-right">Total JobRecord Count</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% if summary|length == 0 %}
+            <tr>
+              <td colspan="3" class="px-4 py-6 text-center text-sm text-gray-500">
+                No mappings found. Create mappings in the Job Role Cleaner first.
+              </td>
+            </tr>
+          {% else %}
+            {% for row in summary %}
+              <tr class="hover:bg-gray-50/60">
+                <td class="px-4 py-2 align-top">
+                  <span class="font-medium text-gray-900">
+                    {{ row.canonical_role or "—" }}
+                  </span>
+                </td>
+                <td class="px-4 py-2 align-top text-right text-gray-700">
+                  {{ row.raw_variants }}
+                </td>
+                <td class="px-4 py-2 align-top text-right text-gray-700">
+                  {{ row.total_count }}
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Detailed mapping card -->
+  <section class="card">
+    <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-800">Raw titles per canonical role</h2>
+        <p class="text-xs text-gray-500">
+          For each canonical role, see the raw job titles that map into it and how many records
+          each variant represents.
+        </p>
+      </div>
+      <div class="text-xs text-gray-400">
+        Tip: use the <span class="font-semibold">Export CSV</span> button above to pull this into Excel or Power BI.
+      </div>
+    </div>
+
+    <div class="divide-y divide-gray-100">
+      {% if grouped_roles|length == 0 %}
+        <div class="px-4 sm:px-5 py-6 text-center text-sm text-gray-500">
+          No mappings to display yet.
+        </div>
+      {% else %}
+        {% for canonical_role, raw_list in grouped_roles.items() %}
+          <div class="px-4 sm:px-5 py-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+              <h3 class="text-sm font-semibold text-gray-900">
+                {{ canonical_role or "—" }}
+              </h3>
+              <p class="text-[11px] text-gray-500">
+                {{ raw_list|length }} raw title{{ raw_list|length != 1 and 's' or '' }} mapped here.
+              </p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 border border-gray-200 border-b-0">
+                  <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    <th class="px-3 py-1.5">Raw Job Title</th>
+                    <th class="px-3 py-1.5 w-32 text-right">JobRecord Count</th>
+                  </tr>
+                </thead>
+                <tbody class="border border-gray-200 border-t-0 divide-y divide-gray-100">
+                  {% for item in raw_list %}
+                    <tr class="hover:bg-gray-50/60">
+                      <td class="px-3 py-1.5 align-top">
+                        <span class="font-medium text-gray-900 break-words">
+                          {{ item.raw_value or "—" }}
+                        </span>
+                      </td>
+                      <td class="px-3 py-1.5 align-top text-right text-gray-700">
+                        {{ item.count }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

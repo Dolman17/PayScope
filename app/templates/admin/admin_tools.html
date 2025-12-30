@@ -33,19 +33,18 @@
         </a>
 
         <div class="card p-5">
-      <h3 class="font-semibold">Rebuild Job Summaries</h3>
-        <p class="text-sm text-gray-600 mb-3">
-        Recalculate daily summaries using the latest sector overrides.
-        </p>
+          <h3 class="font-semibold">Rebuild Job Summaries</h3>
+          <p class="text-sm text-gray-600 mb-3">
+            Recalculate daily summaries using the latest sector overrides.
+          </p>
 
-  <form method="post" action="{{ url_for('admin.admin_rebuild_summaries') }}">
-    <input type="hidden" name="days_back" value="90">
-    <button type="submit" class="btn btn-warning btn-sm">
-      Rebuild last 90 days
-    </button>
-  </form>
-</div>
-
+          <form method="post" action="{{ url_for('admin.admin_rebuild_summaries') }}">
+            <input type="hidden" name="days_back" value="90">
+            <button type="submit" class="btn btn-warning btn-sm">
+              Rebuild last 90 days
+            </button>
+          </form>
+        </div>
 
         <a href="{{ url_for('admin.ai_logs') }}" class="card p-5">
           <h3 class="font-semibold">AI Logs</h3>
@@ -148,6 +147,28 @@
           <h3 class="font-semibold">Sector Cleaner</h3>
           <p class="text-sm text-gray-600">Assign “Other” roles to the correct sector using role → sector overrides.</p>
         </a>
+
+        <!-- ✅ NEW: Canonical Label Cleaner (one-off script) -->
+        <div class="card p-5">
+          <h3 class="font-semibold">Canonical Label Cleanup</h3>
+          <p class="text-sm text-gray-600 mt-1">
+            One-off normalisation for messy <code>canonical_role</code> labels
+            (long AI paragraphs, markdown, job summaries). Only updates entries that look noisy.
+          </p>
+
+          <form method="post"
+                action="{{ url_for('dashboard.admin_job_roles_clean_canonical') }}"
+                class="mt-4">
+            <button type="submit" class="btn btn-warning btn-sm">
+              Run Canonical Role Cleaner
+            </button>
+          </form>
+
+          <p class="mt-2 text-xs text-gray-500">
+            Safe to run periodically. Raw job titles and mappings are preserved; only the label text is shortened.
+          </p>
+        </div>
+
       </div>
     </section>
 
@@ -170,4 +191,3 @@
   </div>
 </div>
 {% endblock %}
-

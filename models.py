@@ -193,6 +193,13 @@ class JobRoleMapping(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    # Optional AI suggestion cache (to avoid repeat calls)
+    ai_canonical_role = db.Column(db.String(255), nullable=True)
+    ai_score = db.Column(db.Integer, nullable=True)          # 0–100 confidence from AI/local engine
+    ai_model = db.Column(db.String(80), nullable=True)       # e.g. "gpt-4o-mini" or "local-rules-fuzzy"
+    ai_reason = db.Column(db.Text, nullable=True)            # short explanation from AI
+
+
 
 class SectorMapping(db.Model):
     __tablename__ = "sector_mappings"

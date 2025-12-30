@@ -1,8 +1,9 @@
+{# app/templates/admin_job_roles.html #}
 {% extends "base.html" %}
 {% block title %}Job Role Cleaner • PayScope{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-2 sm:px-4 py-6">
+<div class="max-w-none mx-auto px-3 sm:px-6 lg:px-10 py-6">
   <!-- Header -->
   <header class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div>
@@ -67,12 +68,15 @@
           </select>
         </div>
 
-        <div class="flex gap-2 sm:gap-3 justify-end">
+        <div class="flex gap-2 sm:gap-3 justify-end flex-wrap">
           <button type="submit" class="btn btn-primary">
             Apply
           </button>
           <a href="{{ url_for('dashboard.admin_job_roles') }}" class="btn btn-secondary">
             Clear
+          </a>
+          <a href="{{ url_for('dashboard.admin_job_roles_report') }}" class="btn btn-secondary">
+            Mapping report
           </a>
           <a href="{{ url_for('admin.admin_tools') }}" class="btn btn-secondary hidden sm:inline-flex">
             Back to Admin Tools
@@ -92,7 +96,7 @@
         </p>
       </div>
       <div class="text-xs text-gray-400">
-        Showing up to <strong>500</strong> distinct raw job_role values.
+        Showing up to <strong>500</strong> distinct raw <code>job_role</code> values.
       </div>
     </div>
 
@@ -125,6 +129,7 @@
             {% for row in rows %}
               {% set raw_value = row.raw_value %}
               {% set mapping = mappings.get(raw_value) %}
+              {% set sugg = suggestions.get(raw_value) %}
               <tr class="hover:bg-gray-50/60">
                 <td class="px-4 py-3 align-top">
                   <input
@@ -137,6 +142,11 @@
                   <div class="font-medium text-gray-900 break-words">
                     {{ raw_value or "—" }}
                   </div>
+                  {% if sugg and sugg.cleaned %}
+                    <div class="mt-1 text-[11px] text-gray-500">
+                      Cleaned: <span class="font-mono">{{ sugg.cleaned }}</span>
+                    </div>
+                  {% endif %}
                 </td>
                 <td class="px-4 py-3 align-top text-right text-gray-700">
                   {{ row.count }}
@@ -160,13 +170,39 @@
                       name="raw_value"
                       value="{{ raw_value }}"
                     >
+
+                    {% if sugg and sugg.suggested %}
+                      <div class="text-[11px] text-gray-500 flex flex-col gap-1">
+                        <div class="flex items-center gap-2">
+                          <span class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5">
+                            <span class="font-semibold">Suggested:</span>
+                            <span>{{ sugg.suggested }}</span>
+                            <span class="text-gray-400">({{ sugg.score }}%)</span>
+                          </span>
+                          <button
+                            type="button"
+                            class="text-blue-600 hover:underline js-use-suggestion"
+                            data-target-id="canonical-{{ loop.index0 }}"
+                            data-suggested="{{ sugg.suggested }}"
+                          >
+                            Use
+                          </button>
+                        </div>
+                      </div>
+                    {% endif %}
+
                     <input
                       type="text"
                       name="canonical_role"
+                      id="canonical-{{ loop.index0 }}"
                       value="{{ mapping.canonical_role if mapping else '' }}"
                       class="input w-full sm:w-auto"
                       placeholder="e.g. Care Assistant, Registered Nurse"
                     >
+                    <div
+                      id="ai-status-{{ loop.index0 }}"
+                      class="mt-1 text-[11px] text-gray-500 whitespace-pre-line"
+                    ></div>
                 </td>
                 <td class="px-4 py-3 align-top text-right">
                   <div class="flex flex-col sm:flex-row gap-2 sm:justify-end sm:items-center">
@@ -180,11 +216,22 @@
                       >
                       <span>Apply to existing records</span>
                     </label>
-                    <button
-                      type="submit"
-                      class="btn btn-primary btn-sm">
-                      Save
-                    </button>
+                    <div class="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm js-ask-ai"
+                        data-raw-value="{{ raw_value }}"
+                        data-target-id="canonical-{{ loop.index0 }}"
+                        data-status-id="ai-status-{{ loop.index0 }}"
+                      >
+                        Ask AI
+                      </button>
+                      <button
+                        type="submit"
+                        class="btn btn-primary btn-sm">
+                        Save
+                      </button>
+                    </div>
                   </div>
                   </form>
                 </td>
@@ -201,14 +248,14 @@
         id="bulk-map-form"
         method="post"
         action="{{ url_for('dashboard.admin_job_roles_bulk_map') }}"
-        class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        class="js-raw-values-form flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
-               <!-- Preserve current filters on redirect -->
+        <!-- Preserve current filters on redirect -->
         <input type="hidden" name="q" value="{{ search }}">
         <input type="hidden" name="status" value="{{ status }}">
 
         <!-- Hidden container for selected raw_values (populated by JS on submit) -->
-        <div id="bulk-raw-values-container"></div>
+        <div class="auto-raw-values-container"></div>
 
         <div class="flex-1">
           <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
@@ -246,6 +293,55 @@
           </p>
         </div>
       </form>
+
+      <!-- Auto-clean + auto-map controls (rules + fuzzy suggestions) -->
+      <form
+        id="auto-clean-form"
+        method="post"
+        action="{{ url_for('dashboard.admin_job_roles_auto_clean') }}"
+        class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-t border-gray-100 pt-4 js-raw-values-form"
+      >
+        <input type="hidden" name="q" value="{{ search }}">
+        <input type="hidden" name="status" value="{{ status }}">
+        <div class="auto-raw-values-container"></div>
+
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+            Auto-clean + auto-map selected titles
+          </label>
+          <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div class="flex-1">
+              <div class="text-[11px] text-gray-500">
+                Uses a rules engine (high-confidence) then fuzzy matching against your existing canonical roles.
+                Only maps roles above the chosen confidence threshold.
+              </div>
+            </div>
+            <div class="sm:w-52">
+              <label class="block text-[11px] text-gray-600 mb-1">Confidence threshold</label>
+              <select name="threshold" class="input w-full">
+                <option value="95">95% (very strict)</option>
+                <option value="90">90%</option>
+                <option value="88" selected>88% (recommended)</option>
+                <option value="85">85%</option>
+                <option value="80">80% (aggressive)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:items-end gap-2 sm:w-64">
+          <label class="inline-flex items-center gap-1.5 text-[11px] text-gray-600">
+            <input type="checkbox" name="apply_now" value="1" class="rounded border-gray-300">
+            <span>Also backfill existing JobRecord rows</span>
+          </label>
+          <button type="submit" class="btn btn-secondary btn-sm w-full sm:w-auto">
+            Auto-clean + map selected
+          </button>
+          <p class="text-[11px] text-gray-400">
+            Tip: Start strict (90–95%) then relax as your canonical vocabulary improves.
+          </p>
+        </div>
+      </form>
     </div>
 
     <div class="px-4 sm:px-5 py-3 border-t border-gray-100 text-xs text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -275,24 +371,18 @@
     }
   })();
 
-  // Bulk-map form: collect selected raw_values into hidden inputs before submit
+  // Collect selected raw_values into hidden inputs for any bulk form
   (function () {
-    const form = document.getElementById('bulk-map-form');
-    if (!form) return;
+    const forms = document.querySelectorAll('.js-raw-values-form');
+    if (!forms.length) return;
 
-    form.addEventListener('submit', function (e) {
-      const container = document.getElementById('bulk-raw-values-container');
-      if (!container) return;
+    function collectInto(form) {
+      const container = form.querySelector('.auto-raw-values-container');
+      if (!container) return false;
 
-      // Clear any previous values
       container.innerHTML = '';
-
       const selected = Array.from(document.querySelectorAll('.role-checkbox:checked'));
-      if (selected.length === 0) {
-        e.preventDefault();
-        alert('Select at least one job title to bulk-assign a canonical role.');
-        return;
-      }
+      if (selected.length === 0) return false;
 
       selected.forEach(cb => {
         const rawValue = cb.getAttribute('data-raw-value') || '';
@@ -303,8 +393,129 @@
         input.value = rawValue;
         container.appendChild(input);
       });
+      return true;
+    }
+
+    forms.forEach(form => {
+      form.addEventListener('submit', function (e) {
+        const ok = collectInto(form);
+        if (!ok) {
+          e.preventDefault();
+          alert('Select at least one job title first.');
+        }
+      });
+    });
+  })();
+
+  // "Use" buttons: apply suggested canonical role into the row input
+  (function () {
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.js-use-suggestion');
+      if (!btn) return;
+
+      const targetId = btn.getAttribute('data-target-id');
+      const suggested = btn.getAttribute('data-suggested') || '';
+      if (!targetId || !suggested) return;
+
+      const input = document.getElementById(targetId);
+      if (!input) return;
+
+      input.value = suggested;
+      input.focus();
+    });
+  })();
+
+  // "Ask AI" buttons – per row
+  (function () {
+    const aiUrl = "{{ url_for('dashboard.admin_job_roles_ai_suggest') }}";
+
+    document.addEventListener('click', async function (e) {
+      const btn = e.target.closest('.js-ask-ai');
+      if (!btn) return;
+
+      const rawValue = btn.getAttribute('data-raw-value') || '';
+      const targetId = btn.getAttribute('data-target-id');
+      const statusId = btn.getAttribute('data-status-id');
+
+      if (!rawValue || !targetId) return;
+
+      const input = document.getElementById(targetId);
+      const statusEl = statusId ? document.getElementById(statusId) : null;
+
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Thinking…';
+
+      if (statusEl) {
+        statusEl.textContent = 'Asking AI for a suggestion…';
+        statusEl.classList.remove('text-red-600', 'text-amber-600');
+        statusEl.classList.add('text-gray-500');
+      }
+
+      try {
+        const resp = await window.fetchWithCsrf(aiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw_value: rawValue })
+        });
+
+        const data = await resp.json();
+
+        if (!data.ok) {
+          if (statusEl) {
+            statusEl.textContent = data.error || 'AI suggestion failed.';
+            statusEl.classList.remove('text-gray-500', 'text-amber-600');
+            statusEl.classList.add('text-red-600');
+          } else {
+            alert(data.error || 'AI suggestion failed.');
+          }
+          return;
+        }
+
+        const canonical = data.canonical_role;
+        const score = data.score;
+        const source = data.source;
+        const model = data.model;
+        const reason = data.reason;
+
+        if (canonical && input) {
+          input.value = canonical;
+          input.focus();
+        }
+
+        if (statusEl) {
+          if (!canonical) {
+            statusEl.textContent = reason || 'AI could not confidently map this title to any canonical role.';
+            statusEl.classList.remove('text-gray-500', 'text-red-600');
+            statusEl.classList.add('text-amber-600');
+          } else {
+            let msg = `AI suggestion: ${canonical}`;
+            if (typeof score === 'number') {
+              msg += ` (${score}%)`;
+            }
+            if (source === 'cache') {
+              msg += ' [cached]';
+            }
+            statusEl.textContent = msg;
+            statusEl.classList.remove('text-red-600', 'text-amber-600');
+            statusEl.classList.add('text-gray-600');
+          }
+        }
+
+      } catch (err) {
+        console.error(err);
+        if (statusEl) {
+          statusEl.textContent = 'AI request error.';
+          statusEl.classList.remove('text-gray-500', 'text-amber-600');
+          statusEl.classList.add('text-red-600');
+        } else {
+          alert('AI request error.');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     });
   })();
 </script>
 {% endblock %}
-
