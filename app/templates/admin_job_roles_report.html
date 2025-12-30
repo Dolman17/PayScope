@@ -10,14 +10,14 @@
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--brand);">
         Job Role Mapping Report
       </h1>
-      <p class="mt-1 text-sm text-gray-500">
+      <p class="mt-1 text-sm text-slate-400">
         Overview of how raw job titles are normalised into canonical roles. Use this to spot
         messy variants, gaps in coverage, and opportunities to merge or split roles.
       </p>
     </div>
     <div class="flex flex-col items-start sm:items-end gap-2">
-      <div class="text-xs text-gray-400 uppercase tracking-wide">
-        <span class="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 bg-gray-50">
+      <div class="text-xs text-slate-500 uppercase tracking-wide">
+        <span class="inline-flex items-center rounded-full border border-slate-700 px-3 py-1 bg-slate-900/60">
           <span class="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"></span>
           <span>Data Hygiene</span>
         </span>
@@ -36,46 +36,88 @@
     </div>
   </header>
 
-  <!-- Summary card -->
+  <!-- Summary card: canonical coverage + hygiene -->
   <section class="card mb-6">
-    <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="px-4 sm:px-5 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h2 class="text-sm font-semibold text-gray-800">Canonical role coverage</h2>
-        <p class="text-xs text-gray-500">
-          One row per canonical role, showing how many raw titles map to it and how many
-          <code>JobRecord</code> rows they cover.
+        <h2 class="text-sm font-semibold text-slate-100">Canonical role coverage</h2>
+        <p class="text-xs text-slate-400">
+          One row per canonical role, showing how many raw titles map to it, how many
+          <code class="text-[11px] text-slate-300">JobRecord</code> rows they cover, and a quick
+          hygiene view of the worst-messy variants under that role.
         </p>
+      </div>
+      <div class="flex flex-wrap gap-2 text-[11px] text-slate-400">
+        <div class="inline-flex items-center gap-1">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+          <span>Score ≥ 90: clean</span>
+        </div>
+        <div class="inline-flex items-center gap-1">
+          <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+          <span>70–89: ok / mixed</span>
+        </div>
+        <div class="inline-flex items-center gap-1">
+          <span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+          <span>&lt; 70: noisy</span>
+        </div>
       </div>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="bg-gray-50 border-b border-gray-200">
-          <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+        <thead class="bg-slate-900/60 border-b border-slate-800">
+          <tr class="text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
             <th class="px-4 py-2">Canonical Role</th>
-            <th class="px-4 py-2 w-32 text-right">Raw Variants</th>
-            <th class="px-4 py-2 w-40 text-right">Total JobRecord Count</th>
+            <th class="px-4 py-2 w-32 text-right">Raw&nbsp;Variants</th>
+            <th class="px-4 py-2 w-40 text-right">JobRecord&nbsp;Count</th>
+            <th class="px-4 py-2 w-40 text-right">Share of Dataset</th>
+            <th class="px-4 py-2 w-40 text-right">Worst Hygiene</th>
+            <th class="px-4 py-2 w-40 text-right">Noisy Variants</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody class="divide-y divide-slate-800">
           {% if summary|length == 0 %}
             <tr>
-              <td colspan="3" class="px-4 py-6 text-center text-sm text-gray-500">
+              <td colspan="6" class="px-4 py-6 text-center text-sm text-slate-400">
                 No mappings found. Create mappings in the Job Role Cleaner first.
               </td>
             </tr>
           {% else %}
             {% for row in summary %}
-              <tr class="hover:bg-gray-50/60">
+              {% set worst = row.worst_hygiene_score or 0 %}
+              {% if worst >= 90 %}
+                {% set worst_colour = "bg-emerald-500/80" %}
+              {% elif worst >= 70 %}
+                {% set worst_colour = "bg-amber-400/80" %}
+              {% else %}
+                {% set worst_colour = "bg-rose-500/80" %}
+              {% endif %}
+              <tr class="hover:bg-slate-900/60">
                 <td class="px-4 py-2 align-top">
-                  <span class="font-medium text-gray-900">
+                  <span class="font-medium text-slate-100">
                     {{ row.canonical_role or "—" }}
                   </span>
                 </td>
-                <td class="px-4 py-2 align-top text-right text-gray-700">
+                <td class="px-4 py-2 align-top text-right text-slate-200">
                   {{ row.raw_variants }}
                 </td>
-                <td class="px-4 py-2 align-top text-right text-gray-700">
+                <td class="px-4 py-2 align-top text-right text-slate-200">
                   {{ row.total_count }}
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-300">
+                  {% if row.share_total_pct is not none %}
+                    {{ "%.2f"|format(row.share_total_pct) }}%
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-4 py-2 align-top text-right">
+                  <span class="inline-flex items-center justify-end gap-1 text-[11px] text-slate-100">
+                    <span class="h-1.5 w-1.5 rounded-full {{ worst_colour }}"></span>
+                    <span>{{ worst }} / 100</span>
+                  </span>
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-300">
+                  {{ row.noisy_variants }}
                 </td>
               </tr>
             {% endfor %}
@@ -85,55 +127,265 @@
     </div>
   </section>
 
-  <!-- Detailed mapping card -->
-  <section class="card">
-    <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  <!-- Unmapped hotspots -->
+  <section class="card mb-6">
+    <div class="px-4 sm:px-5 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h2 class="text-sm font-semibold text-gray-800">Raw titles per canonical role</h2>
-        <p class="text-xs text-gray-500">
-          For each canonical role, see the raw job titles that map into it and how many records
-          each variant represents.
+        <h2 class="text-sm font-semibold text-slate-100">Unmapped hotspots</h2>
+        <p class="text-xs text-slate-400">
+          Top raw job titles that <span class="font-semibold">do not</span> currently have a mapping.
+          Mapping these will usually give the biggest lift first.
         </p>
       </div>
-      <div class="text-xs text-gray-400">
+      <div class="text-[11px] text-slate-400">
+        Click <span class="font-semibold">Map</span> to jump straight into the Job Role Cleaner with the title pre-filled.
+      </div>
+    </div>
+
+    {% if unmapped_hotspots|length == 0 %}
+      <div class="px-4 sm:px-5 py-6 text-center text-sm text-slate-400">
+        No unmapped hotspots found. Nice – everything currently in use appears to have a mapping.
+      </div>
+    {% else %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/60 border-b border-slate-800">
+            <tr class="text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
+              <th class="px-4 py-2">Raw Job Title (Unmapped)</th>
+              <th class="px-4 py-2 w-32 text-right">JobRecord&nbsp;Count</th>
+              <th class="px-4 py-2 w-32 text-right">Share of Dataset</th>
+              <th class="px-4 py-2 w-40 text-right">Hygiene</th>
+              <th class="px-4 py-2 w-32 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            {% for item in unmapped_hotspots %}
+              {% set score = item.hygiene_score or 0 %}
+              {% if score >= 90 %}
+                {% set dot = "bg-emerald-500/80" %}
+              {% elif score >= 70 %}
+                {% set dot = "bg-amber-400/80" %}
+              {% else %}
+                {% set dot = "bg-rose-500/80" %}
+              {% endif %}
+              <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-2 align-top">
+                  <span class="font-medium text-slate-100 break-words">
+                    {{ item.raw_value or "—" }}
+                  </span>
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-200">
+                  {{ item.count }}
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-300">
+                  {% if item.share_total_pct is not none %}
+                    {{ "%.2f"|format(item.share_total_pct) }}%
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-4 py-2 align-top text-right">
+                  <span class="inline-flex items-center justify-end gap-1 text-[11px] text-slate-100">
+                    <span class="h-1.5 w-1.5 rounded-full {{ dot }}"></span>
+                    <span>{{ score }} / 100</span>
+                  </span>
+                </td>
+                <td class="px-4 py-2 align-top text-right">
+                  <a
+                    href="{{ url_for('dashboard.admin_job_roles') }}?q={{ item.raw_value|urlencode }}&status=without"
+                    class="inline-flex items-center justify-center rounded border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-[11px] font-medium text-slate-100 hover:bg-slate-800 hover:border-slate-500 transition"
+                  >
+                    Map
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- Sector override sanity card -->
+  <section class="card mb-6">
+    <div class="px-4 sm:px-5 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-100">Sector override sanity check</h2>
+        <p class="text-xs text-slate-400">
+          Compares <span class="font-semibold">sector overrides</span> against the dominant observed sector
+          in the job data for each canonical role. High-dominance mismatches are flagged as potential issues.
+        </p>
+      </div>
+      <div class="text-[11px] text-slate-400">
+        Use this to revisit older overrides that may no longer reflect the live data.
+      </div>
+    </div>
+
+    {% if sector_mismatches|length == 0 %}
+      <div class="px-4 sm:px-5 py-6 text-center text-sm text-slate-400">
+        No strong sector mismatches detected. Overrides appear broadly aligned with observed data.
+      </div>
+    {% else %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/60 border-b border-slate-800">
+            <tr class="text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
+              <th class="px-4 py-2">Canonical Role</th>
+              <th class="px-4 py-2 w-40">Override Sector</th>
+              <th class="px-4 py-2 w-40">Dominant Observed Sector</th>
+              <th class="px-4 py-2 w-40 text-right">Dominant Share</th>
+              <th class="px-4 py-2 w-40 text-right">JobRecord Rows</th>
+              <th class="px-4 py-2 w-32 text-right">Flag</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            {% for item in sector_mismatches %}
+              <tr class="hover:bg-slate-900/60">
+                <td class="px-4 py-2 align-top">
+                  <span class="font-medium text-slate-100">
+                    {{ item.canonical_role or "—" }}
+                  </span>
+                </td>
+                <td class="px-4 py-2 align-top text-slate-200">
+                  {{ item.override_sector or "—" }}
+                </td>
+                <td class="px-4 py-2 align-top text-slate-200">
+                  {{ item.dominant_sector or "—" }}
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-300">
+                  {{ "%.1f"|format(item.dominant_share or 0) }}%
+                </td>
+                <td class="px-4 py-2 align-top text-right text-slate-200">
+                  {{ item.total_rows }}
+                </td>
+                <td class="px-4 py-2 align-top text-right">
+                  <span class="inline-flex items-center justify-end gap-1 text-[11px] text-amber-300">
+                    <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                    <span>Review</span>
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- Detailed mapping card -->
+  <section class="card">
+    <div class="px-4 sm:px-5 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-100">Raw titles per canonical role</h2>
+        <p class="text-xs text-slate-400">
+          For each canonical role, see the raw job titles that map into it, how many records each variant
+          represents, what share of the dataset they cover, and a hygiene score per raw title.
+        </p>
+      </div>
+      <div class="text-xs text-slate-400">
         Tip: use the <span class="font-semibold">Export CSV</span> button above to pull this into Excel or Power BI.
       </div>
     </div>
 
-    <div class="divide-y divide-gray-100">
+    <div class="divide-y divide-slate-800">
       {% if grouped_roles|length == 0 %}
-        <div class="px-4 sm:px-5 py-6 text-center text-sm text-gray-500">
+        <div class="px-4 sm:px-5 py-6 text-center text-sm text-slate-400">
           No mappings to display yet.
         </div>
       {% else %}
         {% for canonical_role, raw_list in grouped_roles.items() %}
           <div class="px-4 sm:px-5 py-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-              <h3 class="text-sm font-semibold text-gray-900">
+              <h3 class="text-sm font-semibold text-slate-100">
                 {{ canonical_role or "—" }}
               </h3>
-              <p class="text-[11px] text-gray-500">
+              <p class="text-[11px] text-slate-400">
                 {{ raw_list|length }} raw title{{ raw_list|length != 1 and 's' or '' }} mapped here.
               </p>
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
-                <thead class="bg-gray-50 border border-gray-200 border-b-0">
-                  <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                <thead class="bg-slate-900/60 border border-slate-800 border-b-0">
+                  <tr class="text-left text-xs font-semibold text-slate-300 uppercase tracking-wide">
                     <th class="px-3 py-1.5">Raw Job Title</th>
-                    <th class="px-3 py-1.5 w-32 text-right">JobRecord Count</th>
+                    <th class="px-3 py-1.5 w-32 text-right">JobRecord&nbsp;Count</th>
+                    <th class="px-3 py-1.5 w-32 text-right">Share of Dataset</th>
+                    <th class="px-3 py-1.5 w-32 text-right">Hygiene</th>
+                    <th class="px-3 py-1.5 w-40">Noise Signals</th>
                   </tr>
                 </thead>
-                <tbody class="border border-gray-200 border-t-0 divide-y divide-gray-100">
+                <tbody class="border border-slate-800 border-t-0 divide-y divide-slate-800">
                   {% for item in raw_list %}
-                    <tr class="hover:bg-gray-50/60">
+                    {% set score = item.hygiene_score or 0 %}
+                    {% set flags = item.hygiene_flags or {} %}
+                    {% if score >= 90 %}
+                      {% set dot = "bg-emerald-500/80" %}
+                    {% elif score >= 70 %}
+                      {% set dot = "bg-amber-400/80" %}
+                    {% else %}
+                      {% set dot = "bg-rose-500/80" %}
+                    {% endif %}
+                    <tr class="hover:bg-slate-900/60">
                       <td class="px-3 py-1.5 align-top">
-                        <span class="font-medium text-gray-900 break-words">
+                        <span class="font-medium text-slate-100 break-words">
                           {{ item.raw_value or "—" }}
                         </span>
                       </td>
-                      <td class="px-3 py-1.5 align-top text-right text-gray-700">
+                      <td class="px-3 py-1.5 align-top text-right text-slate-200">
                         {{ item.count }}
+                      </td>
+                      <td class="px-3 py-1.5 align-top text-right text-slate-300">
+                        {% if item.share_total_pct is not none %}
+                          {{ "%.2f"|format(item.share_total_pct) }}%
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td class="px-3 py-1.5 align-top text-right">
+                        <span class="inline-flex items-center justify-end gap-1 text-[11px] text-slate-100">
+                          <span class="h-1.5 w-1.5 rounded-full {{ dot }}"></span>
+                          <span>{{ score }} / 100</span>
+                        </span>
+                      </td>
+                      <td class="px-3 py-1.5 align-top">
+                        <div class="flex flex-wrap gap-1 text-[10px]">
+                          {% if flags.is_all_caps %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-amber-200 border border-slate-700">
+                              CAPS
+                            </span>
+                          {% endif %}
+                          {% if flags.has_pay_terms %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-rose-200 border border-slate-700">
+                              PAY
+                            </span>
+                          {% endif %}
+                          {% if flags.has_location_terms %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-rose-200 border border-slate-700">
+                              LOCATION
+                            </span>
+                          {% endif %}
+                          {% if flags.has_agency_noise %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-rose-200 border border-slate-700">
+                              AGENCY
+                            </span>
+                          {% endif %}
+                          {% if flags.has_brackets_or_codes %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-amber-200 border border-slate-700">
+                              CODES
+                            </span>
+                          {% endif %}
+                          {% if flags.has_shift_words %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-amber-200 border border-slate-700">
+                              SHIFTS
+                            </span>
+                          {% endif %}
+                          {% if (not flags.is_all_caps and not flags.has_pay_terms and not flags.has_location_terms
+                                and not flags.has_agency_noise and not flags.has_brackets_or_codes and not flags.has_shift_words) %}
+                            <span class="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-slate-300 border border-slate-700">
+                              Clean
+                            </span>
+                          {% endif %}
+                        </div>
                       </td>
                     </tr>
                   {% endfor %}

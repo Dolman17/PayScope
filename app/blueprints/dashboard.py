@@ -21,6 +21,8 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
+from werkzeug.datastructures import MultiDict
 
 from extensions import db
 from models import (
@@ -294,11 +296,14 @@ def insights():
     Uses JobRoleMapping to prefer canonical roles in analytics:
     job_role = COALESCE(JobRoleMapping.canonical_role, JobRecord.job_role)
     """
+    # Capture role filters separately (these are canonical labels in the UI)
+    role_filter_values = request.args.getlist("job_role") or request.args.getlist("role")
+
+    # Filters map used only for template binding / pills
     filters_map = {
         "q": request.args.get("q"),
         "sector": request.args.getlist("sector"),
-        # Accept both ?job_role= and ?role= just in case
-        "job_role": request.args.getlist("job_role") or request.args.getlist("role"),
+        "job_role": role_filter_values,
         "county": request.args.getlist("county"),
         "month": request.args.get("month"),
         "year": request.args.get("year"),
@@ -306,7 +311,14 @@ def insights():
         "rate_max": request.args.get("rate_max"),
     }
 
-    filters, extra_search = build_filters_from_request(filters_map)
+    # For the generic builder, we do NOT want to filter on raw job_role.
+    # Build a MultiDict copy of request.args with job_role/role stripped out.
+    raw_args = request.args.to_dict(flat=False)
+    raw_args.pop("job_role", None)
+    raw_args.pop("role", None)
+    params = MultiDict(raw_args)
+
+    filters, extra_search = build_filters_from_request(params)
 
     base_q = JobRecord.query.filter(*filters)
     if extra_search is not None:
@@ -317,6 +329,11 @@ def insights():
         JobRoleMapping,
         JobRecord.job_role == JobRoleMapping.raw_value,
     )
+
+    # Apply role filter against canonical expression, not raw job_role.
+    if role_filter_values:
+        canonical_expr = func.coalesce(JobRoleMapping.canonical_role, JobRecord.job_role)
+        base_q = base_q.filter(canonical_expr.in_(role_filter_values))
 
     # Subquery with canonical job_role label
     sq = base_q.with_entities(
@@ -356,7 +373,7 @@ def insights():
     )
     top_counties = [{"county": c or "—", "count": int(n or 0)} for c, n in top_counties_rows]
 
-    # Top roles (now canonical where mapping exists)
+    # Top roles (canonical where mapping exists)
     top_roles_rows = (
         db.session.query(sq.c.job_role, func.count(sq.c.id))
         .filter(sq.c.job_role.isnot(None))
@@ -584,6 +601,11 @@ def insights():
 
     options = get_filter_options(force=True)
 
+    # Override Job Role filter options with canonical roles where possible
+    canonical_roles = _canonical_role_filter_options()
+    if canonical_roles:
+        options["roles"] = canonical_roles
+
     # Uncategorised roles (prefer canonical if available) — counts None OR empty
     if hasattr(JobRecord, "job_role_group"):
         uncategorised_roles_count = (
@@ -757,6 +779,82 @@ def _build_canonical_vocab() -> List[str]:
     return out
 
 
+def _canonical_role_filter_options() -> List[str]:
+    """
+    Build a sorted list of canonical roles for the Insights Job Role filter.
+
+    Uses:
+      - JobRoleMapping.canonical_role
+      - JobRecord.job_role_group (if present)
+
+    Falls back to raw JobRecord.job_role only if nothing canonical is available,
+    so the filter never appears empty.
+    """
+    labels: set[str] = set()
+
+    # Canonical roles from mappings
+    try:
+        rows = (
+            db.session.query(JobRoleMapping.canonical_role)
+            .filter(
+                JobRoleMapping.canonical_role.isnot(None),
+                func.trim(JobRoleMapping.canonical_role) != "",
+            )
+            .distinct()
+            .order_by(JobRoleMapping.canonical_role)
+            .all()
+        )
+        for (val,) in rows:
+            s = (val or "").strip()
+            if s:
+                labels.add(s)
+    except Exception:
+        pass
+
+    # Canonical roles already written into job_role_group
+    try:
+        if hasattr(JobRecord, "job_role_group"):
+            rows = (
+                db.session.query(JobRecord.job_role_group)
+                .filter(
+                    JobRecord.job_role_group.isnot(None),
+                    func.trim(JobRecord.job_role_group) != "",
+                )
+                .distinct()
+                .order_by(JobRecord.job_role_group)
+                .all()
+            )
+            for (val,) in rows:
+                s = (val or "").strip()
+                if s:
+                    labels.add(s)
+    except Exception:
+        pass
+
+    # If we genuinely have no canonical labels yet, fall back to raw job_role
+    if not labels:
+        try:
+            rows = (
+                db.session.query(JobRecord.job_role)
+                .filter(
+                    JobRecord.job_role.isnot(None),
+                    func.trim(JobRecord.job_role) != "",
+                )
+                .distinct()
+                .order_by(JobRecord.job_role)
+                .limit(1000)
+                .all()
+            )
+            for (val,) in rows:
+                s = (val or "").strip()
+                if s:
+                    labels.add(s)
+        except Exception:
+            pass
+
+    return sorted(labels, key=lambda x: x.lower())
+
+
 def _fuzzy_best_match(query: str, choices: List[str]) -> Tuple[Optional[str], int]:
     """Return (best_choice, score 0-100)."""
     q = (query or "").strip()
@@ -878,6 +976,98 @@ def _clean_canonical_label(raw: str) -> str:
 
 
 # ----------------------------------------------------------------------
+# Role hygiene scoring helpers (for report + unmapped hotspots)
+# ----------------------------------------------------------------------
+
+def _role_hygiene_flags(raw: str) -> Dict[str, bool]:
+    """
+    Lightweight heuristics to flag 'noisy' job titles.
+
+    These are intentionally simple and cheap – just enough to surface
+    the worst offenders in the admin report.
+    """
+    s = (raw or "").strip()
+    has_letters = bool(re.search(r"[A-Za-z]", s))
+
+    is_all_caps = has_letters and s.upper() == s
+
+    has_pay_terms = bool(
+        re.search(
+            r"(£\s*\d|\b\d+(?:\.\d+)?\s*(ph|p\/h|per\s*hour|hourly|rate|salary))",
+            s,
+            re.IGNORECASE,
+        )
+    )
+
+    has_location_terms = bool(
+        re.search(
+            r"\b(london|manchester|birmingham|leeds|liverpool|sheffield|nottingham|bristol|"
+            r"cardiff|glasgow|scotland|wales|england|uk|united\s+kingdom|remote|hybrid)\b",
+            s,
+            re.IGNORECASE,
+        )
+    )
+
+    has_agency_noise = bool(
+        re.search(
+            r"\b(agency|recruitment|recruiting|staffing|solutions|limited|ltd|plc)\b",
+            s,
+            re.IGNORECASE,
+        )
+    )
+
+    has_brackets_or_codes = any(ch in s for ch in "[]()") or bool(
+        re.search(r"\b(ref|reference)\s*[:#]\s*\w+", s, re.IGNORECASE)
+    )
+
+    has_shift_words = bool(
+        re.search(
+            r"\b(nights?|days?|weekends?|shifts?|rota|rotational)\b",
+            s,
+            re.IGNORECASE,
+        )
+    )
+
+    return {
+        "is_all_caps": is_all_caps,
+        "has_pay_terms": has_pay_terms,
+        "has_location_terms": has_location_terms,
+        "has_agency_noise": has_agency_noise,
+        "has_brackets_or_codes": has_brackets_or_codes,
+        "has_shift_words": has_shift_words,
+    }
+
+
+def _role_hygiene_score(flags: Dict[str, bool]) -> int:
+    """
+    Convert hygiene flags into a 0–100 'cleanliness' score.
+
+    100 = looks like a clean, reusable job title
+      0 = very messy (location/pay/agency/code noise everywhere)
+    """
+    score = 100
+
+    if flags.get("has_pay_terms"):
+        score -= 25
+    if flags.get("has_location_terms"):
+        score -= 20
+    if flags.get("has_agency_noise"):
+        score -= 15
+    if flags.get("has_brackets_or_codes"):
+        score -= 10
+    if flags.get("has_shift_words"):
+        score -= 5
+    if flags.get("is_all_caps"):
+        score -= 5
+
+    if score < 0:
+        score = 0
+    if score > 100:
+        score = 100
+    return score
+
+
+# ----------------------------------------------------------------------
 # Admin: Job Role Cleaner
 # ----------------------------------------------------------------------
 
@@ -888,7 +1078,8 @@ def admin_job_roles():
     Admin view to see distinct job_role values and map them to canonical roles.
     Self-healing: ensures job_role_mappings table exists before querying.
     Supports:
-      - q: search over raw roles
+      - q: search over raw roles (JobRecord.job_role)
+      - canonical_search: search over canonical roles (JobRoleMapping.canonical_role)
       - status: all / with / without canonical mapping
     """
     # Make sure the mapping table exists (safe if already created)
@@ -899,11 +1090,14 @@ def admin_job_roles():
         pass
 
     search = (request.args.get("q") or "").strip()
+    canonical_search = (request.args.get("canonical_search") or "").strip()
     status = (request.args.get("status") or "all").strip().lower()
     if status not in ("all", "with", "without"):
         status = "all"
 
     # Base query: distinct job_role values with counts
+    JRM = aliased(JobRoleMapping)
+
     q = db.session.query(
         JobRecord.job_role.label("raw_value"),
         func.count(JobRecord.id).label("count"),
@@ -913,17 +1107,17 @@ def admin_job_roles():
         pattern = f"%{search}%"
         q = q.filter(JobRecord.job_role.ilike(pattern))
 
-    # Apply status filter via join/outerjoin on JobRoleMapping
-    if status == "with":
-        q = q.join(
-            JobRoleMapping,
-            JobRecord.job_role == JobRoleMapping.raw_value,
-        )
+    # Join mode depends on status + canonical_search
+    if status == "with" or canonical_search:
+        # Need a join so we can filter on canonical_role
+        q = q.join(JRM, JobRecord.job_role == JRM.raw_value)
     elif status == "without":
-        q = q.outerjoin(
-            JobRoleMapping,
-            JobRecord.job_role == JobRoleMapping.raw_value,
-        ).filter(JobRoleMapping.id.is_(None))
+        q = q.outerjoin(JRM, JobRecord.job_role == JRM.raw_value).filter(JRM.id.is_(None))
+    # status == "all" and no canonical_search: no join needed, we want everything
+
+    if canonical_search:
+        pattern_c = f"%{canonical_search}%"
+        q = q.filter(JRM.canonical_role.ilike(pattern_c))
 
     rows = (
         q.group_by(JobRecord.job_role)
@@ -976,6 +1170,7 @@ def admin_job_roles():
         mappings=mappings,
         search=search,
         status=status,
+        canonical_search=canonical_search,
         uncategorised_roles_count=uncategorised_roles_count,
         suggestions=suggestions,
     )
@@ -987,7 +1182,7 @@ def admin_job_roles_map():
     """
     Create/update a mapping for a raw job_role value to a canonical role.
     Optionally applies the change immediately to existing JobRecord rows.
-    Redirects back to the current Job Role Cleaner filters (q, status).
+    Redirects back to the current Job Role Cleaner filters (q, status, canonical_search).
     """
     raw_value = (request.form.get("raw_value") or "").strip()
     canonical_role = (request.form.get("canonical_role") or "").strip()
@@ -996,11 +1191,17 @@ def admin_job_roles_map():
     # Preserve filters on redirect
     q_param = (request.form.get("q") or "").strip()
     status_param = (request.form.get("status") or "all").strip().lower()
+    canonical_param = (request.form.get("canonical_search") or "").strip()
 
     if not raw_value or not canonical_role:
         flash("Raw value and canonical role are required.", "error")
         return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
         )
 
     # Ensure table exists here as well, in case this endpoint is hit first.
@@ -1034,7 +1235,12 @@ def admin_job_roles_map():
     db.session.commit()
     flash(f"Mapping saved for role '{raw_value}' → '{canonical_role}'.", "success")
     return redirect(
-        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+        url_for(
+            "dashboard.admin_job_roles",
+            q=q_param,
+            status=status_param,
+            canonical_search=canonical_param,
+        )
     )
 
 
@@ -1049,7 +1255,7 @@ def admin_job_roles_bulk_map():
       - raw_values: repeated form fields (one per selected checkbox)
       - canonical_role: the target canonical role
       - apply_now: "1" if JobRecord rows should be updated too
-      - q, status: current filter state on the Job Role Cleaner page
+      - q, status, canonical_search: current filter state on the Job Role Cleaner page
     """
     raw_values = request.form.getlist("raw_values") or []
     # De-duplicate, strip empty
@@ -1060,17 +1266,28 @@ def admin_job_roles_bulk_map():
 
     q_param = (request.form.get("q") or "").strip()
     status_param = (request.form.get("status") or "all").strip().lower()
+    canonical_param = (request.form.get("canonical_search") or "").strip()
 
     if not raw_values:
         flash("Select at least one job title before using bulk assign.", "error")
         return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
         )
 
     if not canonical_role:
         flash("Canonical role is required for bulk assignment.", "error")
         return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
         )
 
     # Ensure table exists
@@ -1111,7 +1328,12 @@ def admin_job_roles_bulk_map():
         "success",
     )
     return redirect(
-        url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+        url_for(
+            "dashboard.admin_job_roles",
+            q=q_param,
+            status=status_param,
+            canonical_search=canonical_param,
+        )
     )
 
 
@@ -1124,13 +1346,14 @@ def admin_job_roles_auto_clean():
       - raw_values: repeated fields
       - threshold: integer (0-100), default 88
       - apply_now: "1" to backfill existing JobRecord rows (writes to job_role_group if present)
-      - q, status: preserved filter params
+      - q, status, canonical_search: preserved filter params
     """
     raw_values = request.form.getlist("raw_values") or []
     raw_values = sorted({(rv or "").strip() for rv in raw_values if (rv or "").strip()})
 
     q_param = (request.form.get("q") or "").strip()
     status_param = (request.form.get("status") or "all").strip().lower()
+    canonical_param = (request.form.get("canonical_search") or "").strip()
 
     try:
         threshold = int((request.form.get("threshold") or "88").strip())
@@ -1143,7 +1366,12 @@ def admin_job_roles_auto_clean():
     if not raw_values:
         flash("Select at least one job title before running auto-clean.", "error")
         return redirect(
-            url_for("dashboard.admin_job_roles", q=q_param, status=status_param)
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
         )
 
     # Ensure mapping table exists
@@ -1215,7 +1443,14 @@ def admin_job_roles_auto_clean():
             "info",
         )
 
-    return redirect(url_for("dashboard.admin_job_roles", q=q_param, status=status_param))
+    return redirect(
+        url_for(
+            "dashboard.admin_job_roles",
+            q=q_param,
+            status=status_param,
+            canonical_search=canonical_param,
+        )
+    )
 
 
 @bp.route("/admin/job-roles/ai-suggest", methods=["POST"])
@@ -1595,9 +1830,30 @@ def _job_roles_report_data() -> Tuple[List[Dict[str, object]], Dict[str, List[Di
     Shared query for job role mapping report.
 
     Returns:
-      summary: list of {canonical_role, raw_variants, total_count}
-      grouped_roles: {canonical_role: [{raw_value, count}, ...]}
+      summary: list of {
+          canonical_role,
+          raw_variants,
+          total_count,
+          share_total_pct,
+          worst_hygiene_score,
+          noisy_variants
+      }
+      grouped_roles: {
+          canonical_role: [
+              {
+                  raw_value,
+                  count,
+                  share_total_pct,
+                  hygiene_flags,
+                  hygiene_score,
+              },
+              ...
+          ]
+      }
     """
+    # Global total for % of whole dataset
+    total_records = db.session.query(func.count(JobRecord.id)).scalar() or 0
+
     # Join JobRoleMapping -> JobRecord to get counts per raw_value
     q = (
         db.session.query(
@@ -1615,10 +1871,24 @@ def _job_roles_report_data() -> Tuple[List[Dict[str, object]], Dict[str, List[Di
     grouped_roles: Dict[str, List[Dict[str, object]]] = {}
     for canonical_role, raw_value, count in rows:
         cr = canonical_role or "—"
+        rv = raw_value or "—"
+        c = int(count or 0)
+
+        flags = _role_hygiene_flags(rv)
+        hygiene_score = _role_hygiene_score(flags)
+
+        if total_records > 0:
+            share_total_pct = round((c / total_records) * 100.0, 2)
+        else:
+            share_total_pct = 0.0
+
         grouped_roles.setdefault(cr, []).append(
             {
-                "raw_value": raw_value or "—",
-                "count": int(count or 0),
+                "raw_value": rv,
+                "count": c,
+                "share_total_pct": share_total_pct,
+                "hygiene_flags": flags,
+                "hygiene_score": hygiene_score,
             }
         )
 
@@ -1626,11 +1896,30 @@ def _job_roles_report_data() -> Tuple[List[Dict[str, object]], Dict[str, List[Di
     summary: List[Dict[str, object]] = []
     for canonical_role, raw_list in grouped_roles.items():
         total_count = sum(r["count"] for r in raw_list)
+        raw_variants = len(raw_list)
+        worst_hygiene_score = 100
+        noisy_variants = 0
+
+        for r in raw_list:
+            score = int(r.get("hygiene_score") or 0)
+            if score < worst_hygiene_score:
+                worst_hygiene_score = score
+            if score < 80:
+                noisy_variants += 1
+
+        if total_records > 0:
+            share_total_pct = round((total_count / total_records) * 100.0, 2)
+        else:
+            share_total_pct = 0.0
+
         summary.append(
             {
                 "canonical_role": canonical_role,
-                "raw_variants": len(raw_list),
+                "raw_variants": raw_variants,
                 "total_count": total_count,
+                "share_total_pct": share_total_pct,
+                "worst_hygiene_score": worst_hygiene_score,
+                "noisy_variants": noisy_variants,
             }
         )
 
@@ -1638,6 +1927,148 @@ def _job_roles_report_data() -> Tuple[List[Dict[str, object]], Dict[str, List[Di
     summary.sort(key=lambda r: r["total_count"], reverse=True)
 
     return summary, grouped_roles
+
+
+def _unmapped_role_hotspots(limit: int = 50) -> List[Dict[str, object]]:
+    """
+    Top unmapped raw job_role values by volume, with hygiene metrics.
+
+    Intended for a 'Unmapped hotspots' widget on the report.
+    """
+    total_records = db.session.query(func.count(JobRecord.id)).scalar() or 0
+
+    q = (
+        db.session.query(
+            JobRecord.job_role.label("raw_value"),
+            func.count(JobRecord.id).label("count"),
+        )
+        .filter(JobRecord.job_role.isnot(None), func.trim(JobRecord.job_role) != "")
+        .outerjoin(
+            JobRoleMapping,
+            JobRecord.job_role == JobRoleMapping.raw_value,
+        )
+        .filter(JobRoleMapping.id.is_(None))
+        .group_by(JobRecord.job_role)
+        .order_by(func.count(JobRecord.id).desc())
+        .limit(limit)
+    )
+
+    rows = q.all()
+    hotspots: List[Dict[str, object]] = []
+
+    for raw_value, count in rows:
+        rv = raw_value or "—"
+        c = int(count or 0)
+        flags = _role_hygiene_flags(rv)
+        hygiene_score = _role_hygiene_score(flags)
+
+        if total_records > 0:
+            share_total_pct = round((c / total_records) * 100.0, 2)
+        else:
+            share_total_pct = 0.0
+
+        hotspots.append(
+            {
+                "raw_value": rv,
+                "count": c,
+                "share_total_pct": share_total_pct,
+                "hygiene_flags": flags,
+                "hygiene_score": hygiene_score,
+            }
+        )
+
+    return hotspots
+
+
+def _sector_override_mismatches(
+    min_rows: int = 20,
+    dominance_threshold: float = 0.5,
+) -> List[Dict[str, object]]:
+    """
+    For each JobRoleSectorOverride, compare the override sector with the
+    dominant observed sector in JobRecord for that canonical role.
+
+    Returns a list of likely mismatches to surface as gentle warnings.
+    """
+    # Use canonical role expression consistent with admin_role_sectors
+    role_expr = func.coalesce(JobRecord.job_role_group, JobRecord.job_role)
+
+    q = (
+        db.session.query(
+            JobRoleSectorOverride.canonical_role.label("canonical_role"),
+            JobRoleSectorOverride.canonical_sector.label("override_sector"),
+            JobRecord.sector.label("observed_sector"),
+            func.count(JobRecord.id).label("count"),
+        )
+        .outerjoin(JobRecord, role_expr == JobRoleSectorOverride.canonical_role)
+        .group_by(
+            JobRoleSectorOverride.canonical_role,
+            JobRoleSectorOverride.canonical_sector,
+            JobRecord.sector,
+        )
+    )
+
+    rows = q.all()
+    by_role: Dict[str, Dict[str, object]] = {}
+
+    for canonical_role, override_sector, observed_sector, count in rows:
+        cr = canonical_role or "—"
+        ov_sector = (override_sector or "Unknown") or "Unknown"
+        obs_sector = (observed_sector or "Unknown") or "Unknown"
+        c = int(count or 0)
+
+        if cr not in by_role:
+            by_role[cr] = {
+                "override_sector": ov_sector,
+                "sector_counts": {},
+                "total_rows": 0,
+            }
+
+        role_entry = by_role[cr]
+        sector_counts = role_entry["sector_counts"]  # type: ignore[assignment]
+        sector_counts[obs_sector] = sector_counts.get(obs_sector, 0) + c  # type: ignore[index]
+        role_entry["total_rows"] = int(role_entry["total_rows"]) + c  # type: ignore[index]
+
+    mismatches: List[Dict[str, object]] = []
+
+    for canonical_role, data in by_role.items():
+        override_sector = data["override_sector"]  # type: ignore[assignment]
+        sector_counts: Dict[str, int] = data["sector_counts"]  # type: ignore[assignment]
+        total_rows = int(data["total_rows"])  # type: ignore[assignment]
+
+        if total_rows < min_rows:
+            continue
+
+        # Find dominant observed sector
+        if not sector_counts:
+            continue
+        dominant_sector, dominant_count = max(sector_counts.items(), key=lambda kv: kv[1])
+
+        if total_rows > 0:
+            dominant_share = dominant_count / float(total_rows)
+        else:
+            dominant_share = 0.0
+
+        # Only flag when the dominant observed sector strongly disagrees
+        if (
+            dominant_sector
+            and override_sector
+            and dominant_sector != override_sector
+            and dominant_share >= dominance_threshold
+        ):
+            mismatches.append(
+                {
+                    "canonical_role": canonical_role,
+                    "override_sector": override_sector,
+                    "dominant_sector": dominant_sector,
+                    "dominant_share": round(dominant_share * 100.0, 1),
+                    "total_rows": total_rows,
+                }
+            )
+
+    # Sort by importance: biggest total_rows first
+    mismatches.sort(key=lambda r: r["total_rows"], reverse=True)
+    return mismatches
 
 
 @bp.route("/admin/job-roles/report")
@@ -1655,11 +2086,15 @@ def admin_job_roles_report():
         return redirect(url_for("auth.home"))
 
     summary, grouped_roles = _job_roles_report_data()
+    unmapped_hotspots = _unmapped_role_hotspots(limit=50)
+    sector_mismatches = _sector_override_mismatches()
 
     return render_template(
         "admin_job_roles_report.html",
         summary=summary,
         grouped_roles=grouped_roles,
+        unmapped_hotspots=unmapped_hotspots,
+        sector_mismatches=sector_mismatches,
     )
 
 

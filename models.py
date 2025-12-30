@@ -68,9 +68,15 @@ class PayRate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     employer_name = db.Column(db.String(200), nullable=False)
-    organisation = db.Column(db.String(40), nullable=False)  # Competitor | Blue Ribbon | Forevermore
-    role = db.Column(db.String(120), nullable=False)  # e.g. Care Assistant, Senior Carer, RN
-    contract_type = db.Column(db.String(20), nullable=False)  # employed | bank | agency
+    organisation = db.Column(
+        db.String(40), nullable=False
+    )  # Competitor | Blue Ribbon | Forevermore
+    role = db.Column(
+        db.String(120), nullable=False
+    )  # e.g. Care Assistant, Senior Carer, RN
+    contract_type = db.Column(
+        db.String(20), nullable=False
+    )  # employed | bank | agency
 
     base_rate = db.Column(db.Numeric(10, 2), nullable=False)  # £/hr
     weekend_rate = db.Column(db.Numeric(10, 2), nullable=True)
@@ -92,7 +98,9 @@ class PayRate(db.Model):
     lon = db.Column(db.Float, nullable=True)
 
     # linkage & soft delete
-    upload_batch_id = db.Column(db.Integer, db.ForeignKey("upload_batches.id"), nullable=True)
+    upload_batch_id = db.Column(
+        db.Integer, db.ForeignKey("upload_batches.id"), nullable=True
+    )
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
 
     __table_args__ = (
@@ -170,7 +178,9 @@ class AccessRequest(db.Model):
     notes = db.Column(db.Text, nullable=True)
     source = db.Column(db.String(50), nullable=True)  # e.g. "landing"
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    status = db.Column(db.String(30), nullable=False, default="new")  # new/triaged/approved/rejected
+    status = db.Column(
+        db.String(30), nullable=False, default="new"
+    )  # new/triaged/approved/rejected
 
 
 class Company(db.Model):
@@ -178,27 +188,49 @@ class Company(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), unique=True, index=True)
-    canonical_name = db.Column(db.String(255), index=True)  # normalized form for fuzzy match
+    canonical_name = db.Column(
+        db.String(255), index=True
+    )  # normalized form for fuzzy match
     sector = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class JobRoleMapping(db.Model):
+    """
+    Canonical mapping from a messy raw job title to a clean canonical role.
+
+    Used by:
+      - Job Role Cleaner
+      - AI-assisted suggestions (ai_* fields)
+      - Hygiene analytics in the dashboard/report views
+    """
     __tablename__ = "job_role_mappings"
 
     id = db.Column(db.Integer, primary_key=True)
     raw_value = db.Column(db.Text, unique=True, nullable=False)
     canonical_role = db.Column(db.String(255), nullable=False)
     source = db.Column(db.String(50))  # optional: e.g. "adzuna", "indeed"
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
 
     # Optional AI suggestion cache (to avoid repeat calls)
     ai_canonical_role = db.Column(db.String(255), nullable=True)
-    ai_score = db.Column(db.Integer, nullable=True)          # 0–100 confidence from AI/local engine
-    ai_model = db.Column(db.String(80), nullable=True)       # e.g. "gpt-4o-mini" or "local-rules-fuzzy"
-    ai_reason = db.Column(db.Text, nullable=True)            # short explanation from AI
-
+    ai_score = db.Column(
+        db.Integer, nullable=True
+    )  # 0–100 confidence from AI/local engine
+    ai_model = db.Column(
+        db.String(80), nullable=True
+    )  # e.g. "gpt-4o-mini" or "local-rules-fuzzy"
+    ai_reason = db.Column(
+        db.Text, nullable=True
+    )  # short explanation from AI / rules engine
 
 
 class SectorMapping(db.Model):
@@ -207,13 +239,24 @@ class SectorMapping(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # The messy input we see in the wild (case-insensitive match)
-    raw_value = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    raw_value = db.Column(
+        db.String(120), unique=True, nullable=False, index=True
+    )
 
     # The clean sector we want everywhere
-    canonical_sector = db.Column(db.String(80), nullable=False, index=True)
+    canonical_sector = db.Column(
+        db.String(80), nullable=False, index=True
+    )
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
 
     def __repr__(self) -> str:
         return f"<SectorMapping {self.raw_value!r} -> {self.canonical_sector!r}>"
@@ -226,12 +269,16 @@ class CronRunLog(db.Model):
     job_name = db.Column(db.String(100), nullable=False)
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     finished_at = db.Column(db.DateTime, nullable=True)
-    status = db.Column(db.String(20), nullable=False, default="running")  # running/success/partial/error
+    status = db.Column(
+        db.String(20), nullable=False, default="running"
+    )  # running/success/partial/error
     message = db.Column(db.Text, nullable=True)
     rows_scraped = db.Column(db.Integer, nullable=True)
     records_created = db.Column(db.Integer, nullable=True)
     triggered_by = db.Column(db.String(150), nullable=True)
-    trigger = db.Column(db.String(50), nullable=True)  # manual/cron/etc
+    trigger = db.Column(
+        db.String(50), nullable=True
+    )  # manual/cron/etc
     day_label = db.Column(db.String(20))
     run_stats = db.Column(db.Text)
 
@@ -241,12 +288,18 @@ class OnsEarnings(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     year = db.Column(db.Integer, nullable=False)
-    geography_code = db.Column(db.String(32), nullable=False, index=True)
+    geography_code = db.Column(
+        db.String(32), nullable=False, index=True
+    )
     geography_name = db.Column(db.String(255), nullable=False)
-    measure_code = db.Column(db.String(16), nullable=False)  # e.g. 20100, 20701
+    measure_code = db.Column(
+        db.String(16), nullable=False
+    )  # e.g. 20100, 20701
     value = db.Column(db.Float, nullable=True)
 
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow
+    )
 
     __table_args__ = (
         db.UniqueConstraint(
@@ -267,8 +320,12 @@ class Organisation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False, unique=True)
     slug = db.Column(db.String(255), nullable=False, unique=True)
-    is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    is_active = db.Column(
+        db.Boolean, default=True, nullable=False
+    )
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
 
     def __repr__(self):
         return f"<Organisation {self.id} {self.slug}>"
@@ -278,18 +335,28 @@ class User(UserMixin, db.Model):
     __tablename__ = "user"
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
+    username = db.Column(
+        db.String(150), unique=True, nullable=False
+    )
     password = db.Column(db.String(200), nullable=False)
 
     # 0 = normal user, 1 = superuser, 2 = admin
     # (matches usage in code: admin_level == 1 => superuser)
-    admin_level = db.Column(db.Integer, default=0, nullable=False)
+    admin_level = db.Column(
+        db.Integer, default=0, nullable=False
+    )
 
     # Organisation / multi-tenant fields
-    org_role = db.Column(db.String(20), default="member", nullable=False)  # member | admin | owner
+    org_role = db.Column(
+        db.String(20), default="member", nullable=False
+    )  # member | admin | owner
 
-    organisation_id = db.Column(db.Integer, db.ForeignKey("organisations.id"), nullable=True)
-    organisation = db.relationship("Organisation", backref=db.backref("users", lazy="dynamic"))
+    organisation_id = db.Column(
+        db.Integer, db.ForeignKey("organisations.id"), nullable=True
+    )
+    organisation = db.relationship(
+        "Organisation", backref=db.backref("users", lazy="dynamic")
+    )
 
     def is_superuser(self) -> bool:
         return self.admin_level == 1
@@ -305,11 +372,19 @@ class AIAnalysisLog(db.Model):
     __tablename__ = "ai_analysis_log"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    filters = db.Column(db.Text)  # JSON string of filters applied
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=True
+    )
+    filters = db.Column(
+        db.Text
+    )  # JSON string of filters applied
     record_count = db.Column(db.Integer)
-    output_html = db.Column(db.Text)  # store AI output so you can review it later
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    output_html = db.Column(
+        db.Text
+    )  # store AI output so you can review it later
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow
+    )
 
     user = db.relationship("User", backref="ai_logs")
 
@@ -318,14 +393,28 @@ class UploadBatch(db.Model):
     __tablename__ = "upload_batches"
 
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    created_by = db.Column(db.String(120), nullable=True)  # username/email if available
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
+    created_by = db.Column(
+        db.String(120), nullable=True
+    )  # username/email if available
     source_filename = db.Column(db.String(255), nullable=True)
-    total_rows = db.Column(db.Integer, default=0, nullable=False)
-    inserted_rows = db.Column(db.Integer, default=0, nullable=False)
-    updated_rows = db.Column(db.Integer, default=0, nullable=False)
-    skipped_rows = db.Column(db.Integer, default=0, nullable=False)
-    errors_json = db.Column(db.Text, nullable=True)  # aggregated errors per row
+    total_rows = db.Column(
+        db.Integer, default=0, nullable=False
+    )
+    inserted_rows = db.Column(
+        db.Integer, default=0, nullable=False
+    )
+    updated_rows = db.Column(
+        db.Integer, default=0, nullable=False
+    )
+    skipped_rows = db.Column(
+        db.Integer, default=0, nullable=False
+    )
+    errors_json = db.Column(
+        db.Text, nullable=True
+    )  # aggregated errors per row
 
 
 class WeeklyMarketChange(db.Model):
@@ -337,11 +426,19 @@ class WeeklyMarketChange(db.Model):
     week_end = db.Column(db.Date, nullable=False, index=True)
 
     # 'pay', 'vacancy', 'volume', 'coverage'
-    metric_type = db.Column(db.String(30), nullable=False, index=True)
+    metric_type = db.Column(
+        db.String(30), nullable=False, index=True
+    )
 
-    job_role = db.Column(db.String(120), nullable=True, index=True)
-    sector = db.Column(db.String(120), nullable=True, index=True)
-    location = db.Column(db.String(120), nullable=True, index=True)
+    job_role = db.Column(
+        db.String(120), nullable=True, index=True
+    )
+    sector = db.Column(
+        db.String(120), nullable=True, index=True
+    )
+    location = db.Column(
+        db.String(120), nullable=True, index=True
+    )
 
     value_previous = db.Column(db.Numeric(10, 2), nullable=True)
     value_current = db.Column(db.Numeric(10, 2), nullable=True)
@@ -352,7 +449,9 @@ class WeeklyMarketChange(db.Model):
     delta_percent = db.Column(db.Numeric(10, 2), nullable=True)
 
     # 'up', 'down', 'flat'
-    direction = db.Column(db.String(10), nullable=True, index=True)
+    direction = db.Column(
+        db.String(10), nullable=True, index=True
+    )
 
     headline = db.Column(db.Text, nullable=False)
     interpretation = db.Column(db.Text, nullable=True)
@@ -360,18 +459,38 @@ class WeeklyMarketChange(db.Model):
     # 1–5
     confidence_level = db.Column(db.SmallInteger, nullable=True)
 
-    is_featured = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
-    is_published = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    is_featured = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    is_published = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
 
     # -----------------------------
     # AI narrative fields (NEW)
     # -----------------------------
-    ai_narrative = db.Column(db.Text, nullable=True)          # The per-item narrative paragraph(s)
-    ai_driver_tags = db.Column(db.String(255), nullable=True) # Comma-separated tags: e.g. "tight labour, holiday uplift"
-    ai_model = db.Column(db.String(80), nullable=True)        # e.g. "gpt-4o-mini"
-    ai_updated_at = db.Column(db.DateTime, nullable=True)     # When the AI fields were generated
+    ai_narrative = db.Column(
+        db.Text, nullable=True
+    )  # The per-item narrative paragraph(s)
+    ai_driver_tags = db.Column(
+        db.String(255), nullable=True
+    )  # Comma-separated tags
+    ai_model = db.Column(
+        db.String(80), nullable=True
+    )  # e.g. "gpt-4o-mini"
+    ai_updated_at = db.Column(
+        db.DateTime, nullable=True
+    )  # When the AI fields were generated
 
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow
+    )
 
     __table_args__ = (
         db.Index("ix_wmc_week_metric", "week_start", "metric_type"),
@@ -382,18 +501,27 @@ class WeeklyInsight(db.Model):
     __tablename__ = "weekly_insights"
 
     id = db.Column(db.Integer, primary_key=True)
-    week_start = db.Column(db.Date, nullable=False, unique=True, index=True)
+    week_start = db.Column(
+        db.Date, nullable=False, unique=True, index=True
+    )
     week_end = db.Column(db.Date, nullable=False)
 
     headline = db.Column(db.String(200), nullable=True)
-    overview = db.Column(db.Text, nullable=True)  # the top-of-page brief (paragraph/bullets)
+    overview = db.Column(
+        db.Text, nullable=True
+    )  # the top-of-page brief (paragraph/bullets)
 
     ai_generated_at = db.Column(db.DateTime, nullable=True)
     ai_model = db.Column(db.String(64), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
     )
 
 
@@ -407,19 +535,32 @@ class JobRoleSectorOverride(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # The canonical role label you use in analytics (typically JobRecord.job_role_group)
-    canonical_role = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    canonical_role = db.Column(
+        db.String(255), unique=True, nullable=False, index=True
+    )
 
     # The sector you want this role to belong to
-    canonical_sector = db.Column(db.String(80), nullable=False, index=True)
+    canonical_sector = db.Column(
+        db.String(80), nullable=False, index=True
+    )
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
 
     def __repr__(self) -> str:
         return f"<JobRoleSectorOverride {self.canonical_role!r} -> {self.canonical_sector!r}>"
 
 
-def resolve_sector_for_canonical_role(canonical_role: str | None, fallback_sector: str | None) -> str:
+def resolve_sector_for_canonical_role(
+    canonical_role: str | None, fallback_sector: str | None
+) -> str:
     """
     Resolve sector using:
       1) JobRoleSectorOverride(canonical_role) if present
@@ -429,7 +570,9 @@ def resolve_sector_for_canonical_role(canonical_role: str | None, fallback_secto
     role = (canonical_role or "").strip()
     if role:
         try:
-            ov = JobRoleSectorOverride.query.filter_by(canonical_role=role).first()
+            ov = JobRoleSectorOverride.query.filter_by(
+                canonical_role=role
+            ).first()
             if ov and (ov.canonical_sector or "").strip():
                 return ov.canonical_sector.strip()
         except Exception:
@@ -466,6 +609,10 @@ def get_or_create_role_mapping(
     """
     Safely get or create a JobRoleMapping without triggering duplicate-key errors.
     Returns JobRoleMapping instance, or None if raw_value is empty.
+
+    Also supports job hygiene tooling by:
+      - preserving the original raw_value exactly as seen
+      - letting canonical_role be updated on re-use
     """
     if not raw_value or not raw_value.strip():
         return None
