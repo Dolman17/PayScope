@@ -2219,6 +2219,7 @@ def admin_status_json():
     - Fast DB ping
     - Cheap table counts
     - Recent cron history
+    - Freshness timestamps for key tables
     """
     token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
 
@@ -2244,6 +2245,7 @@ def admin_status_json():
     db_error = None
     counts = {}
     cron_last = []
+    freshness = {}
 
     # --- DB ping ----------------------------------------------------
     try:
@@ -2279,6 +2281,50 @@ def admin_status_json():
             )
         except Exception:
             counts["cron_runs_24h"] = None
+
+    # --- Freshness timestamps ---------------------------------------
+    if db_ok:
+        # Latest JobRecord.created_at
+        try:
+            latest_rec = (
+                db.session.query(JobRecord.created_at)
+                .order_by(JobRecord.created_at.desc())
+                .limit(1)
+                .scalar()
+            )
+            freshness["latest_job_record_created_at"] = (
+                latest_rec.isoformat() + "Z" if latest_rec else None
+            )
+        except Exception:
+            freshness["latest_job_record_created_at"] = None
+
+        # Latest JobPosting.scraped_at
+        try:
+            latest_post = (
+                db.session.query(JobPosting.scraped_at)
+                .order_by(JobPosting.scraped_at.desc())
+                .limit(1)
+                .scalar()
+            )
+            freshness["latest_job_posting_scraped_at"] = (
+                latest_post.isoformat() + "Z" if latest_post else None
+            )
+        except Exception:
+            freshness["latest_job_posting_scraped_at"] = None
+
+        # Latest CronRunLog.started_at
+        try:
+            latest_cron = (
+                db.session.query(CronRunLog.started_at)
+                .order_by(CronRunLog.started_at.desc())
+                .limit(1)
+                .scalar()
+            )
+            freshness["latest_cron_started_at"] = (
+                latest_cron.isoformat() + "Z" if latest_cron else None
+            )
+        except Exception:
+            freshness["latest_cron_started_at"] = None
 
     # --- Recent cron history (last 15 rows) -------------------------
     if db_ok:
@@ -2325,7 +2371,9 @@ def admin_status_json():
         "db_ok": db_ok,
         "db_error": db_error,
         "counts": counts,
+        "freshness": freshness,
         "cron": {"last_15": cron_last},
     }
 
     return jsonify(payload), 200
+
