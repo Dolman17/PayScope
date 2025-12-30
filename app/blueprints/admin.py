@@ -2204,173 +2204,114 @@ def cron_run_now():
     flash(f"Cron jobs executed with status: {status}", "info")
     return redirect(url_for("admin.cron_runs"))
 
-
 # -------------------------------------------------------------------
-# NEW: PUBLIC STATUS JSON ENDPOINT FOR DESKTOP MONITOR
+# LIGHTWEIGHT STATUS ENDPOINT FOR DESKTOP MONITOR
 # -------------------------------------------------------------------
 @bp.route("/status.json", methods=["GET"])
 def admin_status_json():
     """
-    Lightweight JSON health/status endpoint for the PayScope Monitor desktop app.
+    Lightweight health/status payload for the desktop PayScope Monitor.
 
-    - Does NOT require login.
-    - If PAYSCOPE_STATUS_TOKEN is set (env or config), requires that token via:
-        Header: X-PAYSCOPE-STATUS-TOKEN
-      or query param `?token=...`
+    - Optional header auth via X-PAYSCOPE-STATUS-TOKEN (env var PAYSCOPE_STATUS_TOKEN)
+    - Fast DB ping
+    - Cheap table counts
+    - Recent cron history
     """
-    # Optional token check
-    expected = (
-        current_app.config.get("PAYSCOPE_STATUS_TOKEN")
-        or os.getenv("PAYSCOPE_STATUS_TOKEN")
-        or None
-    )
-    if expected:
-        supplied = (
-            request.headers.get("X-PAYSCOPE-STATUS-TOKEN")
-            or request.args.get("token")
-            or ""
-        )
-        if supplied != expected:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "status": "error",
-                        "error": "invalid token",
-                    }
-                ),
-                401,
-            )
+    # Optional token check (no token in env = open endpoint)
+    token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
+    if token_expected:
+        token_given = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
+        if token_given != token_expected:
+            return jsonify({"ok": False, "error": "unauthorised"}), 401
 
-    now = datetime.utcnow()
+    started = datetime.utcnow()
 
-    # --- DB ping + basic metadata ---
-    ping_ok = False
-    ping_error = None
-    backend = None
-    tables = []
+    db_ok = False
+    db_error = None
+    counts = {}
+    cron_last = []
+
+    # --- DB ping ----------------------------------------------------
     try:
         db.session.execute(text("SELECT 1"))
-        ping_ok = True
-        inspector = inspect(db.engine)
-        tables = sorted(inspector.get_table_names())
-        backend = db.engine.name
+        db_ok = True
     except Exception as e:  # noqa: BLE001
-        ping_error = repr(e)
+        db_error = repr(e)
 
-    # --- Safe counts (best-effort) ---
-    def safe_count(model):
+    # --- Cheap counts (guarded so they can't break the endpoint) ----
+    if db_ok:
         try:
-            return int(db.session.query(func.count(model.id)).scalar() or 0)
+            counts["job_records"] = int(
+                db.session.query(func.count(JobRecord.id)).scalar() or 0
+            )
         except Exception:
-            return None
+            counts["job_records"] = None
 
-    user_count = safe_count(User)
-    job_record_count = safe_count(JobRecord)
-    job_posting_count = safe_count(JobPosting)
-    cron_run_count = safe_count(CronRunLog)
+        try:
+            counts["job_postings"] = int(
+                db.session.query(func.count(JobPosting.id)).scalar() or 0
+            )
+        except Exception:
+            counts["job_postings"] = None
 
-    # --- Cron info (last run + recent errors) ---
-    last_run = None
-    recent_error_count = None
-    try:
-        last = (
-            CronRunLog.query
-            .order_by(CronRunLog.started_at.desc())
-            .first()
-        )
-        if last:
-            duration = None
-            if last.started_at and last.finished_at:
-                duration = (last.finished_at - last.started_at).total_seconds()
-            last_run = {
-                "job_name": last.job_name,
-                "status": last.status,
-                "started_at": last.started_at.isoformat() if last.started_at else None,
-                "finished_at": last.finished_at.isoformat() if last.finished_at else None,
-                "duration_seconds": duration,
-            }
+        try:
+            # last 24h cron runs
+            since = datetime.utcnow() - timedelta(days=1)
+            counts["cron_runs_24h"] = int(
+                db.session.query(func.count(CronRunLog.id))
+                .filter(CronRunLog.started_at >= since)
+                .scalar()
+                or 0
+            )
+        except Exception:
+            counts["cron_runs_24h"] = None
 
-        day_ago = now - timedelta(days=1)
-        recent_error_count = (
-            CronRunLog.query
-            .filter(CronRunLog.started_at >= day_ago)
-            .filter(CronRunLog.status == "error")
-            .count()
-        )
-    except Exception:
-        pass
+    # --- Recent cron history (last 15 rows) -------------------------
+    if db_ok:
+        try:
+            runs = (
+                CronRunLog.query.order_by(CronRunLog.started_at.desc())
+                .limit(15)
+                .all()
+            )
+            for r in runs:
+                duration = None
+                if r.started_at and r.finished_at:
+                    duration = (r.finished_at - r.started_at).total_seconds()
 
-    # --- Coverage state (reuse logic from admin_tools) ---
-    coverage_state = None
-    try:
-        cov = get_weekly_coverage(days=7)
-        weak_sectors = int(cov["summary"].get("weak_sectors", 0) or 0)
-        weak_locations = int(cov["summary"].get("weak_locations", 0) or 0)
-        weak_total = weak_sectors + weak_locations
+                cron_last.append(
+                    {
+                        "id": r.id,
+                        "job_name": r.job_name,
+                        "status": (r.status or "").lower(),
+                        "trigger": getattr(r, "trigger", None),
+                        "started_at": r.started_at.isoformat()
+                        if r.started_at
+                        else None,
+                        "finished_at": r.finished_at.isoformat()
+                        if r.finished_at
+                        else None,
+                        "duration_seconds": duration,
+                    }
+                )
+        except Exception:
+            cron_last = []
 
-        if weak_total == 0:
-            cov_status = "green"
-n        elif weak_total <= 3:
-            cov_status = "amber"
-        else:
-            cov_status = "red"
+    elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
 
-        coverage_state = {
-            "status": cov_status,
-            "weak_sectors": weak_sectors,
-            "weak_locations": weak_locations,
-            "weak_total": weak_total,
-        }
-    except Exception:
-        pass
-
-    # --- Overall status colour ---
-    status_colour = "green"
-    if not ping_ok:
-        status_colour = "red"
-    elif recent_error_count and recent_error_count > 0:
-        status_colour = "amber"
-    if coverage_state and coverage_state.get("status") == "red":
-        status_colour = "red"
-
-    env_name = (
-        os.getenv("RAILWAY_ENVIRONMENT")
-        or os.getenv("FLASK_ENV")
-        or current_app.config.get("ENV")
-    )
-    release = (
-        os.getenv("RAILWAY_GIT_COMMIT_SHA")
-        or os.getenv("HEROKU_RELEASE_VERSION")
-        or None
-    )
+    ok = db_ok
+    # Simple RAG for the desktop app – you can refine this later if you want
+    status = "green" if ok else "red"
 
     payload = {
-        "ok": ping_ok,
-        "status": status_colour,
-        "timestamp_utc": now.isoformat() + "Z",
-        "app": {
-            "env": env_name,
-            "release": release,
-        },
-        "db": {
-            "ok": ping_ok,
-            "backend": backend,
-            "error": ping_error,
-            "tables": tables,
-            "tables_count": len(tables),
-        },
-        "counts": {
-            "users": user_count,
-            "job_records": job_record_count,
-            "job_postings": job_posting_count,
-            "cron_runs": cron_run_count,
-        },
-        "cron": {
-            "last_run": last_run,
-            "recent_error_count": recent_error_count,
-        },
-        "coverage": coverage_state,
+        "ok": ok,
+        "status": status,
+        "app_time_utc": datetime.utcnow().isoformat() + "Z",
+        "elapsed_ms": elapsed_ms,
+        "db_ok": db_ok,
+        "db_error": db_error,
+        "counts": counts,
+        "cron": {"last_15": cron_last},
     }
 
-    return jsonify(payload)
+    return jsonify(payload), 200
