@@ -1562,6 +1562,106 @@ def db_health():
 
 
 # -------------------------------------------------------------------
+# LIVE STATUS JSON FOR DESKTOP MONITOR
+# -------------------------------------------------------------------
+@bp.route("/admin/status.json", methods=["GET"])
+def admin_status_json():
+    """
+    Machine-readable status snapshot for external monitoring (desktop mini-app).
+
+    Auth:
+      - Superuser session (current_user.is_superuser()), OR
+      - X-PAYSCOPE-STATUS-TOKEN header matching PAYSCOPE_STATUS_TOKEN env var.
+    """
+    token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
+    provided = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
+
+    session_ok = current_user.is_authenticated and getattr(current_user, "is_superuser", lambda: False)()
+    token_ok = bool(token_expected and provided and provided == token_expected)
+
+    if not (session_ok or token_ok):
+        return jsonify({"ok": False, "error": "unauthorised"}), 403
+
+    now = datetime.utcnow()
+
+    # DB health
+    db_ok = True
+    db_error = None
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception as e:  # noqa: BLE001
+        db_ok = False
+        db_error = repr(e)
+
+    # Counts
+    job_records_count = db.session.query(func.count(JobRecord.id)).scalar() or 0
+
+    # New records in last 24h
+    since_24h = now - timedelta(hours=24)
+    try:
+        new_last_24h = (
+            db.session.query(func.count(JobRecord.id))
+            .filter(JobRecord.created_at >= since_24h)
+            .scalar()
+            or 0
+        )
+    except Exception:
+        new_last_24h = None
+
+    # Latest JobRecord timestamp
+    latest_job_record_at = None
+    try:
+        latest = db.session.query(func.max(JobRecord.created_at)).scalar()
+        latest_job_record_at = latest.isoformat() if latest else None
+    except Exception:
+        latest_job_record_at = None
+
+    # Recent cron runs
+    cron_rows = (
+        db.session.query(CronRunLog)
+        .order_by(CronRunLog.started_at.desc())
+        .limit(15)
+        .all()
+    )
+
+    def _cron_row(r: CronRunLog) -> dict:
+        started = getattr(r, "started_at", None)
+        finished = getattr(r, "finished_at", None)
+        err = getattr(r, "error_message", None) or getattr(r, "message", None) or ""
+        if err:
+            err = str(err)[:500]
+        return {
+            "job_name": getattr(r, "job_name", None),
+            "status": getattr(r, "status", None),
+            "trigger": getattr(r, "trigger", None),
+            "day_label": getattr(r, "day_label", None),
+            "started_at": started.isoformat() if started else None,
+            "finished_at": finished.isoformat() if finished else None,
+            "duration_s": getattr(r, "duration_s", None),
+            "error": err,
+        }
+
+    payload = {
+        "ok": True,
+        "ts": now.isoformat() + "Z",
+        "db_ok": db_ok,
+        "db_error": db_error,
+        "counts": {
+            "job_records": int(job_records_count),
+            "job_records_new_24h": int(new_last_24h) if new_last_24h is not None else None,
+        },
+        "freshness": {
+            "latest_job_record_created_at": latest_job_record_at,
+        },
+        "cron": {
+            "last_15": [_cron_row(r) for r in cron_rows],
+        },
+    }
+
+    return jsonify(payload), 200
+
+
+# -------------------------------------------------------------------
 # CRON RUN HISTORY + RUN NOW
 # -------------------------------------------------------------------
 @bp.route("/cron-runs")
