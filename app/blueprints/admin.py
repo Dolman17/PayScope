@@ -2212,41 +2212,31 @@ def admin_status_json():
     """
     Lightweight health/status payload for the desktop PayScope Monitor.
 
-    - Optional auth via:
-        * Header: X-PAYSCOPE-STATUS-TOKEN
-        * or query string: ?token=...
-      (only enforced if PAYSCOPE_STATUS_TOKEN is non-empty in the env)
+    - Optional header auth via X-PAYSCOPE-STATUS-TOKEN (env var PAYSCOPE_STATUS_TOKEN)
     - Fast DB ping
     - Cheap table counts
     - Recent cron history
-    - Freshness timestamps for key tables
-    - Recent users (best-effort "recent logins" once you add tracking)
+    - Freshness timestamps
+    - Coverage health
+    - Today cron summary
+    - Recent logins
     """
+    # Optional token check (no token in env = open endpoint)
     token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
-
     if token_expected:
-        header_token = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
-        query_token = (request.args.get("token") or "").strip()
-        token_given = header_token or query_token
-
+        token_given = (request.headers.get("X-PAYSCOPE-STATUS-TOKEN") or "").strip()
         if token_given != token_expected:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "unauthorised",
-                    "detail": "token mismatch",
-                    "have_header": bool(header_token),
-                    "have_query": bool(query_token),
-                }
-            ), 401
+            return jsonify({"ok": False, "error": "unauthorised"}), 401
 
     started = datetime.utcnow()
 
     db_ok = False
     db_error = None
-    counts: dict[str, object] = {}
+    counts: dict = {}
     cron_last: list[dict] = []
-    freshness: dict[str, object] = {}
+    freshness: dict = {}
+    coverage_tile: dict | None = None
+    cron_summary: dict | None = None
     recent_logins: list[dict] = []
 
     # --- DB ping ----------------------------------------------------
@@ -2256,8 +2246,9 @@ def admin_status_json():
     except Exception as e:  # noqa: BLE001
         db_error = repr(e)
 
-    # --- Cheap counts (guarded so they can't break the endpoint) ----
+    # --- Cheap counts / extras (guarded so they can't break the endpoint) ----
     if db_ok:
+        # Counts
         try:
             counts["job_records"] = int(
                 db.session.query(func.count(JobRecord.id)).scalar() or 0
@@ -2273,7 +2264,6 @@ def admin_status_json():
             counts["job_postings"] = None
 
         try:
-            # last 24h cron runs
             since = datetime.utcnow() - timedelta(days=1)
             counts["cron_runs_24h"] = int(
                 db.session.query(func.count(CronRunLog.id))
@@ -2284,37 +2274,31 @@ def admin_status_json():
         except Exception:
             counts["cron_runs_24h"] = None
 
-    # --- Freshness timestamps ---------------------------------------
-    if db_ok:
-        # Latest JobRecord.created_at
+        # Freshness timestamps
         try:
-            latest_rec = (
+            latest_job_record = (
                 db.session.query(JobRecord.created_at)
                 .order_by(JobRecord.created_at.desc())
                 .limit(1)
                 .scalar()
             )
-            freshness["latest_job_record_created_at"] = (
-                latest_rec.isoformat() + "Z" if latest_rec else None
-            )
+            if latest_job_record is not None:
+                freshness["latest_job_record_created_at"] = latest_job_record.isoformat() + "Z"
         except Exception:
-            freshness["latest_job_record_created_at"] = None
+            pass
 
-        # Latest JobPosting.scraped_at
         try:
-            latest_post = (
+            latest_posting = (
                 db.session.query(JobPosting.scraped_at)
                 .order_by(JobPosting.scraped_at.desc())
                 .limit(1)
                 .scalar()
             )
-            freshness["latest_job_posting_scraped_at"] = (
-                latest_post.isoformat() + "Z" if latest_post else None
-            )
+            if latest_posting is not None:
+                freshness["latest_job_posting_scraped_at"] = latest_posting.isoformat() + "Z"
         except Exception:
-            freshness["latest_job_posting_scraped_at"] = None
+            pass
 
-        # Latest CronRunLog.started_at
         try:
             latest_cron = (
                 db.session.query(CronRunLog.started_at)
@@ -2322,69 +2306,89 @@ def admin_status_json():
                 .limit(1)
                 .scalar()
             )
-            freshness["latest_cron_started_at"] = (
-                latest_cron.isoformat() + "Z" if latest_cron else None
-            )
+            if latest_cron is not None:
+                freshness["latest_cron_started_at"] = latest_cron.isoformat() + "Z"
         except Exception:
-            freshness["latest_cron_started_at"] = None
+            pass
 
-    # --- Recent users / "recent logins" ------------------------------
-    #
-    # You don't currently track last_login_at on User, so:
-    # - If a last_login_at column is added later, we'll use it.
-    # - For now, we just show the latest created users by ID as a
-    #   best-effort "recent" list.
-    #
-    if db_ok:
+        # Coverage summary (reuse same logic as admin_tools)
         try:
-            has_last_login = hasattr(User, "last_login_at")
+            cov = get_weekly_coverage(days=7)
+            weak_sectors = int(cov["summary"].get("weak_sectors", 0) or 0)
+            weak_locations = int(cov["summary"].get("weak_locations", 0) or 0)
+            weak_total = weak_sectors + weak_locations
 
-            if has_last_login:
-                # True "recent logins" once you add User.last_login_at
-                rows = (
-                    User.query
-                    .filter(User.last_login_at.isnot(None))  # type: ignore[attr-defined]
-                    .order_by(User.last_login_at.desc())     # type: ignore[attr-defined]
-                    .limit(10)
-                    .all()
-                )
+            if weak_total == 0:
+                cov_status = "green"
+            elif weak_total <= 3:
+                cov_status = "amber"
             else:
-                # Fallback: newest users by ID (no timestamp available)
-                rows = (
-                    User.query
-                    .order_by(User.id.desc())
-                    .limit(10)
-                    .all()
-                )
+                cov_status = "red"
 
-            for u in rows:
-                org_slug = None
-                try:
-                    org_slug = getattr(getattr(u, "organisation", None), "slug", None)
-                except Exception:
-                    org_slug = None
-
-                # Support future last_login_at but don't require it
-                last_login_value = getattr(u, "last_login_at", None) if has_last_login else None
-                last_login_str = (
-                    last_login_value.isoformat() + "Z" if last_login_value else None
-                )
-
-                recent_logins.append(
-                    {
-                        "id": u.id,
-                        "username": getattr(u, "username", None),
-                        "admin_level": getattr(u, "admin_level", None),
-                        "org": org_slug,
-                        "last_login_at": last_login_str,
-                    }
-                )
+            coverage_tile = {
+                "status": cov_status,
+                "weak_sectors": weak_sectors,
+                "weak_locations": weak_locations,
+                "weak_total": weak_total,
+                "window_days": int(cov["summary"].get("coverage_days", 7) or 7),
+            }
         except Exception:
-            # If anything goes wrong (e.g. migrations mid-flight), fail soft
+            coverage_tile = None
+
+        # Today cron summary
+        try:
+            today = date.today()
+            start_of_day = datetime.combine(today, datetime.min.time())
+            base_q = db.session.query(CronRunLog).filter(
+                CronRunLog.started_at >= start_of_day
+            )
+
+            total_today = base_q.count()
+
+            ok_statuses = ("success", "ok", "completed")
+            err_statuses = ("error", "failed", "fail")
+
+            success_today = (
+                base_q.filter(CronRunLog.status.in_(ok_statuses)).count()
+                if total_today
+                else 0
+            )
+            error_today = (
+                base_q.filter(CronRunLog.status.in_(err_statuses)).count()
+                if total_today
+                else 0
+            )
+
+            cron_summary = {
+                "window": "today",
+                "today_total": int(total_today),
+                "today_success": int(success_today),
+                "today_error": int(error_today),
+            }
+        except Exception:
+            cron_summary = None
+
+        # Recent logins (assuming last_login_at exists on User)
+        try:
+            rows = (
+                User.query
+                .filter(User.last_login_at.isnot(None))
+                .order_by(User.last_login_at.desc())
+                .limit(10)
+                .all()
+            )
+            recent_logins = [
+                {
+                    "username": u.username,
+                    "admin_level": int(u.admin_level or 0),
+                    "last_login_at": u.last_login_at.isoformat() + "Z",
+                }
+                for u in rows
+            ]
+        except Exception:
             recent_logins = []
 
-    # --- Recent cron history (last 15 rows) -------------------------
-    if db_ok:
+        # --- Recent cron history (last 15 rows) -------------------------
         try:
             runs = (
                 CronRunLog.query.order_by(CronRunLog.started_at.desc())
@@ -2402,10 +2406,10 @@ def admin_status_json():
                         "job_name": r.job_name,
                         "status": (r.status or "").lower(),
                         "trigger": getattr(r, "trigger", None),
-                        "started_at": r.started_at.isoformat()
+                        "started_at": r.started_at.isoformat() + "Z"
                         if r.started_at
                         else None,
-                        "finished_at": r.finished_at.isoformat()
+                        "finished_at": r.finished_at.isoformat() + "Z"
                         if r.finished_at
                         else None,
                         "duration_seconds": duration,
@@ -2417,7 +2421,7 @@ def admin_status_json():
     elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
 
     ok = db_ok
-    # Simple RAG for the desktop app – you can refine this later if you want
+    # Simple RAG for the endpoint itself
     status = "green" if ok else "red"
 
     payload = {
@@ -2429,9 +2433,12 @@ def admin_status_json():
         "db_error": db_error,
         "counts": counts,
         "freshness": freshness,
+        "coverage": coverage_tile,
+        "cron_summary": cron_summary,
         "cron": {"last_15": cron_last},
         "recent_logins": recent_logins,
     }
 
     return jsonify(payload), 200
+
 
