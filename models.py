@@ -340,6 +340,9 @@ class User(UserMixin, db.Model):
     )
     password = db.Column(db.String(200), nullable=False)
 
+    # Track when a user last logged in (for monitoring / auditing)
+    last_login_at = db.Column(db.DateTime, nullable=True, index=True)
+
     # 0 = normal user, 1 = superuser, 2 = admin
     # (matches usage in code: admin_level == 1 => superuser)
     admin_level = db.Column(

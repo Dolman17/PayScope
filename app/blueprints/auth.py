@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required
@@ -30,7 +31,18 @@ def login():
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
+            # Log the user in
             login_user(user, remember=remember)
+
+            # Track last login time for monitoring / auditing
+            user.last_login_at = datetime.utcnow()
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                # Don't block login if this fails – just log/flash mildly if you want
+                # For now, stay silent to avoid noise.
+
             flash("Logged in successfully.", "success")
 
             # Respect next param if it is a safe relative path

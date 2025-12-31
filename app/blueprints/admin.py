@@ -2220,6 +2220,7 @@ def admin_status_json():
     - Cheap table counts
     - Recent cron history
     - Freshness timestamps for key tables
+    - Recent users (best-effort "recent logins" once you add tracking)
     """
     token_expected = (os.getenv("PAYSCOPE_STATUS_TOKEN") or "").strip()
 
@@ -2243,9 +2244,10 @@ def admin_status_json():
 
     db_ok = False
     db_error = None
-    counts = {}
-    cron_last = []
-    freshness = {}
+    counts: dict[str, object] = {}
+    cron_last: list[dict] = []
+    freshness: dict[str, object] = {}
+    recent_logins: list[dict] = []
 
     # --- DB ping ----------------------------------------------------
     try:
@@ -2326,6 +2328,61 @@ def admin_status_json():
         except Exception:
             freshness["latest_cron_started_at"] = None
 
+    # --- Recent users / "recent logins" ------------------------------
+    #
+    # You don't currently track last_login_at on User, so:
+    # - If a last_login_at column is added later, we'll use it.
+    # - For now, we just show the latest created users by ID as a
+    #   best-effort "recent" list.
+    #
+    if db_ok:
+        try:
+            has_last_login = hasattr(User, "last_login_at")
+
+            if has_last_login:
+                # True "recent logins" once you add User.last_login_at
+                rows = (
+                    User.query
+                    .filter(User.last_login_at.isnot(None))  # type: ignore[attr-defined]
+                    .order_by(User.last_login_at.desc())     # type: ignore[attr-defined]
+                    .limit(10)
+                    .all()
+                )
+            else:
+                # Fallback: newest users by ID (no timestamp available)
+                rows = (
+                    User.query
+                    .order_by(User.id.desc())
+                    .limit(10)
+                    .all()
+                )
+
+            for u in rows:
+                org_slug = None
+                try:
+                    org_slug = getattr(getattr(u, "organisation", None), "slug", None)
+                except Exception:
+                    org_slug = None
+
+                # Support future last_login_at but don't require it
+                last_login_value = getattr(u, "last_login_at", None) if has_last_login else None
+                last_login_str = (
+                    last_login_value.isoformat() + "Z" if last_login_value else None
+                )
+
+                recent_logins.append(
+                    {
+                        "id": u.id,
+                        "username": getattr(u, "username", None),
+                        "admin_level": getattr(u, "admin_level", None),
+                        "org": org_slug,
+                        "last_login_at": last_login_str,
+                    }
+                )
+        except Exception:
+            # If anything goes wrong (e.g. migrations mid-flight), fail soft
+            recent_logins = []
+
     # --- Recent cron history (last 15 rows) -------------------------
     if db_ok:
         try:
@@ -2373,6 +2430,7 @@ def admin_status_json():
         "counts": counts,
         "freshness": freshness,
         "cron": {"last_15": cron_last},
+        "recent_logins": recent_logins,
     }
 
     return jsonify(payload), 200
