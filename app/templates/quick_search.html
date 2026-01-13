@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+  <form method="get" class="flex flex-wrap gap-3 items-end">
+    <div>
+      <label class="block text-sm mb-1">Job role</label>
+      <input type="text" name="role" value="{{ query.role }}"
+             class="ps-input w-64">
+    </div>
+    <div>
+      <label class="block text-sm mb-1">Location (county or postcode)</label>
+      <input type="text" name="location" value="{{ query.location }}"
+             class="ps-input w-64">
+    </div>
+    <button class="ps-btn-primary">Search</button>
+  </form>
+
+  {% if stats %}
+    <div class="grid md:grid-cols-4 gap-4">
+      <div class="ps-card">
+        <div class="text-xs opacity-70 mb-1">Records in view</div>
+        <div class="text-2xl font-semibold">{{ stats.total }}</div>
+      </div>
+      <div class="ps-card">
+        <div class="text-xs opacity-70 mb-1">Typical pay (avg)</div>
+        <div class="text-2xl font-semibold">
+          {% if stats.avg_rate is not none %}£{{ "%.2f"|format(stats.avg_rate) }}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="ps-card">
+        <div class="text-xs opacity-70 mb-1">Range</div>
+        <div>
+          {% if stats.min_rate is not none %}£{{ "%.2f"|format(stats.min_rate) }}{% else %}—{% endif %}
+          –
+          {% if stats.max_rate is not none %}£{{ "%.2f"|format(stats.max_rate) }}{% else %}—{% endif %}
+        </div>
+      </div>
+      {% if trend and trend.change_1m %}
+      <div class="ps-card">
+        <div class="text-xs opacity-70 mb-1">Last month vs prev</div>
+        <div class="text-sm">
+          {{ trend.change_1m.current }} vs {{ trend.change_1m.previous }}
+          {% if trend.change_1m.delta_pct is not none %}
+            ({{ "%+.1f"|format(trend.change_1m.delta_pct) }}%)
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if not has_results and (query.role or query.location) %}
+    <p class="text-sm opacity-70">No records found for that role / location combo.</p>
+  {% endif %}
+</div>
+{% endblock %}
