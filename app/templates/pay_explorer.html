@@ -2,179 +2,307 @@
 {% block title %}PayScope • Pay Explorer{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
-  <!-- Header -->
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">
-        Pay Explorer
-        <span class="text-xs font-medium text-gray-400 align-middle">(v3)</span>
-      </h1>
-      <p class="text-sm text-gray-600">
-        Use PayScope’s Pay Explorer to compare live advertised pay against ONS median earnings by county or sector.
-      </p>
-    </div>
-    <div id="ons-meta" class="hidden text-sm text-gray-600">
-      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-100">
-        <span class="text-xs font-semibold uppercase tracking-wide">ONS overlay</span>
-        <span>Latest ASHE year: <span id="ons-year-label" class="font-semibold"></span></span>
-      </span>
-    </div>
-  </div>
+{% set f = filters or {} %}
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+  <div class="space-y-6">
 
-  <!-- Filters -->
-  <form id="pay-filters" class="card p-4 grid grid-cols-1 md:grid-cols-5 gap-4">
-    <!-- Sector -->
-    <div>
-      <label class="label" for="sector">Sector (optional)</label>
-      <input
-        id="sector"
-        name="sector"
-        type="text"
-        class="input"
-        placeholder="e.g. Social Care"
-      >
-    </div>
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div class="max-w-3xl">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.20);">
+            Pay Explorer
+          </span>
+          <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            advertised vs ONS benchmark
+          </span>
+          <span class="text-[11px] font-medium" style="color: rgba(148,163,184,0.75);">
+            v3
+          </span>
+        </div>
 
-    <!-- Job role group -->
-    <div>
-      <label class="label" for="job_role_group">Job role group (optional)</label>
-      <input
-        id="job_role_group"
-        name="job_role_group"
-        type="text"
-        class="input"
-        placeholder="e.g. Support Worker"
-      >
-    </div>
+        <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--ink);">
+          Pay Explorer
+        </h1>
 
-    <!-- Group by -->
-    <div>
-      <label class="label" for="group_by">Group by</label>
-      <select id="group_by" name="group_by" class="input">
-        <option value="county" selected>County</option>
-        <option value="sector">Sector</option>
-        <option value="sector_county">Sector + County</option>
-      </select>
-    </div>
+        <p class="mt-1 text-sm" style="color: var(--ink-2);">
+          Compare <span class="font-semibold" style="color: var(--ink);">live advertised pay</span> against
+          <span class="font-semibold" style="color: var(--ink);">ONS ASHE median hourly earnings</span>
+          by county, sector, or sector×county.
+        </p>
 
-    <!-- Date range -->
-    <div>
-      <label class="label" for="start_date">Start date</label>
-      <input id="start_date" name="start_date" type="date" class="input">
-    </div>
-    <div>
-      <label class="label" for="end_date">End date</label>
-      <input id="end_date" name="end_date" type="date" class="input">
-    </div>
-
-    <!-- Buttons -->
-    <div class="md:col-span-5 flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-gray-100 mt-2">
-      <div class="text-xs text-gray-500">
-        Median advertised pay from <span id="summary-range" class="font-semibold"></span>
+        <!-- Micro guide -->
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs" style="color: var(--ink-2);">
+          <div class="rounded-xl px-3 py-2"
+               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+            <div class="font-semibold" style="color: var(--ink);">1) Slice</div>
+            <div>Pick sector/role + date range.</div>
+          </div>
+          <div class="rounded-xl px-3 py-2"
+               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+            <div class="font-semibold" style="color: var(--ink);">2) Compare</div>
+            <div>See median advertised vs ONS baseline.</div>
+          </div>
+          <div class="rounded-xl px-3 py-2"
+               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+            <div class="font-semibold" style="color: var(--ink);">3) Act</div>
+            <div>Use the gap to prioritise hotspots.</div>
+          </div>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <button type="button" id="reset-filters" class="btn btn-secondary text-sm">
-          Reset
-        </button>
-        <button type="submit" class="btn btn-primary text-sm">
-          Apply filters
-        </button>
+
+      <!-- ONS meta pill -->
+      <div class="flex flex-col items-start gap-2 w-full lg:w-auto">
+        <div id="ons-meta" class="hidden text-sm">
+          <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full"
+                style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.18);">
+            <span class="text-[11px] font-semibold uppercase tracking-wide">ONS overlay</span>
+            <span class="text-xs" style="color: var(--ink-2);">
+              Latest ASHE year:
+              <span id="ons-year-label" class="font-semibold" style="color: var(--ink);"></span>
+            </span>
+          </span>
+        </div>
+        <div class="text-xs" style="color: var(--ink-2);">
+          ONS benchmark appears when ASHE data is available for the chosen slice.
+        </div>
       </div>
     </div>
-  </form>
 
-  <!-- Summary card -->
-  <div id="summary-card" class="hidden card p-4 flex flex-wrap gap-4 items-center justify-between text-sm">
-    <div class="flex items-center gap-2">
-      <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">Σ</span>
-      <div>
-        <div class="text-gray-500">Areas in view</div>
-        <div id="summary-areas" class="font-semibold text-gray-900">–</div>
+    <!-- Filters -->
+    <section class="card">
+      <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+           style="border-color: rgba(148,163,184,0.12);">
+        <h2 class="text-sm font-semibold" style="color: var(--ink);">Refine comparison</h2>
+        <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+          sector • role • grouping • dates
+        </span>
       </div>
-    </div>
-    <div>
-      <div class="text-gray-500">Avg advertised median</div>
-      <div id="summary-adv" class="font-semibold text-gray-900">–</div>
-    </div>
-    <div>
-      <div class="text-gray-500">Avg ONS median</div>
-      <div id="summary-ons" class="font-semibold text-gray-900">–</div>
-    </div>
-    <div>
-      <div class="text-gray-500">Avg gap vs ONS</div>
-      <div id="summary-gap" class="font-semibold">–</div>
-    </div>
-  </div>
 
-  <!-- Layout: Chart + Table -->
-  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-    <!-- Chart card -->
-    <div class="card p-4 xl:col-span-2">
-      <div class="flex items-center justify-between mb-2">
+      <form id="pay-filters" class="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <!-- Sector -->
         <div>
-          <h2 class="text-lg font-semibold text-gray-900">Advertised vs ONS median</h2>
-          <p class="text-xs text-gray-500">
-            Live median advertised pay vs ONS median hourly earnings.
-          </p>
-        </div>
-        <div class="text-xs text-gray-500">
-          <span class="inline-block w-3 h-3 rounded-full bg-gray-900 align-middle mr-1"></span>
-          Advertised median
-          <span class="inline-block w-3 h-3 rounded-full bg-blue-500 align-middle ml-3 mr-1"></span>
-          ONS median
-        </div>
-      </div>
-      <div class="h-80">
-        <canvas id="pay-chart"></canvas>
-      </div>
-      <p id="chart-empty" class="mt-3 text-sm text-gray-500 hidden">
-        No data for this filter combination. Try widening the date range or removing filters.
-      </p>
-    </div>
-
-    <!-- Table card -->
-    <div class="card p-4 overflow-hidden">
-      <div class="flex items-center justify-between mb-2">
-        <div>
-          <h2 class="text-lg font-semibold text-gray-900">Detail by area</h2>
-          <span id="row-count" class="text-xs text-gray-500"></span>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-gray-600">
-          <span class="hidden sm:inline">Sort by</span>
-          <select id="sort_by" class="input !py-1 !px-2 text-xs">
-            <option value="gap_desc">Gap £/hr (highest first)</option>
-            <option value="gap_asc">Gap £/hr (lowest first)</option>
-            <option value="adv_desc">Advertised median (high → low)</option>
-            <option value="adv_asc">Advertised median (low → high)</option>
-            <option value="adverts_desc">Adverts count (high → low)</option>
-            <option value="alpha">Area A → Z</option>
+          <label class="label" for="sector">Sector (optional)</label>
+          <select id="sector" name="sector" class="input">
+            <option value=""
+                    {% if not f.sector %}selected{% endif %}>
+              All sectors
+            </option>
+            {% for s in sectors %}
+              <option value="{{ s }}"
+                      {% if f.sector == s %}selected{% endif %}>
+                {{ s }}
+              </option>
+            {% endfor %}
           </select>
         </div>
+
+        <!-- Job role group -->
+        <div>
+          <label class="label" for="job_role_group">Job role group (optional)</label>
+          <select id="job_role_group"
+                  name="job_role_group"
+                  class="input"
+                  data-selected="{{ f.job_role_group or '' }}">
+            <!-- populated via JS -->
+          </select>
+        </div>
+
+        <!-- Group by -->
+        <div>
+          <label class="label" for="group_by">Group by</label>
+          <select id="group_by" name="group_by" class="input">
+            <option value="county"
+                    {% if not f.group_by or f.group_by == 'county' %}selected{% endif %}>
+              County
+            </option>
+            <option value="sector"
+                    {% if f.group_by == 'sector' %}selected{% endif %}>
+              Sector
+            </option>
+            <option value="sector_county"
+                    {% if f.group_by == 'sector_county' %}selected{% endif %}>
+              Sector + County
+            </option>
+          </select>
+        </div>
+
+        <!-- Date range -->
+        <div>
+          <label class="label" for="start_date">Start date</label>
+          <input id="start_date"
+                 name="start_date"
+                 type="date"
+                 class="input"
+                 value="{{ f.start_date or '' }}">
+        </div>
+        <div>
+          <label class="label" for="end_date">End date</label>
+          <input id="end_date"
+                 name="end_date"
+                 type="date"
+                 class="input"
+                 value="{{ f.end_date or '' }}">
+        </div>
+
+        <!-- Buttons -->
+        <div class="md:col-span-5 flex flex-wrap items-center justify-between gap-3 pt-3 mt-1"
+             style="border-top: 1px solid rgba(148,163,184,0.12);">
+          <div class="text-xs" style="color: var(--ink-2);">
+            Median advertised pay from <span id="summary-range" class="font-semibold" style="color: var(--ink);"></span>
+          </div>
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button type="button" id="reset-filters" class="btn btn-secondary flex-1 sm:flex-none text-sm">
+              Reset
+            </button>
+            <button type="submit" class="btn btn-primary flex-1 sm:flex-none text-sm">
+              Apply filters
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- Summary KPIs -->
+    <section id="summary-card" class="hidden card">
+      <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+           style="border-color: rgba(148,163,184,0.12);">
+        <h2 class="text-sm font-semibold" style="color: var(--ink);">Snapshot</h2>
+        <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+          current view
+        </span>
       </div>
-      <div class="overflow-auto max-h-[28rem] border border-gray-100 rounded-lg">
-        <table class="min-w-full text-xs">
-          <thead class="bg-gray-50 text-gray-600 sticky top-0 z-10">
-            <tr>
-              <th class="px-3 py-2 text-left font-semibold">Area</th>
-              <th class="px-3 py-2 text-right font-semibold">Adverts</th>
-              <th class="px-3 py-2 text-right font-semibold">Adv median £/hr</th>
-              <th class="px-3 py-2 text-right font-semibold">ONS median £/hr</th>
-              <th class="px-3 py-2 text-right font-semibold">Gap £/hr</th>
-              <th class="px-3 py-2 text-right font-semibold">Gap %</th>
-            </tr>
-          </thead>
-          <tbody id="pay-table-body" class="divide-y divide-gray-100 bg-white">
-            <!-- rows injected via JS -->
-          </tbody>
-        </table>
+
+      <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Areas in view</div>
+          <div id="summary-areas" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Avg advertised median</div>
+          <div id="summary-adv" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Avg ONS median</div>
+          <div id="summary-ons" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.15);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Avg gap vs ONS</div>
+          <div id="summary-gap" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+          <div class="mt-1 text-[11px]" style="color: var(--ink-2);">
+            Positive = above ONS • Negative = below ONS
+          </div>
+        </div>
       </div>
-      <p id="table-empty" class="mt-3 text-sm text-gray-500 hidden">
-        No rows to display yet.
-      </p>
-    </div>
+    </section>
+
+    <!-- Layout: Chart + Table -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- Chart card -->
+      <div class="card xl:col-span-2">
+        <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+             style="border-color: rgba(148,163,184,0.12);">
+          <div>
+            <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">
+              Advertised vs ONS median
+            </h2>
+            <p class="mt-0.5 text-xs" style="color: var(--ink-2);">
+              Live median advertised pay compared to ONS median hourly earnings.
+            </p>
+          </div>
+
+          <div class="text-xs flex items-center gap-3" style="color: var(--ink-2);">
+            <span class="inline-flex items-center gap-2">
+              <span class="inline-block w-3 h-3 rounded-full" style="background: rgba(148,163,184,0.85);"></span>
+              Advertised median
+            </span>
+            <span class="inline-flex items-center gap-2">
+              <span class="inline-block w-3 h-3 rounded-full" style="background: rgba(34,211,238,0.85);"></span>
+              ONS median
+            </span>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6">
+          <div class="h-80 rounded-2xl p-4"
+               style="background: rgba(2,6,23,0.35); border: 1px solid rgba(148,163,184,0.18);">
+            <canvas id="pay-chart"></canvas>
+          </div>
+
+          <p id="chart-empty" class="mt-3 text-sm hidden" style="color: var(--ink-2);">
+            No data for this filter combination. Try widening the date range or removing filters.
+          </p>
+        </div>
+      </div>
+
+      <!-- Table card -->
+      <div class="card flex flex-col overflow-hidden">
+        <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+             style="border-color: rgba(148,163,184,0.12);">
+          <div>
+            <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">Detail by area</h2>
+            <span id="row-count" class="text-xs" style="color: var(--ink-2);"></span>
+          </div>
+          <div class="flex items-center gap-2 text-xs" style="color: var(--ink-2);">
+            <span class="hidden sm:inline">Sort</span>
+            <select id="sort_by" class="input !py-1 !px-2 text-xs">
+              <option value="gap_desc">Gap £/hr (highest first)</option>
+              <option value="gap_asc">Gap £/hr (lowest first)</option>
+              <option value="adv_desc">Advertised median (high → low)</option>
+              <option value="adv_asc">Advertised median (low → high)</option>
+              <option value="adverts_desc">Adverts count (high → low)</option>
+              <option value="alpha">Area A → Z</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6 pt-4 flex-1">
+          <!-- Scrollable ONLY inside this frame -->
+          <div class="flex-1 overflow-auto rounded-2xl"
+               style="max-height: calc(100vh - 280px); background: rgba(2,6,23,0.35); border: 1px solid rgba(148,163,184,0.18);">
+            <table class="min-w-full text-xs">
+              <thead class="sticky top-0 z-10"
+                     style="background: rgba(2,6,23,0.92); color: var(--ink-2); border-bottom: 1px solid rgba(148,163,184,0.12);">
+                <tr>
+                  <th class="px-3 py-2 text-left font-semibold">Area</th>
+                  <th class="px-3 py-2 text-right font-semibold">Adverts</th>
+                  <th class="px-3 py-2 text-right font-semibold">Adv median £/hr</th>
+                  <th class="px-3 py-2 text-right font-semibold">ONS median £/hr</th>
+                  <th class="px-3 py-2 text-right font-semibold">Gap £/hr</th>
+                  <th class="px-3 py-2 text-right font-semibold">Gap %</th>
+                </tr>
+              </thead>
+              <tbody id="pay-table-body"
+                     style="background: rgba(2,6,23,0.20);"
+                     class="divide-y">
+                <!-- rows injected via JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <p id="table-empty" class="mt-3 text-sm hidden" style="color: var(--ink-2);">
+            No rows to display yet.
+          </p>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
+
+<style>
+  /* Make tbody dividers match the dark theme (without requiring Tailwind config changes) */
+  #pay-table-body.divide-y > :not([hidden]) ~ :not([hidden]) {
+    border-top: 1px solid rgba(148,163,184,0.10);
+  }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -184,6 +312,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <script>
+    // Sector -> job role group mapping injected from Flask
+    const ROLE_GROUPS_BY_SECTOR = {{ role_groups_by_sector | tojson }};
+
     (function () {
       const form = document.getElementById("pay-filters");
       const resetBtn = document.getElementById("reset-filters");
@@ -203,6 +334,10 @@
       const summaryGap = document.getElementById("summary-gap");
       const sortSelect = document.getElementById("sort_by");
 
+      const sectorSelect = document.getElementById("sector");
+      const jobRoleSelect = document.getElementById("job_role_group");
+      const initialJobRole = jobRoleSelect ? (jobRoleSelect.dataset.selected || "") : "";
+
       let chartInstance = null;
 
       function todayIso() {
@@ -216,20 +351,55 @@
         return d.toISOString().slice(0, 10);
       }
 
-      // Initialise defaults
+      // Build sector-specific job role options
+      function rebuildJobRoleOptions() {
+        if (!jobRoleSelect) return;
+
+        const selectedSector = sectorSelect && sectorSelect.value
+          ? sectorSelect.value
+          : "__ALL__";
+
+        const mapping = ROLE_GROUPS_BY_SECTOR || {};
+        const groups = mapping[selectedSector] || mapping["__ALL__"] || [];
+
+        const current = jobRoleSelect.value || initialJobRole;
+
+        jobRoleSelect.innerHTML = "";
+
+        const optAll = document.createElement("option");
+        optAll.value = "";
+        optAll.textContent = "All job role groups";
+        jobRoleSelect.appendChild(optAll);
+
+        groups.forEach((g) => {
+          const opt = document.createElement("option");
+          opt.value = g;
+          opt.textContent = g;
+          jobRoleSelect.appendChild(opt);
+        });
+
+        // Try to restore previous / initial selection if still valid
+        if (current && groups.includes(current)) {
+          jobRoleSelect.value = current;
+        }
+      }
+
+      // Initialise defaults (respect any values already present from the server)
       function initDefaults() {
         const startInput = document.getElementById("start_date");
         const endInput = document.getElementById("end_date");
 
         if (!startInput.value) startInput.value = daysAgoIso(30);
         if (!endInput.value) endInput.value = todayIso();
+
+        rebuildJobRoleOptions();
       }
 
       function buildQuery() {
         const params = new URLSearchParams();
 
-        const sector = document.getElementById("sector").value.trim();
-        const jobRole = document.getElementById("job_role_group").value.trim();
+        const sector = sectorSelect ? sectorSelect.value.trim() : "";
+        const jobRole = jobRoleSelect ? jobRoleSelect.value.trim() : "";
         const groupBy = document.getElementById("group_by").value;
         const start = document.getElementById("start_date").value || daysAgoIso(30);
         const end = document.getElementById("end_date").value || todayIso();
@@ -315,9 +485,7 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: {
-                position: "bottom",
-              },
+              legend: { position: "bottom" },
               tooltip: {
                 callbacks: {
                   label: function (ctx) {
@@ -330,13 +498,8 @@
             scales: {
               y: {
                 beginAtZero: true,
-                ticks: {
-                  callback: (value) => "£" + value,
-                },
-                title: {
-                  display: true,
-                  text: "Hourly rate (£)",
-                },
+                ticks: { callback: (value) => "£" + value },
+                title: { display: true, text: "Hourly rate (£)" },
               },
               x: {
                 ticks: {
@@ -362,7 +525,6 @@
         tableEmpty.classList.add("hidden");
         rowCount.textContent = `${results.length} rows`;
 
-        // Debug: confirm ons_median_hourly values reaching the table renderer
         console.log("Pay Explorer results (first 10 rows):", results.slice(0, 10));
 
         results.forEach(r => {
@@ -387,21 +549,28 @@
 
           cells.forEach((value, idx) => {
             const td = document.createElement("td");
+
+            // Dark-friendly base styling; keep alignment logic intact
             td.className =
               "px-3 py-2 whitespace-nowrap " +
-              (idx === 0 ? "text-left text-gray-800" : "text-right text-gray-700");
+              (idx === 0 ? "text-left" : "text-right");
 
-            // Colour-code gap columns based on pay_vs_ons_pct
+            td.style.color = (idx === 0) ? "var(--ink)" : "var(--ink-2)";
+
             if (idx === 4 || idx === 5) {
               const pct = typeof r.pay_vs_ons_pct === "string"
                 ? Number(r.pay_vs_ons_pct)
                 : r.pay_vs_ons_pct;
 
               td.className += " font-semibold";
+
+              // Keep semantics, just make it dark-theme friendly
               if (pct > 0) {
-                td.className += " text-green-600";
+                td.style.color = "#86efac"; // emerald-300
               } else if (pct < 0) {
-                td.className += " text-red-600";
+                td.style.color = "#fda4af"; // rose-300
+              } else {
+                td.style.color = "var(--ink)";
               }
             }
 
@@ -452,19 +621,19 @@
 
         if (avgGap === null || avgGap === undefined || isNaN(avgGap)) {
           summaryGap.textContent = "–";
-          summaryGap.className = "font-semibold";
+          summaryGap.className = "mt-1 text-2xl font-semibold";
+          summaryGap.style.color = "var(--ink)";
         } else {
           const pct = avgOns && avgOns !== 0 ? (avgAdv - avgOns) / avgOns * 100 : null;
           const sign = avgGap > 0 ? "+" : "";
           summaryGap.textContent =
             sign + avgGap.toFixed(2) + " £/hr" + (pct !== null && !isNaN(pct) ? " (" + (pct > 0 ? "+" : "") + pct.toFixed(1) + "%)" : "");
 
-          summaryGap.className = "font-semibold";
-          if (avgGap > 0) {
-            summaryGap.className += " text-green-700";
-          } else if (avgGap < 0) {
-            summaryGap.className += " text-red-700";
-          }
+          summaryGap.className = "mt-1 text-2xl font-semibold";
+
+          if (avgGap > 0) summaryGap.style.color = "#86efac";      // emerald-300
+          else if (avgGap < 0) summaryGap.style.color = "#fda4af"; // rose-300
+          else summaryGap.style.color = "var(--ink)";
         }
 
         summaryCard.classList.remove("hidden");
@@ -472,7 +641,7 @@
 
       function sortResults(results) {
         const sortBy = sortSelect ? sortSelect.value : "gap_desc";
-        const arr = results.slice(); // shallow copy
+        const arr = results.slice();
 
         function num(v) {
           const n = typeof v === "string" ? Number(v) : v;
@@ -508,9 +677,7 @@
 
         try {
           const resp = await fetch(`/api/pay-compare?${query}`);
-          if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
-          }
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const data = await resp.json();
 
           const rawResults = data.results || [];
@@ -519,7 +686,6 @@
 
           console.log("Pay Explorer API data:", data);
 
-          // ONS meta badge
           if (onsAvailable && onsYear) {
             onsMeta.classList.remove("hidden");
             onsYearLabel.textContent = onsYear;
@@ -552,20 +718,25 @@
       });
 
       resetBtn.addEventListener("click", function () {
-        document.getElementById("sector").value = "";
-        document.getElementById("job_role_group").value = "";
+        if (sectorSelect) sectorSelect.value = "";
+        if (jobRoleSelect) jobRoleSelect.value = "";
         document.getElementById("group_by").value = "county";
         document.getElementById("start_date").value = daysAgoIso(30);
         document.getElementById("end_date").value = todayIso();
         sortSelect.value = "gap_desc";
+        rebuildJobRoleOptions();
         loadData();
       });
 
       if (sortSelect) {
         sortSelect.addEventListener("change", function () {
-          // Re-sort current data without re-hitting the API
-          // Easiest way: just call loadData again (filters already set)
           loadData();
+        });
+      }
+
+      if (sectorSelect) {
+        sectorSelect.addEventListener("change", function () {
+          rebuildJobRoleOptions();
         });
       }
 

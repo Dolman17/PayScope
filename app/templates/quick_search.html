@@ -1,56 +1,183 @@
 {% extends "base.html" %}
-{% block content %}
-<div class="space-y-6">
-  <form method="get" class="flex flex-wrap gap-3 items-end">
-    <div>
-      <label class="block text-sm mb-1">Job role</label>
-      <input type="text" name="role" value="{{ query.role }}"
-             class="ps-input w-64">
-    </div>
-    <div>
-      <label class="block text-sm mb-1">Location (county or postcode)</label>
-      <input type="text" name="location" value="{{ query.location }}"
-             class="ps-input w-64">
-    </div>
-    <button class="ps-btn-primary">Search</button>
-  </form>
+{% block title %}Quick search · PayScope{% endblock %}
 
-  {% if stats %}
-    <div class="grid md:grid-cols-4 gap-4">
-      <div class="ps-card">
-        <div class="text-xs opacity-70 mb-1">Records in view</div>
-        <div class="text-2xl font-semibold">{{ stats.total }}</div>
-      </div>
-      <div class="ps-card">
-        <div class="text-xs opacity-70 mb-1">Typical pay (avg)</div>
-        <div class="text-2xl font-semibold">
-          {% if stats.avg_rate is not none %}£{{ "%.2f"|format(stats.avg_rate) }}{% else %}—{% endif %}
-        </div>
-      </div>
-      <div class="ps-card">
-        <div class="text-xs opacity-70 mb-1">Range</div>
-        <div>
-          {% if stats.min_rate is not none %}£{{ "%.2f"|format(stats.min_rate) }}{% else %}—{% endif %}
-          –
-          {% if stats.max_rate is not none %}£{{ "%.2f"|format(stats.max_rate) }}{% else %}—{% endif %}
-        </div>
-      </div>
-      {% if trend and trend.change_1m %}
-      <div class="ps-card">
-        <div class="text-xs opacity-70 mb-1">Last month vs prev</div>
-        <div class="text-sm">
-          {{ trend.change_1m.current }} vs {{ trend.change_1m.previous }}
-          {% if trend.change_1m.delta_pct is not none %}
-            ({{ "%+.1f"|format(trend.change_1m.delta_pct) }}%)
-          {% endif %}
-        </div>
-      </div>
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+
+  <!-- Heading -->
+  <div class="space-y-1">
+    <h1 class="text-2xl font-semibold text-gray-100">Quick search</h1>
+    <p class="text-sm text-gray-400 max-w-2xl">
+      Look up jobs by role and location, then sanity-check typical pay and how it’s moving over time.
+    </p>
+  </div>
+
+  <!-- Search form -->
+  <form method="get"
+        class="flex flex-wrap gap-4 items-end bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+    <div class="w-64">
+      <label class="label">Job role</label>
+      <select name="role" class="input">
+        <option value="">Any role</option>
+        {% for r in role_options %}
+          <option value="{{ r }}" {% if r == query.role %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="w-64">
+      <label class="label">Location (county)</label>
+      <select name="location" class="input">
+        <option value="">Any location</option>
+        {% for loc in location_options %}
+          <option value="{{ loc }}" {% if loc == query.location %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary text-xs">
+        Search
+      </button>
+      {% if had_query %}
+      <a href="{{ url_for('dashboard.quick_search') }}" class="btn btn-secondary text-xs">
+        Clear
+      </a>
       {% endif %}
     </div>
+  </form>
+
+  {% if had_query %}
+    {% if summary and summary.total_records > 0 %}
+      <!-- Summary tiles -->
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="card card-hover p-4">
+          <div class="text-xs text-gray-400 mb-1">Records in view</div>
+          <div class="text-2xl font-semibold text-gray-100">
+            {{ "{:,}".format(summary.total_records) }}
+          </div>
+        </div>
+
+        <div class="card card-hover p-4">
+          <div class="text-xs text-gray-400 mb-1">Typical pay (avg)</div>
+          <div class="text-2xl font-semibold text-gray-100">
+            {% if summary.avg_rate is not none %}
+              £{{ "%.2f"|format(summary.avg_rate) }}
+            {% else %}—{% endif %}
+          </div>
+        </div>
+
+        <div class="card card-hover p-4">
+          <div class="text-xs text-gray-400 mb-1">Range</div>
+          <div class="text-sm text-gray-100">
+            {% if summary.min_rate is not none %}
+              £{{ "%.2f"|format(summary.min_rate) }}
+            {% else %}—{% endif %}
+            –
+            {% if summary.max_rate is not none %}
+              £{{ "%.2f"|format(summary.max_rate) }}
+            {% else %}—{% endif %}
+          </div>
+        </div>
+
+        <div class="card card-hover p-4">
+          <div class="text-xs text-gray-400 mb-1">Distinct companies</div>
+          <div class="text-2xl font-semibold text-gray-100">
+            {{ "{:,}".format(summary.total_companies) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Simple delta callout -->
+      {% if deltas and deltas.have_data and deltas.latest %}
+        <div class="card card-hover p-4 text-sm text-gray-200">
+          <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">
+            Movement
+          </div>
+          <p class="mb-1">
+            Latest month: {{ deltas.latest.month }}/{{ deltas.latest.year }}
+            – {{ deltas.latest.count }} record(s),
+            avg £{{ "%.2f"|format(deltas.latest.avg_rate) }}.
+          </p>
+          {% if deltas.prev_1m %}
+            <p class="text-xs text-gray-400">
+              vs previous month: {{ deltas.prev_1m.count }} record(s),
+              avg £{{ "%.2f"|format(deltas.prev_1m.avg_rate) }}.
+              {% if deltas.delta_1m_rate is not none %}
+                Rate change:
+                {% set d = deltas.delta_1m_rate %}
+                <span class="{% if d > 0 %}text-emerald-300{% elif d < 0 %}text-rose-300{% else %}text-gray-300{% endif %}">
+                  {{ "%+.2f"|format(d) }} £/hr
+                </span>
+              {% endif %}
+            </p>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Recent records + link to Pay Explorer -->
+      <div class="flex items-center justify-between mt-4">
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+          Recent records in this slice
+        </h2>
+
+        <a href="{{ url_for('maps.pay_explorer') }}?role={{ query.role|urlencode }}&county={{ query.location|urlencode }}"
+           class="btn btn-secondary text-xs">
+          Open in Pay Explorer with these filters
+        </a>
+      </div>
+
+      {% if recent_records %}
+        <div class="card card-hover mt-2 overflow-x-auto">
+          <table class="min-w-full text-xs">
+            <thead class="text-left text-gray-400 border-b border-gray-800">
+              <tr>
+                <th class="py-2 pr-4">Role</th>
+                <th class="py-2 pr-4">Sector</th>
+                <th class="py-2 pr-4">Company</th>
+                <th class="py-2 pr-4">County</th>
+                <th class="py-2 pr-4">Postcode</th>
+                <th class="py-2 pr-4 text-right">Pay rate</th>
+                <th class="py-2 pr-4 text-right">Imported</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-800">
+              {% for r in recent_records %}
+                <tr>
+                  <td class="py-2 pr-4">{{ r.role or "—" }}</td>
+                  <td class="py-2 pr-4">{{ r.sector or "—" }}</td>
+                  <td class="py-2 pr-4">{{ r.company_name or "—" }}</td>
+                  <td class="py-2 pr-4">{{ r.county or "—" }}</td>
+                  <td class="py-2 pr-4">{{ r.postcode or "—" }}</td>
+                  <td class="py-2 pr-4 text-right">
+                    {% if r.pay_rate is not none %}
+                      £{{ "%.2f"|format(r.pay_rate) }}
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="py-2 pr-4 text-right">
+                    {% if r.imported_year and r.imported_month %}
+                      {{ r.imported_month }}/{{ r.imported_year }}
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-xs text-gray-500 mt-2">
+          No individual records to show yet for this slice.
+        </p>
+      {% endif %}
+
+    {% else %}
+      <!-- No results for this query -->
+      <p class="text-sm text-gray-400">
+        No records found for that role / location combo.
+        Try broadening the role wording or switching from postcode to county.
+      </p>
+    {% endif %}
   {% endif %}
 
-  {% if not has_results and (query.role or query.location) %}
-    <p class="text-sm opacity-70">No records found for that role / location combo.</p>
-  {% endif %}
 </div>
 {% endblock %}

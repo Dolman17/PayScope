@@ -24,6 +24,8 @@ from sqlalchemy import func, cast, Integer, case, or_
 from sqlalchemy.orm import aliased
 from werkzeug.datastructures import MultiDict
 
+from collections import Counter
+import statistics as stats
 from extensions import db
 from models import (
     JobRecord,
@@ -378,7 +380,6 @@ def insights():
         db.session.query(sq.c.job_role, func.count(sq.c.id))
         .filter(sq.c.job_role.isnot(None))
         .group_by(sq.c.job_role)
-        .order_by(sq.c.job_role)
         .order_by(func.count(sq.c.id).desc())
         .limit(10)
         .all()
@@ -443,26 +444,51 @@ def insights():
     ]
 
     # Sector volatility (std dev)
-    sector_vol_rows = (
-        db.session.query(
-            sq.c.sector,
-            func.count(sq.c.id),
-            func.avg(sq.c.pay_rate),
-            func.stddev_pop(sq.c.pay_rate),
+    # NOTE: SQLite doesn't support stddev_pop; on SQLite we fall back to 0.0.
+    dialect = getattr(getattr(db, "engine", None), "dialect", None)
+    dialect_name = getattr(dialect, "name", "") if dialect is not None else ""
+    if dialect_name == "sqlite":
+        sector_vol_rows = (
+            db.session.query(
+                sq.c.sector,
+                func.count(sq.c.id),
+                func.avg(sq.c.pay_rate),
+                func.literal(0.0).label("stddev"),
+            )
+            .group_by(sq.c.sector)
+            .order_by(func.count(sq.c.id).desc())
+            .all()
         )
-        .group_by(sq.c.sector)
-        .order_by(func.stddev_pop(sq.c.pay_rate).desc().nullslast())
-        .all()
-    )
-    sector_volatility = [
-        {
-            "sector": s or "Unknown",
-            "count": int(n or 0),
-            "avg_rate": float(a or 0.0) if a is not None else 0.0,
-            "stddev": float(sd or 0.0) if sd is not None else 0.0,
-        }
-        for (s, n, a, sd) in sector_vol_rows
-    ]
+        sector_volatility = [
+            {
+                "sector": s or "Unknown",
+                "count": int(n or 0),
+                "avg_rate": float(a or 0.0) if a is not None else 0.0,
+                "stddev": float(sd or 0.0),
+            }
+            for (s, n, a, sd) in sector_vol_rows
+        ]
+    else:
+        sector_vol_rows = (
+            db.session.query(
+                sq.c.sector,
+                func.count(sq.c.id),
+                func.avg(sq.c.pay_rate),
+                func.stddev_pop(sq.c.pay_rate),
+            )
+            .group_by(sq.c.sector)
+            .order_by(func.stddev_pop(sq.c.pay_rate).desc().nullslast())
+            .all()
+        )
+        sector_volatility = [
+            {
+                "sector": s or "Unknown",
+                "count": int(n or 0),
+                "avg_rate": float(a or 0.0) if a is not None else 0.0,
+                "stddev": float(sd or 0.0) if sd is not None else 0.0,
+            }
+            for (s, n, a, sd) in sector_vol_rows
+        ]
 
     # Sector × county heat (avg pay)
     sector_county_rows = (
@@ -637,6 +663,149 @@ def insights():
         total_count=total,
         uncategorised_roles_count=uncategorised_roles_count,
     )
+
+@bp.route("/insights/ai-analyze", methods=["POST"])
+@login_required
+def insights_ai_analyze():
+    """
+    Lightweight, deterministic 'AI-style' summary for the Insights page.
+    Front-end sends: { filters: {...}, records: [{...}, ...] }
+    We return JSON: { text: "...", html?: "..." }
+    """
+    payload = request.get_json(silent=True) or {}
+    filters = payload.get("filters") or {}
+    rows = payload.get("records") or []
+
+    # Extract numeric hourly rates
+    numeric_rates = [
+        r.get("pay_rate")
+        for r in rows
+        if isinstance(r.get("pay_rate"), (int, float))
+    ]
+    n = len(numeric_rates)
+
+    if not n:
+        return jsonify({
+            "text": (
+                "I couldn’t see any numeric hourly rates in this view, so there’s "
+                "nothing to summarise yet. Try widening the filters or removing any "
+                "tight pay band constraints."
+            )
+        })
+
+    numeric_rates.sort()
+
+    def q(frac: float) -> float:
+        """Simple linear quantile on the sorted list."""
+        pos = (n - 1) * frac
+        lo = int(pos)
+        hi = min(lo + 1, n - 1)
+        w = pos - lo
+        return numeric_rates[lo] * (1 - w) + numeric_rates[hi] * w
+
+    median = q(0.5)
+    p25 = q(0.25)
+    p75 = q(0.75)
+    min_rate = numeric_rates[0]
+    max_rate = numeric_rates[-1]
+    avg_rate = stats.mean(numeric_rates)
+    spread = p75 - p25
+    range_width = max_rate - min_rate
+
+    def most_common(field):
+        values = [r.get(field) for r in rows if r.get(field)]
+        if not values:
+            return None, 0
+        name, count = Counter(values).most_common(1)[0]
+        return name, count
+
+    top_sector, top_sector_n = most_common("sector")
+    top_role, top_role_n = most_common("job_role")
+    top_county, top_county_n = most_common("county")
+
+    # ---- Build narrative text ----
+    parts = []
+
+    # Filters headline
+    filter_bits = []
+    if filters.get("sector"):
+        filter_bits.append("sector(s): " + ", ".join(filters["sector"]))
+    if filters.get("county"):
+        filter_bits.append("county: " + ", ".join(filters["county"]))
+    if filters.get("job_role"):
+        filter_bits.append("role(s): " + ", ".join(filters["job_role"]))
+    if filters.get("year"):
+        filter_bits.append(f"year {filters['year']}")
+
+    if filter_bits:
+        headline = (
+            "This view covers "
+            + ", ".join(filter_bits)
+            + f", with {n:,} pay records containing numeric hourly rates."
+        )
+    else:
+        headline = f"This view covers the full dataset with {n:,} numeric pay records."
+
+    parts.append(headline)
+
+    # Central tendency + spread
+    parts.append(
+        "Typical pay sits around "
+        f"£{median:0.2f} per hour (average £{avg_rate:0.2f}). "
+        "The middle 50% of rates run from "
+        f"£{p25:0.2f} to £{p75:0.2f} (a spread of £{spread:0.2f}). "
+        "Overall the range goes from "
+        f"£{min_rate:0.2f} to £{max_rate:0.2f} (width £{range_width:0.2f})."
+    )
+
+    # Concentration hotspots
+    hotspot_bits = []
+    if top_sector:
+        hotspot_bits.append(
+            f"Sector with most records: {top_sector} ({top_sector_n:,} records)."
+        )
+    if top_role:
+        hotspot_bits.append(
+            f"Most common role: {top_role} ({top_role_n:,} records)."
+        )
+    if top_county:
+        hotspot_bits.append(
+            f"County with most postings: {top_county} ({top_county_n:,} records)."
+        )
+
+    if hotspot_bits:
+        parts.append("Concentration hotspots: " + " ".join(hotspot_bits))
+
+    # Confidence / caveats
+    if n < 50:
+        parts.append(
+            "Sample size is small, so treat these numbers as directional only and "
+            "double-check individual records before using them in comms or decisions."
+        )
+    elif n < 250:
+        parts.append(
+            "Sample size is moderate. The median is a reasonable benchmark, but be "
+            "cautious about thin sectors or counties inside this slice."
+        )
+    else:
+        parts.append(
+            "Sample size is strong. Focus on the interquartile range and any clear "
+            "outliers rather than individual extreme records."
+        )
+
+    if filters.get("rate_min") or filters.get("rate_max"):
+        parts.append(
+            "A pay-band filter is applied, so extreme highs or lows outside this band "
+            "are intentionally excluded from the view."
+        )
+
+    return jsonify({"text": "\n\n".join(parts)})
+
+
+
+
+
+
 
 
 # ----------------------------------------------------------------------

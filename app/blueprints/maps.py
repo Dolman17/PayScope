@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import csv
+from io import StringIO
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, make_response
 from flask_login import login_required
 from sqlalchemy import or_, func
-from datetime import date
 
 from extensions import db
 from models import JobRecord, JobSummaryDaily, OnsEarnings
@@ -16,6 +17,7 @@ from .utils import (
     build_role_groups_for_sector,
     get_raw_roles_for_group,
 )
+from .pay_compare import get_pay_explorer_data
 
 bp = Blueprint("maps", __name__)
 
@@ -225,26 +227,101 @@ def api_points():
 @bp.route("/pay-explorer")
 @login_required
 def pay_explorer():
-    # Sector list for dropdown
+    """
+    Pay Explorer view.
+
+    - Sectors: distinct JobSummaryDaily.sector values.
+    - role_groups_by_sector: mapping used by the front-end to show
+      sector-specific job_role_group options, plus an "__ALL__" key
+      for when no sector is selected.
+    """
+    # Sector list (for dropdown) from JobSummaryDaily so it matches the summary data
     sectors = [
         s[0]
-        for s in db.session.query(JobRecord.sector)
-        .filter(JobRecord.sector.isnot(None))
+        for s in db.session.query(JobSummaryDaily.sector)
+        .filter(JobSummaryDaily.sector.isnot(None))
         .distinct()
-        .order_by(JobRecord.sector)
+        .order_by(JobSummaryDaily.sector)
         .all()
     ]
+
+    # Build mapping: sector -> [job_role_group...]
+    role_map = {}
+    all_groups = set()
+
+    rows = (
+        db.session.query(
+            JobSummaryDaily.sector,
+            JobSummaryDaily.job_role_group,
+        )
+        .filter(
+            JobSummaryDaily.sector.isnot(None),
+            JobSummaryDaily.job_role_group.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+
+    for sector_val, group_val in rows:
+        sec = (sector_val or "").strip()
+        grp = (group_val or "").strip()
+        if not sec or not grp:
+            continue
+
+        role_map.setdefault(sec, set()).add(grp)
+        all_groups.add(grp)
+
+    role_groups_by_sector = {
+        sec: sorted(groups) for sec, groups in role_map.items()
+    }
+    # Special key when no sector is selected
+    role_groups_by_sector["__ALL__"] = sorted(all_groups)
 
     # Default to last 30 days
     default_end = date.today()
     default_start = default_end - timedelta(days=30)
 
+    # --------------------------------------------------------------
+    # Hydrate filters from querystring (supports deep links
+    # from Quick Search etc.) without changing API behaviour.
+    # --------------------------------------------------------------
+    sector_param = (request.args.get("sector") or "").strip()
+    job_role_group_param = (request.args.get("job_role_group") or "").strip()
+    group_by_param = (request.args.get("group_by") or "").strip() or "county"
+    start_date_param = (request.args.get("start_date") or "").strip()
+    end_date_param = (request.args.get("end_date") or "").strip()
+
+    # Quick Search deep link may send ?role=... and ?county=...
+    qs_role = (request.args.get("role") or "").strip()
+    qs_county = (request.args.get("county") or "").strip()
+
+    # If a deep-link role is provided and no explicit job_role_group,
+    # use it as the initial Job role group filter.
+    if qs_role and not job_role_group_param:
+        job_role_group_param = qs_role
+
+    # We don't currently filter Pay Explorer by county at the API level,
+    # but it's still useful to keep this for UI display / future use.
+    county_param = qs_county
+
+    filters = {
+        "sector": sector_param,
+        "job_role_group": job_role_group_param,
+        "group_by": group_by_param,
+        "start_date": start_date_param,
+        "end_date": end_date_param,
+        "county": county_param,
+    }
+
     return render_template(
         "pay_explorer.html",
         sectors=sectors,
+        role_groups_by_sector=role_groups_by_sector,
         default_start=default_start,
         default_end=default_end,
+        filters=filters,
     )
+
 
 def _load_ons_medians_for_year(ashe_year: int) -> dict[str, float]:
     """
@@ -288,165 +365,84 @@ def api_pay_compare():
       - job_role_group (optional)
       - group_by: 'county' | 'sector' | 'sector_county'
       - start_date, end_date (YYYY-MM-DD)
+      - format (optional): 'json' (default) | 'csv'
     """
-    # Dates
-    default_end = date.today()
-    default_start = default_end - timedelta(days=30)
-
-    def parse_date(param, fallback):
-        s = request.args.get(param)
-        if not s:
-            return fallback
-        try:
-            return date.fromisoformat(s)
-        except ValueError:
-            return fallback
-
-    start_date = parse_date("start_date", default_start)
-    end_date = parse_date("end_date", default_end)
-
-    # Filters
     sector = (request.args.get("sector") or "").strip() or None
     job_role_group = (request.args.get("job_role_group") or "").strip() or None
-    group_by = request.args.get("group_by", "county")
+    group_by = (request.args.get("group_by") or "county").strip() or "county"
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    format_ = (request.args.get("format") or "json").lower()
 
-    # Common WHERE filters
-    filters = [
-        JobSummaryDaily.date >= start_date,
-        JobSummaryDaily.date <= end_date,
-    ]
-    if sector:
-        filters.append(JobSummaryDaily.sector == sector)
-    if job_role_group:
-        filters.append(JobSummaryDaily.job_role_group == job_role_group)
-
-    # ------------------------------------------------------------------
-    # Build SELECT + GROUP BY depending on group_by
-    # ------------------------------------------------------------------
-    if group_by == "sector":
-        q = db.session.query(
-            JobSummaryDaily.sector.label("sector"),
-            func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
-            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
-            func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
-            func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
-            func.min(JobSummaryDaily.min_pay_rate).label("min_pay_rate"),
-            func.max(JobSummaryDaily.max_pay_rate).label("max_pay_rate"),
-        ).filter(*filters).group_by(JobSummaryDaily.sector)
-
-    elif group_by == "sector_county":
-        q = db.session.query(
-            JobSummaryDaily.sector.label("sector"),
-            JobSummaryDaily.county.label("county"),
-            func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
-            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
-            func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
-            func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
-            func.min(JobSummaryDaily.min_pay_rate).label("min_pay_rate"),
-            func.max(JobSummaryDaily.max_pay_rate).label("max_pay_rate"),
-        ).filter(*filters).group_by(JobSummaryDaily.sector, JobSummaryDaily.county)
-
-    else:  # default: group_by == "county"
-        group_by = "county"  # normalise any weird input
-        q = db.session.query(
-            JobSummaryDaily.county.label("county"),
-            func.sum(JobSummaryDaily.adverts_count).label("adverts_count"),
-            func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
-            func.avg(JobSummaryDaily.p25_pay_rate).label("p25_pay_rate"),
-            func.avg(JobSummaryDaily.p75_pay_rate).label("p75_pay_rate"),
-            func.min(JobSummaryDaily.min_pay_rate).label("min_pay_rate"),
-            func.max(JobSummaryDaily.max_pay_rate).label("max_pay_rate"),
-        ).filter(*filters).group_by(JobSummaryDaily.county)
-
-    rows = q.all()
-
-    # Build basic result dicts first
-    results = []
-    for row in rows:
-        county = getattr(row, "county", None)
-        sector_val = getattr(row, "sector", None)
-        results.append(
-            {
-                "county": county,
-                "sector": sector_val,
-                "adverts_count": int(row.adverts_count or 0),
-                "median_pay_rate": float(row.median_pay_rate) if row.median_pay_rate is not None else None,
-                "p25_pay_rate": float(row.p25_pay_rate) if row.p25_pay_rate is not None else None,
-                "p75_pay_rate": float(row.p75_pay_rate) if row.p75_pay_rate is not None else None,
-                "min_pay_rate": float(row.min_pay_rate) if row.min_pay_rate is not None else None,
-                "max_pay_rate": float(row.max_pay_rate) if row.max_pay_rate is not None else None,
-            }
-        )
-
-    # ------------------------------------------------------------------
-    # ONS overlay: only meaningful when we have a county dimension
-    # ------------------------------------------------------------------
-    ons_available = False
-    ons_year = None
-
-    if results and group_by in ("county", "sector_county"):
-        counties = sorted({r["county"] for r in results if r["county"]})
-        if counties:
-            # OnsEarnings has year + geography_name + value
-            ons_rows = (
-                OnsEarnings.query.filter(
-                    OnsEarnings.geography_name.in_(counties),
-                )
-                .order_by(OnsEarnings.geography_name, OnsEarnings.year.desc())
-                .all()
-            )
-
-            ons_map = {}
-            for r in ons_rows:
-                name = (r.geography_name or "").strip()
-                if not name:
-                    continue
-                if r.value is None:
-                    continue
-                # keep latest year per county
-                if name not in ons_map or r.year > ons_map[name]["year"]:
-                    ons_map[name] = {
-                        "year": r.year,
-                        "median_hourly": float(r.value),
-                    }
-
-            if ons_map:
-                ons_available = True
-                ons_year = max(v["year"] for v in ons_map.values())
-
-                for r in results:
-                    c = (r.get("county") or "").strip()
-                    info = ons_map.get(c)
-                    if not info:
-                        r["ons_median_hourly"] = None
-                        r["pay_vs_ons"] = None
-                        r["pay_vs_ons_pct"] = None
-                        continue
-
-                    advertised = r.get("median_pay_rate")
-                    ons_val = info["median_hourly"]
-                    r["ons_median_hourly"] = ons_val
-                    if advertised is None or ons_val is None:
-                        r["pay_vs_ons"] = None
-                        r["pay_vs_ons_pct"] = None
-                    else:
-                        gap = advertised - ons_val
-                        r["pay_vs_ons"] = gap
-                        r["pay_vs_ons_pct"] = (gap / ons_val * 100) if ons_val else None
-
-    return jsonify(
-        {
-            "params": {
-                "sector": sector,
-                "job_role_group": job_role_group,
-                "group_by": group_by,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-            },
-            "results": results,
-            "ons_available": ons_available,
-            "ons_year": ons_year,
-        }
+    data = get_pay_explorer_data(
+        start_date_str=start_date,
+        end_date_str=end_date,
+        sector=sector,
+        job_role_group=job_role_group,
+        group_by=group_by,
     )
 
+    # CSV export branch
+    if format_ == "csv":
+        results = data.get("results", [])
+        params = data.get("params", {}) or {}
+        group_by_param = params.get("group_by") or group_by or "county"
+        start = params.get("start_date") or start_date or ""
+        end = params.get("end_date") or end_date or ""
 
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header row – matches table + some extras
+        writer.writerow(
+            [
+                "Area",
+                "Sector",
+                "Adverts count",
+                "Advertised median £/hr",
+                "ONS median £/hr",
+                "Gap £/hr",
+                "Gap %",
+                "P25 £/hr",
+                "P75 £/hr",
+                "Min £/hr",
+                "Max £/hr",
+            ]
+        )
+
+        for row in results:
+            county = row.get("county")
+            sector_val = row.get("sector")
+
+            if group_by_param == "sector":
+                area = sector_val or "Unknown sector"
+            elif group_by_param == "sector_county":
+                area = f"{sector_val or 'Unknown sector'} – {county or 'Unknown county'}"
+            else:  # county
+                area = county or "Unknown county"
+
+            writer.writerow(
+                [
+                    area,
+                    sector_val or "",
+                    row.get("adverts_count") or 0,
+                    row.get("median_pay_rate") or "",
+                    row.get("ons_median_hourly") or "",
+                    row.get("pay_vs_ons") or "",
+                    row.get("pay_vs_ons_pct") or "",
+                    row.get("p25_pay_rate") or "",
+                    row.get("p75_pay_rate") or "",
+                    row.get("min_pay_rate") or "",
+                    row.get("max_pay_rate") or "",
+                ]
+            )
+
+        csv_data = output.getvalue()
+        resp = make_response(csv_data)
+        filename = f"pay_explorer_{group_by_param}_{start}_{end}.csv".replace(" ", "_")
+        resp.headers["Content-Type"] = "text/csv"
+        resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        return resp
+
+    # Default: JSON for the front-end
+    return jsonify(data)

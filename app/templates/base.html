@@ -465,6 +465,11 @@
           Pay Explorer
         </a>
 
+        <a href="{{ url_for('dashboard.quick_search') }}"
+           class="nav-chip {% if endpoint == 'dashboard.quick_search' %}nav-chip--active{% endif %}">
+          Quick search
+        </a>
+
         <a href="{{ url_for('records.records') }}"
            class="nav-chip {% if endpoint.startswith('records.') %}nav-chip--active{% endif %}">
           Records

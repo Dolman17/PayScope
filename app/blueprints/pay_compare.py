@@ -1,4 +1,4 @@
-# app/blueprints/pay_compare.py
+# app/blueprints/pay_compare.py 
 
 from __future__ import annotations
 
@@ -30,6 +30,10 @@ except Exception:
 # "Gross hourly pay (excluding overtime), median"
 # This must match what ons_importer writes into OnsEarnings.measure_code.
 ONS_MEDIAN_HOURLY_MEASURE_CODE = "20100"
+
+# Simple sanity cap for hourly rates used in Pay Explorer.
+# Anything above this is treated as a data error and ignored for the chart/table.
+MAX_REASONABLE_HOURLY = 200.0
 
 
 # ------------------------------------------------------------------
@@ -397,6 +401,15 @@ def get_pay_explorer_data(
 
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
+            # Sanity filter: skip obviously broken medians
+            if adv_med is None or adv_med <= 0 or adv_med > MAX_REASONABLE_HOURLY:
+                logger.debug(
+                    "[PAY_COMPARE] Skipping county '%s' due to insane median_pay_rate=%s",
+                    display_name,
+                    adv_med,
+                )
+                continue
+
             ons_val = None
             if raw_name and ONS_VALUES:
                 matched_geo = _match_to_ons_geography(raw_name)
@@ -452,6 +465,15 @@ def get_pay_explorer_data(
         for r in rows:
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
+            # Sanity filter
+            if adv_med is None or adv_med <= 0 or adv_med > MAX_REASONABLE_HOURLY:
+                logger.debug(
+                    "[PAY_COMPARE] Skipping sector '%s' due to insane median_pay_rate=%s",
+                    r.sector or "Unknown sector",
+                    adv_med,
+                )
+                continue
+
             results.append(
                 {
                     "county": None,
@@ -498,6 +520,16 @@ def get_pay_explorer_data(
 
             adv_med = float(r.median_pay_rate) if r.median_pay_rate is not None else None
 
+            # Sanity filter
+            if adv_med is None or adv_med <= 0 or adv_med > MAX_REASONABLE_HOURLY:
+                logger.debug(
+                    "[PAY_COMPARE] Skipping sector_county '%s / %s' due to insane median_pay_rate=%s",
+                    r.sector or "Unknown sector",
+                    display_name,
+                    adv_med,
+                )
+                continue
+
             ons_val = None
             if raw_name and ONS_VALUES:
                 matched_geo = _match_to_ons_geography(raw_name)
@@ -531,6 +563,12 @@ def get_pay_explorer_data(
                 }
             )
 
+    # -------------------------------------
+    # Simple summary meta for the UI
+    # -------------------------------------
+    row_count = len(results)
+    total_adverts = sum((r.get("adverts_count") or 0) for r in results)
+
     return {
         "results": results,
         "ons_available": ons_available,
@@ -541,6 +579,10 @@ def get_pay_explorer_data(
             "sector": sector_norm or sector,
             "job_role_group": job_role_group,
             "group_by": group_by,
+        },
+        "summary": {
+            "row_count": row_count,
+            "total_adverts": total_adverts,
         },
     }
 
@@ -692,3 +734,4 @@ def build_pay_explorer_debug_snapshot(
     debug_rows.sort(key=lambda x: x["raw_county"])
 
     return debug_rows, ons_year
+

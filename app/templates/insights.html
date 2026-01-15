@@ -5,61 +5,79 @@
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
 
   <!-- Header -->
-  <div class="mb-6 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-    <div class="max-w-3xl">
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
-              style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.20);">
-          Insights
-        </span>
-        <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
-          Interactive analytics
-        </span>
+  <header class="mb-6">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div class="max-w-3xl">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.20);">
+            Insights
+          </span>
+          <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            Interactive analytics
+          </span>
+        </div>
+
+        <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--ink);">
+          PayScope Insights &amp; Analytics
+        </h1>
+
+        <p class="mt-1 text-sm" style="color: var(--ink-2);">
+          Filter to a <span class="font-semibold" style="color: var(--ink);">market slice</span>. Charts highlight pay levels,
+          spread, concentration, and changes over time.
+        </p>
+
+        <!-- Collapsible micro-guide (less clutter, same content) -->
+        <details class="mt-3">
+          <summary class="text-xs font-semibold cursor-pointer select-none inline-flex items-center gap-2"
+                   style="color: var(--ink-2);">
+            <span class="inline-flex h-5 w-5 items-center justify-center rounded-lg"
+                  style="background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.14);">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+              </svg>
+            </span>
+            How to use this page
+          </summary>
+
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs" style="color: var(--ink-2);">
+            <div class="rounded-xl px-3 py-2"
+                 style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+              <div class="font-semibold" style="color: var(--ink);">1) Filter</div>
+              <div>Pick sector, county, role, year &amp; pay band.</div>
+            </div>
+            <div class="rounded-xl px-3 py-2"
+                 style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+              <div class="font-semibold" style="color: var(--ink);">2) Interpret</div>
+              <div>Use median/spread + volume to judge confidence.</div>
+            </div>
+            <div class="rounded-xl px-3 py-2"
+                 style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+              <div class="font-semibold" style="color: var(--ink);">3) Act</div>
+              <div>Benchmark rates, spot hotspots, share charts.</div>
+            </div>
+          </div>
+        </details>
       </div>
 
-      <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--ink);">
-        PayScope Insights &amp; Analytics
-      </h1>
+      <!-- AI Analyse Button -->
+      <div class="flex flex-col gap-2 w-full lg:w-auto">
+        <button id="openAiConfirm"
+                class="btn btn-primary w-full lg:w-auto inline-flex items-center justify-center gap-2">
+          <span>
+            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 2.5 11.3 6l3.7 1.3L11.3 8.7 10 12.2 8.7 8.7 5 7.3 8.7 6 10 2.5Zm-5 8.5.8 2.2L8 14l-2.2.8L5 17l-.8-2.2L2 14l2.2-.8L5 11Z" />
+            </svg>
+          </span>
+          <span>Use AI to analyse this view</span>
+        </button>
 
-      <p class="mt-1 text-sm" style="color: var(--ink-2);">
-        Use filters to define the <span class="font-semibold" style="color: var(--ink);">market slice</span>
-        you care about. The charts and takeaways below explain pay levels, spread, concentration, and change over time.
-      </p>
-
-      <!-- “How to use” micro-guide -->
-      <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs" style="color: var(--ink-2);">
-        <div class="rounded-xl px-3 py-2" style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="font-semibold" style="color: var(--ink);">1) Filter</div>
-          <div>Pick sector, county, role, year &amp; pay band.</div>
-        </div>
-        <div class="rounded-xl px-3 py-2" style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="font-semibold" style="color: var(--ink);">2) Interpret</div>
-          <div>Use median/range + volume to judge “confidence”.</div>
-        </div>
-        <div class="rounded-xl px-3 py-2" style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="font-semibold" style="color: var(--ink);">3) Act</div>
-          <div>Benchmark rates, spot hotspots, share charts.</div>
+        <div class="text-xs" style="color: var(--ink-2);">
+          Generates a narrative summary from your current filters.
         </div>
       </div>
     </div>
-
-    <!-- AI Analyse Button -->
-    <div class="flex flex-col gap-2 w-full lg:w-auto">
-      <button id="openAiConfirm"
-              class="btn btn-primary w-full lg:w-auto inline-flex items-center justify-center gap-2">
-        <span>
-          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path d="M10 2.5 11.3 6l3.7 1.3L11.3 8.7 10 12.2 8.7 8.7 5 7.3 8.7 6 10 2.5Zm-5 8.5.8 2.2L8 14l-2.2.8L5 17l-.8-2.2L2 14l2.2-.8L5 11Z" />
-          </svg>
-        </span>
-        <span>Use AI to analyse this view</span>
-      </button>
-
-      <div class="text-xs" style="color: var(--ink-2);">
-        Generates a narrative summary based on your current filters.
-      </div>
-    </div>
-  </div>
+  </header>
 
   <!-- Snapshot / takeaways -->
   <section class="mb-6 grid gap-4 lg:grid-cols-3">
@@ -74,33 +92,39 @@
             after filters
           </span>
         </div>
-        <p class="mt-2 text-3xl font-semibold" style="color: var(--ink);">
-          {{ total_count or records|length }}
-        </p>
-        <p class="mt-1 text-xs" style="color: var(--ink-2);">
-          Use volume as a sanity check — tiny samples can mislead.
+
+        <div class="mt-3 flex items-baseline justify-between gap-4">
+          <p class="text-3xl font-semibold" style="color: var(--ink);">
+            {{ total_count or records|length }}
+          </p>
+          <span class="text-[11px] px-2 py-1 rounded-full"
+                style="background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.14); color: var(--ink-2);">
+            Volume sanity check
+          </span>
+        </div>
+
+        <p class="mt-2 text-xs" style="color: var(--ink-2);">
+          Tiny samples can mislead — use “Records by …” charts to judge confidence.
         </p>
 
         {% if uncategorised_roles_count is not none %}
           <div class="mt-3 rounded-xl px-3 py-2 text-xs"
                style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10); color: var(--ink-2);">
             <span class="font-semibold" style="color: var(--ink);">Role hygiene:</span>
-            <span>
-              {{ uncategorised_roles_count }} record(s) have no canonical role group.
-            </span>
+            <span>{{ uncategorised_roles_count }} record(s) have no canonical role group.</span>
           </div>
         {% endif %}
       </div>
     </div>
 
-    <!-- Key takeaways (auto from JS) -->
+    <!-- Key takeaways -->
     <div class="card lg:col-span-2">
       <div class="p-4 sm:p-5">
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <h2 class="text-sm font-semibold" style="color: var(--ink);">Key takeaways</h2>
             <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              A quick “so what?” summary of the filtered dataset.
+              A fast, robust summary (median + spread + range) for this slice.
             </p>
           </div>
 
@@ -112,66 +136,54 @@
         </div>
 
         <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="rounded-2xl p-4"
-               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-            <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
-              Typical pay (median)
-            </div>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--ink);" id="kpiMedian">—</div>
-            <div class="mt-1 text-xs" style="color: var(--ink-2);" id="kpiMedianNote">—</div>
+          <div class="kpi-tile">
+            <div class="kpi-label">Typical pay (median)</div>
+            <div class="kpi-value" id="kpiMedian">—</div>
+            <div class="kpi-note" id="kpiMedianNote">—</div>
           </div>
 
-          <div class="rounded-2xl p-4"
-               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-            <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
-              Spread (P25 → P75)
-            </div>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--ink);" id="kpiIqr">—</div>
-            <div class="mt-1 text-xs" style="color: var(--ink-2);" id="kpiIqrNote">—</div>
+          <div class="kpi-tile">
+            <div class="kpi-label">Spread (P25 → P75)</div>
+            <div class="kpi-value" id="kpiIqr">—</div>
+            <div class="kpi-note" id="kpiIqrNote">—</div>
           </div>
 
-          <div class="rounded-2xl p-4"
-               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-            <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
-              Range (min → max)
-            </div>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--ink);" id="kpiRange">—</div>
-            <div class="mt-1 text-xs" style="color: var(--ink-2);" id="kpiRangeNote">—</div>
+          <div class="kpi-tile">
+            <div class="kpi-label">Range (min → max)</div>
+            <div class="kpi-value" id="kpiRange">—</div>
+            <div class="kpi-note" id="kpiRangeNote">—</div>
           </div>
 
-          <div class="rounded-2xl p-4"
-               style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-            <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
-              Most common slice
-            </div>
+          <div class="kpi-tile">
+            <div class="kpi-label">Most common slice</div>
             <div class="mt-1 text-base font-semibold" style="color: var(--ink);" id="kpiTopSlice">—</div>
-            <div class="mt-1 text-xs" style="color: var(--ink-2);" id="kpiTopSliceNote">—</div>
+            <div class="kpi-note" id="kpiTopSliceNote">—</div>
           </div>
         </div>
 
         <div class="mt-4 rounded-2xl px-4 py-3 text-xs"
              style="background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.15); color: var(--ink);">
           <div class="font-semibold">Interpretation tip</div>
-          <div class="mt-1" style="color: var(--ink-2);" id="kpiConfidence">
-            — 
-          </div>
+          <div class="mt-1" style="color: var(--ink-2);" id="kpiConfidence">—</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Current filter summary -->
-  <section class="mb-6 card">
-    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+  <!-- Filters + current view (cleaner framing) -->
+  <section class="card mb-8">
+    <div class="border-b px-5 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
          style="border-color: rgba(148,163,184,0.12);">
-      <h2 class="text-sm font-semibold" style="color: var(--ink);">Current view</h2>
-      <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
-        Filters applied
-      </span>
-    </div>
+      <div>
+        <h2 class="text-sm font-semibold" style="color: var(--ink);">Filters</h2>
+        <p class="text-[11px]" style="color: var(--ink-2);">
+          Define the market slice (sector, county, role, year, pay band).
+        </p>
+      </div>
 
-    <div class="p-5 sm:p-6">
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">Current view</span>
+
         {% if filters.sector %}
           <span class="filter-pill">Sector: {{ filters.sector|join(', ') }}</span>
         {% endif %}
@@ -192,164 +204,147 @@
         {% endif %}
 
         {% if not (filters.sector or filters.county or filters.job_role or filters.year or filters.rate_min or filters.rate_max) %}
-          <span class="text-xs" style="color: var(--ink-2);">
-            No filters applied — showing the full dataset.
-          </span>
+          <span class="text-[11px]" style="color: var(--ink-2);">No filters applied</span>
         {% endif %}
       </div>
-
-      <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div class="rounded-2xl p-4"
-             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="text-xs font-semibold" style="color: var(--ink);">What you’re seeing</div>
-          <p class="mt-1 text-xs" style="color: var(--ink-2);">
-            Charts reflect the <span style="color: var(--ink); font-semibold;">currently filtered records</span>.
-            Use “Records by …” charts to judge sample size before drawing conclusions.
-          </p>
-        </div>
-
-        <div class="rounded-2xl p-4"
-             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="text-xs font-semibold" style="color: var(--ink);">Canonical roles</div>
-          <p class="mt-1 text-xs" style="color: var(--ink-2);">
-            Role filtering uses your canonical mappings (where present), so “Support Worker” variants roll up into one role group.
-          </p>
-        </div>
-
-        <div class="rounded-2xl p-4"
-             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
-          <div class="text-xs font-semibold" style="color: var(--ink);">Shareable outputs</div>
-          <p class="mt-1 text-xs" style="color: var(--ink-2);">
-            Each chart has a PNG download. Use AI summary for a narrative you can paste into emails/updates.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Filters -->
-  <section class="card mb-8">
-    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
-         style="border-color: rgba(148,163,184,0.12);">
-      <h2 class="text-sm font-semibold" style="color: var(--ink);">
-        Refine dataset
-      </h2>
-      <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
-        Core &amp; pay band filters
-      </span>
     </div>
 
-    <form method="get" class="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-6 gap-4">
-
-      <!-- Sector -->
-      <div class="lg:col-span-2">
-        <label class="label mb-1 block" for="sector">Sector</label>
-        <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
-             style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
-          {% for s in options.sectors %}
-            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer" style="color: var(--ink);">
-              <input type="checkbox"
-                     name="sector"
-                     value="{{ s }}"
-                     class="h-4 w-4 rounded"
-                     style="accent-color: var(--brand);"
-                     {% if s in (filters.sector or []) %}checked{% endif %}>
-              <span class="truncate" style="color: var(--ink-2);">{{ s }}</span>
-            </label>
-          {% endfor %}
-        </div>
-        <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Choose one or more sectors.</p>
-      </div>
-
-      <!-- County -->
-      <div class="lg:col-span-2">
-        <label class="label mb-1 block" for="county">County</label>
-        <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
-             style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
-          {% for c in options.counties %}
-            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer" style="color: var(--ink);">
-              <input type="checkbox"
-                     name="county"
-                     value="{{ c }}"
-                     class="h-4 w-4 rounded"
-                     style="accent-color: var(--brand);"
-                     {% if c in (filters.county or []) %}checked{% endif %}>
-              <span class="truncate" style="color: var(--ink-2);">{{ c }}</span>
-            </label>
-          {% endfor %}
-        </div>
-        <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Choose one or more counties.</p>
-      </div>
-
-      <!-- Role -->
-      <div class="lg:col-span-2">
-        <label class="label mb-1 block" for="job_role">Job Role</label>
-        <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
-             style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
-          {% for r in options.roles %}
-            <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer" style="color: var(--ink);">
-              <input type="checkbox"
-                     name="job_role"
-                     value="{{ r }}"
-                     class="h-4 w-4 rounded"
-                     style="accent-color: var(--brand);"
-                     {% if r in (filters.job_role or []) %}checked{% endif %}>
-              <span class="truncate" style="color: var(--ink-2);">{{ r }}</span>
-            </label>
-          {% endfor %}
-        </div>
-        <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Choose one or more roles.</p>
-      </div>
-
-      <!-- Year / Min / Max -->
-      <div class="lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-        <div>
-          <label class="label" for="year">Year</label>
-          <select id="year" name="year" class="input">
-            <option value="">All Years</option>
-            {% for y in options.years %}
-              <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+    <div class="p-5 sm:p-6">
+      <form method="get" class="grid grid-cols-1 lg:grid-cols-6 gap-4">
+        <!-- Sector -->
+        <div class="lg:col-span-2">
+          <label class="label mb-1 block" for="sector">Sector</label>
+          <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
+               style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
+            {% for s in options.sectors %}
+              <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+                <input type="checkbox"
+                       name="sector"
+                       value="{{ s }}"
+                       class="h-4 w-4 rounded"
+                       style="accent-color: var(--brand);"
+                       {% if s in (filters.sector or []) %}checked{% endif %}>
+                <span class="truncate" style="color: var(--ink-2);">{{ s }}</span>
+              </label>
             {% endfor %}
-          </select>
+          </div>
+          <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Multi-select.</p>
         </div>
 
-        <div>
-          <label class="label" for="rate_min">Min Pay</label>
-          <input id="rate_min"
-                 type="number"
-                 step="0.01"
-                 name="rate_min"
-                 value="{{ filters.rate_min or '' }}"
-                 class="input"
-                 placeholder="e.g. 12.00">
+        <!-- County -->
+        <div class="lg:col-span-2">
+          <label class="label mb-1 block" for="county">County</label>
+          <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
+               style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
+            {% for c in options.counties %}
+              <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+                <input type="checkbox"
+                       name="county"
+                       value="{{ c }}"
+                       class="h-4 w-4 rounded"
+                       style="accent-color: var(--brand);"
+                       {% if c in (filters.county or []) %}checked{% endif %}>
+                <span class="truncate" style="color: var(--ink-2);">{{ c }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Multi-select.</p>
         </div>
 
-        <div>
-          <label class="label" for="rate_max">Max Pay</label>
-          <input id="rate_max"
-                 type="number"
-                 step="0.01"
-                 name="rate_max"
-                 value="{{ filters.rate_max or '' }}"
-                 class="input"
-                 placeholder="e.g. 18.50">
+        <!-- Role -->
+        <div class="lg:col-span-2">
+          <label class="label mb-1 block" for="job_role">Job Role</label>
+          <div class="rounded-xl max-h-44 overflow-y-auto px-3 py-2 space-y-1"
+               style="border: 1px solid rgba(148,163,184,0.18); background: rgba(2,6,23,0.35);">
+            {% for r in options.roles %}
+              <label class="flex items-center gap-2 text-xs sm:text-sm cursor-pointer">
+                <input type="checkbox"
+                       name="job_role"
+                       value="{{ r }}"
+                       class="h-4 w-4 rounded"
+                       style="accent-color: var(--brand);"
+                       {% if r in (filters.job_role or []) %}checked{% endif %}>
+                <span class="truncate" style="color: var(--ink-2);">{{ r }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <p class="mt-1 text-[11px]" style="color: var(--ink-2);">Multi-select (canonical groups).</p>
         </div>
-      </div>
 
-      <div class="lg:col-span-6 flex flex-wrap items-center justify-between gap-3 pt-2">
-        <div class="text-xs" style="color: var(--ink-2);">
-          Charts and takeaways update based on this filter set.
+        <!-- Year / Min / Max -->
+        <div class="lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div>
+            <label class="label" for="year">Year</label>
+            <select id="year" name="year" class="input">
+              <option value="">All Years</option>
+              {% for y in options.years %}
+                <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="label" for="rate_min">Min Pay</label>
+            <input id="rate_min"
+                   type="number"
+                   step="0.01"
+                   name="rate_min"
+                   value="{{ filters.rate_min or '' }}"
+                   class="input"
+                   placeholder="e.g. 12.00">
+          </div>
+
+          <div>
+            <label class="label" for="rate_max">Max Pay</label>
+            <input id="rate_max"
+                   type="number"
+                   step="0.01"
+                   name="rate_max"
+                   value="{{ filters.rate_max or '' }}"
+                   class="input"
+                   placeholder="e.g. 18.50">
+          </div>
         </div>
-        <div class="flex gap-2 w-full sm:w-auto">
-          <button type="submit" class="btn btn-primary flex-1 sm:flex-none">
-            Apply filters
-          </button>
-          <a href="{{ request.path }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
-            Reset
-          </a>
+
+        <div class="lg:col-span-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+          <details class="text-xs" style="color: var(--ink-2);">
+            <summary class="cursor-pointer select-none font-semibold">What you’re seeing</summary>
+            <div class="mt-2 grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <div class="rounded-2xl p-4"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-xs font-semibold" style="color: var(--ink);">Filtered dataset</div>
+                <p class="mt-1 text-xs" style="color: var(--ink-2);">
+                  Charts reflect the currently filtered records. Use “Records by …” to sanity-check volume.
+                </p>
+              </div>
+              <div class="rounded-2xl p-4"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-xs font-semibold" style="color: var(--ink);">Canonical roles</div>
+                <p class="mt-1 text-xs" style="color: var(--ink-2);">
+                  Role filtering uses canonical mappings (where present), so variants roll up into one role group.
+                </p>
+              </div>
+              <div class="rounded-2xl p-4"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-xs font-semibold" style="color: var(--ink);">Shareable outputs</div>
+                <p class="mt-1 text-xs" style="color: var(--ink-2);">
+                  Each chart supports PNG download. AI summary gives a narrative you can paste into updates.
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button type="submit" class="btn btn-primary flex-1 sm:flex-none">
+              Apply filters
+            </button>
+            <a href="{{ request.path }}" class="btn btn-secondary flex-1 sm:flex-none text-xs">
+              Reset
+            </a>
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
   </section>
 
   <!-- AI Insights -->
@@ -383,309 +378,309 @@
     </div>
   </section>
 
-  <!-- Core charts -->
-  <section class="grid gap-6 xl:grid-cols-2 mb-8">
+  <!-- Charts -->
+  <section class="space-y-6">
 
-    <!-- Avg Pay by Sector -->
-    <div class="card">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base sm:text-lg font-semibold" style="color: var(--ink);">Charts</h2>
+      <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+        Download PNG from each card
+      </span>
+    </div>
+
+    <!-- Core charts -->
+    <details open class="card">
+      <summary class="px-5 sm:px-6 py-3 cursor-pointer select-none flex items-center justify-between"
+               style="border-bottom: 1px solid rgba(148,163,184,0.12);">
+        <span class="text-sm font-semibold" style="color: var(--ink);">Core charts</span>
+        <span class="text-[11px]" style="color: var(--ink-2);">Pay + volume fundamentals</span>
+      </summary>
+
       <div class="p-5 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-lg sm:text-xl font-semibold" style="color: var(--ink);">Average Pay by Sector</h2>
-            <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              Typical hourly rates across sectors in the current view.
-            </p>
+        <section class="grid gap-6 xl:grid-cols-2">
+
+          <!-- Avg Pay by Sector -->
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head">
+                <div>
+                  <h3 class="chart-title">Average Pay by Sector</h3>
+                  <p class="chart-sub">Typical hourly rates across sectors in the current view.</p>
+                </div>
+                <div class="chart-actions">
+                  <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                          data-chart-info
+                          data-title="Average Pay by Sector"
+                          data-body="Average hourly pay for each sector in the filtered dataset. Use this to compare pay attractiveness across sectors (remember: sample size matters).">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                    </svg>
+                  </button>
+                  <button type="button" onclick="downloadChart('sectorChart')" class="btn btn-secondary text-xs sm:text-sm">
+                    Download PNG
+                  </button>
+                </div>
+              </div>
+              <div class="resizable"><canvas id="sectorChart"></canvas></div>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="hover:opacity-80"
-                    style="color: var(--ink-2);"
-                    data-chart-info
-                    data-title="Average Pay by Sector"
-                    data-body="Average hourly pay for each sector in the filtered dataset. Use this to compare pay attractiveness across sectors (remember: sample size matters).">
-              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-              </svg>
-            </button>
-            <button type="button"
-                    onclick="downloadChart('sectorChart')"
-                    class="btn btn-secondary text-xs sm:text-sm">
-              Download PNG
-            </button>
+
+          <!-- Avg Pay by Role -->
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head">
+                <div>
+                  <h3 class="chart-title">Average Pay by Role</h3>
+                  <p class="chart-sub">Compare roles within the same market slice (canonical roles supported).</p>
+                </div>
+                <div class="chart-actions">
+                  <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                          data-chart-info
+                          data-title="Average Pay by Role"
+                          data-body="Average hourly pay by job role in the filtered dataset. Useful for benchmarking frontline vs senior roles inside the same sector/county/year.">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                    </svg>
+                  </button>
+                  <button type="button" onclick="downloadChart('roleChart')" class="btn btn-secondary text-xs sm:text-sm">
+                    Download PNG
+                  </button>
+                </div>
+              </div>
+              <div class="resizable"><canvas id="roleChart"></canvas></div>
+            </div>
           </div>
-        </div>
-        <div class="resizable">
-          <canvas id="sectorChart"></canvas>
-        </div>
-      </div>
-    </div>
 
-    <!-- Avg Pay by Role -->
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-lg sm:text-xl font-semibold" style="color: var(--ink);">Average Pay by Role</h2>
-            <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              Compare roles within the same market slice (canonical roles supported).
-            </p>
+          <!-- Records by County -->
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head">
+                <div>
+                  <h3 class="chart-title">Records by County</h3>
+                  <p class="chart-sub">Sample-size view — low volume means higher uncertainty.</p>
+                </div>
+                <div class="chart-actions">
+                  <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                          data-chart-info
+                          data-title="Records by County"
+                          data-body="Count of records by county. Treat insights with caution when a county has very few records.">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                    </svg>
+                  </button>
+                  <button type="button" onclick="downloadChart('countyPieChart')" class="btn btn-secondary text-xs sm:text-sm">
+                    Download PNG
+                  </button>
+                </div>
+              </div>
+              <div class="resizable"><canvas id="countyPieChart"></canvas></div>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="hover:opacity-80"
-                    style="color: var(--ink-2);"
-                    data-chart-info
-                    data-title="Average Pay by Role"
-                    data-body="Average hourly pay by job role in the filtered dataset. Useful for benchmarking frontline vs senior roles inside the same sector/county/year.">
-              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-              </svg>
-            </button>
-            <button type="button"
-                    onclick="downloadChart('roleChart')"
-                    class="btn btn-secondary text-xs sm:text-sm">
-              Download PNG
-            </button>
+
+          <!-- Records by Sector -->
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head">
+                <div>
+                  <h3 class="chart-title">Records by Sector</h3>
+                  <p class="chart-sub">Sample-size view — shows where your data is strongest.</p>
+                </div>
+                <div class="chart-actions">
+                  <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                          data-chart-info
+                          data-title="Records by Sector"
+                          data-body="Count of records by sector. Use this to judge which sectors are well represented in your current view.">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                    </svg>
+                  </button>
+                  <button type="button" onclick="downloadChart('sectorPieChart')" class="btn btn-secondary text-xs sm:text-sm">
+                    Download PNG
+                  </button>
+                </div>
+              </div>
+              <div class="resizable"><canvas id="sectorPieChart"></canvas></div>
+            </div>
           </div>
-        </div>
-        <div class="resizable">
-          <canvas id="roleChart"></canvas>
-        </div>
-      </div>
-    </div>
 
-    <!-- Records by County -->
-    <div class="card">
+        </section>
+      </div>
+    </details>
+
+    <!-- Advanced charts (IDs unchanged) -->
+    <details class="card">
+      <summary class="px-5 sm:px-6 py-3 cursor-pointer select-none flex items-center justify-between"
+               style="border-bottom: 1px solid rgba(148,163,184,0.12);">
+        <span class="text-sm font-semibold" style="color: var(--ink);">More charts</span>
+        <span class="text-[11px]" style="color: var(--ink-2);">Distribution, trends, heatmaps, outliers</span>
+      </summary>
+
       <div class="p-5 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-lg sm:text-xl font-semibold" style="color: var(--ink);">Records by County</h2>
-            <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              A sample-size view — low volume means higher uncertainty.
-            </p>
+        <section class="grid gap-6 xl:grid-cols-2">
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Pay distribution (bands)</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Pay distribution"
+                        data-body="Groups hourly pay into bands. A tight cluster suggests a stable market band; a wide shape suggests a competitive or mixed market.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="payHistogram"></canvas></div>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="hover:opacity-80"
-                    style="color: var(--ink-2);"
-                    data-chart-info
-                    data-title="Records by County"
-                    data-body="Count of records by county. Treat insights with caution when a county has very few records.">
-              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-              </svg>
-            </button>
-            <button type="button"
-                    onclick="downloadChart('countyPieChart')"
-                    class="btn btn-secondary text-xs sm:text-sm">
-              Download PNG
-            </button>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Pay range by sector</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Pay range by sector"
+                        data-body="Shows min/avg/max pay by sector. A wide range can mean a mixed market, scarcity, or data quality issues.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="sectorRangeChart"></canvas></div>
+            </div>
           </div>
-        </div>
-        <div class="resizable">
-          <canvas id="countyPieChart"></canvas>
-        </div>
-      </div>
-    </div>
 
-    <!-- Records by Sector -->
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <div>
-            <h2 class="text-lg sm:text-xl font-semibold" style="color: var(--ink);">Records by Sector</h2>
-            <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              Another sample-size view — shows where your data is strongest.
-            </p>
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Average pay over time</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Average pay over time"
+                        data-body="Shows how average pay moves across upload months. Use it for inflation/pressure patterns and directional change.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="payTrendChart"></canvas></div>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="hover:opacity-80"
-                    style="color: var(--ink-2);"
-                    data-chart-info
-                    data-title="Records by Sector"
-                    data-body="Count of records by sector. Use this to judge which sectors are well represented in your current view.">
-              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-              </svg>
-            </button>
-            <button type="button"
-                    onclick="downloadChart('sectorPieChart')"
-                    class="btn btn-secondary text-xs sm:text-sm">
-              Download PNG
-            </button>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Volatility by sector</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Volatility by sector"
+                        data-body="Standard deviation of pay by sector. Higher volatility = wider pay dispersion (competitive or inconsistent markets).">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="sectorVolatilityChart"></canvas></div>
+            </div>
           </div>
-        </div>
-        <div class="resizable">
-          <canvas id="sectorPieChart"></canvas>
-        </div>
+
+          <div class="card">
+            <div class="p-5 sm:px-6 sm:py-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Sector × county pay</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Sector by county pay"
+                        data-body="Compares average pay for sectors inside each county to reveal geographic hotspots and sector patterns.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="sectorCountyHeatChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Top 10 companies by average pay</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Top companies by pay"
+                        data-body="Highlights pay leaders in your current view. Useful for competitor benchmarking (watch sample sizes).">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="topCompaniesChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Pay outliers over time</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Pay outliers over time"
+                        data-body="Outliers can indicate premium rates, unusually low postings, or data quality issues worth checking.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="outlierScatterChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Role mix by sector</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Role mix by sector"
+                        data-body="Shows workforce composition (role mix) per sector — helps interpret whether your view is frontline-heavy or leadership-heavy.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="roleMixChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Top counties – pay trend</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Top counties pay trend"
+                        data-body="Tracks average pay over time for the busiest counties in your view to highlight fast-moving areas.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="countyTrendChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="p-5 sm:p-6">
+              <div class="chart-head compact">
+                <h3 class="chart-title">Role × sector pay matrix</h3>
+                <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
+                        data-chart-info data-title="Role by sector pay matrix"
+                        data-body="Compares average pay for each role across sectors. Helps spot where the same role commands a premium in certain sectors.">
+                  <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="resizable"><canvas id="roleSectorMatrixChart"></canvas></div>
+            </div>
+          </div>
+
+        </section>
       </div>
-    </div>
-
-  </section>
-
-  <!-- Advanced charts (IDs unchanged) -->
-  <section class="grid gap-6 xl:grid-cols-2">
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Pay distribution (bands)</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Pay distribution"
-                  data-body="Groups hourly pay into bands. A tight cluster suggests a stable market band; a wide shape suggests a competitive or mixed market.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="payHistogram"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Pay range by sector</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Pay range by sector"
-                  data-body="Shows min/avg/max pay by sector. A wide range can mean a mixed market, scarcity, or data quality issues.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="sectorRangeChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Average pay over time</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Average pay over time"
-                  data-body="Shows how average pay moves across upload months. Use it for inflation/pressure patterns and directional change.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="payTrendChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Volatility by sector</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Volatility by sector"
-                  data-body="Standard deviation of pay by sector. Higher volatility = wider pay dispersion (competitive or inconsistent markets).">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="sectorVolatilityChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Sector × county pay</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Sector by county pay"
-                  data-body="Compares average pay for sectors inside each county to reveal geographic hotspots and sector patterns.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="sectorCountyHeatChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Top 10 companies by average pay</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Top companies by pay"
-                  data-body="Highlights pay leaders in your current view. Useful for competitor benchmarking (watch sample sizes).">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="topCompaniesChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Pay outliers over time</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Pay outliers over time"
-                  data-body="Outliers can indicate premium rates, unusually low postings, or data quality issues worth checking.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="outlierScatterChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Role mix by sector</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Role mix by sector"
-                  data-body="Shows workforce composition (role mix) per sector — helps interpret whether your view is frontline-heavy or leadership-heavy.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="roleMixChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Top counties – pay trend</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Top counties pay trend"
-                  data-body="Tracks average pay over time for the busiest counties in your view to highlight fast-moving areas.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="countyTrendChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="p-5 sm:p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold" style="color: var(--ink);">Role × sector pay matrix</h2>
-          <button type="button" class="hover:opacity-80" style="color: var(--ink-2);"
-                  data-chart-info data-title="Role by sector pay matrix"
-                  data-body="Compares average pay for each role across sectors. Helps spot where the same role commands a premium in certain sectors.">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-.75-9.5a.75.75 0 0 0 0 1.5h.5c.17 0 .25.03.3.08.06.06.1.15.1.29 0 .2-.08.35-.25.52l-.54.54a1.9 1.9 0 0 0-.56 1.34V14a.75.75 0 0 0 1.5 0v-.21c0-.2.08-.35.25-.52l.54-.54c.37-.38.56-.82.56-1.33 0-.58-.17-1.05-.49-1.37-.31-.32-.76-.53-1.36-.53h-.5Zm0-3.5a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H9.25Z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="resizable"><canvas id="roleSectorMatrixChart"></canvas></div>
-      </div>
-    </div>
+    </details>
 
   </section>
 </div>
@@ -746,6 +741,7 @@
 </div>
 
 <style>
+  /* Existing resizable: kept (IDs and behaviour unchanged), but tightened visuals */
   .resizable {
     resize: vertical;
     overflow: auto;
@@ -769,7 +765,7 @@
     position: absolute;
     bottom: 0;
     right: 0;
-    opacity: 0.7;
+    opacity: 0.55;
   }
 
   .filter-pill {
@@ -784,6 +780,72 @@
     color: #67e8f9;
     border: 1px solid rgba(34,211,238,0.18);
   }
+
+  /* New: KPI tiles (same IDs inside) */
+  .kpi-tile{
+    border-radius: 1rem;
+    padding: 1rem;
+    background: rgba(148,163,184,0.06);
+    border: 1px solid rgba(148,163,184,0.10);
+  }
+  .kpi-label{
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+  }
+  .kpi-value{
+    margin-top: 0.25rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .kpi-note{
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--ink-2);
+  }
+
+  /* New: chart header consistency */
+  .chart-head{
+    display:flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin-bottom: .75rem;
+  }
+  @media (min-width: 640px){
+    .chart-head{
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+  .chart-head.compact{
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .chart-title{
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .chart-sub{
+    margin-top: .25rem;
+    font-size: .75rem;
+    color: var(--ink-2);
+  }
+  .chart-actions{
+    display:flex;
+    align-items:center;
+    gap:.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* details polish */
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary { list-style: none; }
 </style>
 {% endblock %}
 
@@ -793,29 +855,50 @@
     const currentFilters = {{ filters|tojson }};
     const stats = {{ stats|tojson }};
     const aiEndpoint = "/insights/ai-analyze";
+
+    console.debug('Insights records sample:', records.slice(0, 3));
+    console.debug('Insights record keys:', records[0] ? Object.keys(records[0]) : []);
+    console.debug('Insights stats:', stats);
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="{{ url_for('static', filename='insights_charts.js') }}"></script>
 
   <script>
-    // --- AI modal ---
-    const modal = document.getElementById('aiConfirmModal');
-    const openBtn = document.getElementById('openAiConfirm');
-    const cancelBtn = document.getElementById('cancelAi');
+    // Small helper so we don’t explode if fetchWithCsrf isn’t defined for any reason
+    async function postJsonWithCsrf(url, payload) {
+      const options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      };
+      if (typeof fetchWithCsrf === 'function') {
+        return fetchWithCsrf(url, options);
+      }
+      console.warn('fetchWithCsrf not found, falling back to fetch()');
+      return fetch(url, options);
+    }
+
+    // --- AI confirm modal ---
+    const modal      = document.getElementById('aiConfirmModal');
+    const openBtn    = document.getElementById('openAiConfirm');
+    const cancelBtn  = document.getElementById('cancelAi');
     const confirmBtn = document.getElementById('confirmAi');
 
-    function openModal(){ modal.classList.remove('hidden'); }
-    function closeModal(){ modal.classList.add('hidden'); }
+    function openModal(){ modal?.classList.remove('hidden'); }
+    function closeModal(){ modal?.classList.add('hidden'); }
 
-    openBtn?.addEventListener('click', openModal);
+    openBtn?.addEventListener('click', () => {
+      console.debug('AI analyse button clicked');
+      openModal();
+    });
     cancelBtn?.addEventListener('click', closeModal);
     modal?.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
     // --- AI Section helpers ---
-    const card = document.getElementById('aiInsightsCard');
-    const out = document.getElementById('aiOutput');
-    const statusEl = document.getElementById('aiStatus');
-    const note = document.getElementById('aiFooterNote');
+    const card    = document.getElementById('aiInsightsCard');
+    const out     = document.getElementById('aiOutput');
+    const statusEl= document.getElementById('aiStatus');
+    const note    = document.getElementById('aiFooterNote');
     const copyBtn = document.getElementById('copyAiText');
 
     copyBtn?.addEventListener('click', async () => {
@@ -823,15 +906,69 @@
         await navigator.clipboard.writeText(out.innerText.trim());
         copyBtn.textContent = 'Copied!';
         setTimeout(()=> copyBtn.textContent = 'Copy text', 1200);
-      } catch(e) {}
+      } catch(e) {
+        console.error('Copy AI text failed', e);
+      }
     });
+
+    // -----------------------------
+    // PAY RATE PARSING (for AI + KPIs)
+    // -----------------------------
+    function parsePayRate(value) {
+      if (value == null) return null;
+
+      if (typeof value === 'number') {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      const raw = String(value).trim();
+      if (!raw) return null;
+
+      // Ignore obvious annual salaries
+      if (/per\s*year|pa\b|p\.a\.|annum/i.test(raw)) return null;
+
+      const cleaned = raw.replace(/[^0-9.]/g, '');
+      if (!cleaned) return null;
+
+      const n = Number(cleaned);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return n;
+    }
+
+    function getNumericRate(record) {
+      if (!record || typeof record !== 'object') return null;
+
+      const keys = Object.keys(record);
+      const candidateKeys = keys.filter(k => /rate|pay|hour/i.test(k));
+
+      for (const key of candidateKeys) {
+        const n = parsePayRate(record[key]);
+        if (n != null) return n;
+      }
+
+      const fallbacks = [
+        'pay_rate',
+        'hourly_rate',
+        'canonical_hourly_rate',
+        'canonical_rate',
+        'normalised_rate'
+      ];
+      for (const key of fallbacks) {
+        if (key in record) {
+          const n = parsePayRate(record[key]);
+          if (n != null) return n;
+        }
+      }
+      return null;
+    }
 
     function buildAIPayload() {
       const compact = records.map(r => ({
         sector: r.sector ?? null,
         county: r.county ?? null,
         job_role: r.job_role ?? null,
-        pay_rate: (r.pay_rate != null) ? Number(r.pay_rate) : null,
+        pay_rate: getNumericRate(r),
         imported_month: r.imported_month ?? null,
         imported_year: r.imported_year ?? null,
         company_name: r.company_name ?? null,
@@ -840,22 +977,28 @@
     }
 
     async function runAIAnalysis() {
-      card.classList.remove('hidden');
-      statusEl.classList.remove('hidden');
-      note.classList.add('hidden');
-      out.innerHTML = '';
+      if (!aiEndpoint) {
+        console.error('AI endpoint is not defined');
+        return;
+      }
 
-      confirmBtn.disabled = true;
-      cancelBtn.disabled = true;
-      openBtn.disabled = true;
-      confirmBtn.textContent = 'Analysing…';
+      console.debug('Running AI analysis to', aiEndpoint);
+
+      card?.classList.remove('hidden');
+      statusEl?.classList.remove('hidden');
+      note?.classList.add('hidden');
+      if (out) out.innerHTML = '';
+
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Analysing…';
+      }
+      if (cancelBtn) cancelBtn.disabled = true;
+      if (openBtn) openBtn.disabled = true;
 
       try {
-        const resp = await fetchWithCsrf(aiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildAIPayload())
-        });
+        const resp = await postJsonWithCsrf(aiEndpoint, buildAIPayload());
+        console.debug('AI response status', resp.status);
 
         if (!resp.ok) {
           const text = await resp.text();
@@ -863,6 +1006,8 @@
         }
 
         const data = await resp.json();
+        console.debug('AI response payload', data);
+
         const html = data.html || null;
         const text = data.text || null;
 
@@ -878,31 +1023,34 @@
           out.innerHTML = `<p style="color: var(--ink-2);">No output returned.</p>`;
         }
 
-        note.classList.remove('hidden');
+        note?.classList.remove('hidden');
       } catch (err) {
+        console.error('AI analysis failed', err);
         out.innerHTML = `<div style="color:#fecaca; font-size:0.9rem;">AI analysis failed: ${err.message || err}</div>`;
       } finally {
-        statusEl.classList.add('hidden');
-        confirmBtn.disabled = false;
-        cancelBtn.disabled = false;
-        openBtn.disabled = false;
-        confirmBtn.textContent = 'Yes, analyse';
+        statusEl?.classList.add('hidden');
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Yes, analyse';
+        }
+        if (cancelBtn) cancelBtn.disabled = false;
+        if (openBtn) openBtn.disabled = false;
         closeModal();
       }
     }
 
     confirmBtn?.addEventListener('click', runAIAnalysis);
 
-    // --- Chart info modal ---
+    // --- Chart info modal (unchanged) ---
     const chartInfoModal = document.getElementById('chartInfoModal');
     const chartInfoTitle = document.getElementById('chartInfoTitle');
-    const chartInfoBody = document.getElementById('chartInfoBody');
+    const chartInfoBody  = document.getElementById('chartInfoBody');
     const chartInfoClose = document.getElementById('closeChartInfo');
-    const chartInfoOk = document.getElementById('chartInfoOk');
+    const chartInfoOk    = document.getElementById('chartInfoOk');
 
     function openChartInfo(title, body) {
       chartInfoTitle.textContent = title || 'Chart information';
-      chartInfoBody.textContent = body || '';
+      chartInfoBody.textContent  = body || '';
       chartInfoModal.classList.remove('hidden');
     }
 
@@ -919,115 +1067,213 @@
     document.querySelectorAll('[data-chart-info]').forEach(btn => {
       btn.addEventListener('click', () => {
         const title = btn.getAttribute('data-title') || '';
-        const body = btn.getAttribute('data-body') || '';
+        const body  = btn.getAttribute('data-body') || '';
         openChartInfo(title, body);
       });
     });
 
     // -----------------------------
-    // Key takeaways: compute from records (client-side)
+    // Key takeaways logic (your existing version)
     // -----------------------------
     const fmtGBP = (v) => {
       if (v == null || Number.isNaN(v)) return '—';
       return '£' + Number(v).toFixed(2);
     };
 
-    const safeNum = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
+    function getBinsFromStats(statsObj) {
+      if (!statsObj || !Array.isArray(statsObj.distribution)) return [];
+      const bins = [];
 
-    const quantile = (sorted, q) => {
-      if (!sorted.length) return null;
-      const pos = (sorted.length - 1) * q;
-      const base = Math.floor(pos);
-      const rest = pos - base;
-      if (sorted[base + 1] == null) return sorted[base];
-      return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
-    };
+      for (const b of statsObj.distribution) {
+        const count = Number(
+          b.count ?? b.n ?? b.total ?? b.value ?? 0
+        );
+        if (!count) continue;
 
-    function topByKey(items, key) {
-      const counts = new Map();
-      for (const it of items) {
-        const v = (it && it[key] != null && String(it[key]).trim()) ? String(it[key]).trim() : 'Unknown';
-        counts.set(v, (counts.get(v) || 0) + 1);
+        let mid = null;
+
+        if (typeof b.mid === 'number') {
+          mid = b.mid;
+        } else {
+          const minLike = b.min ?? b.from ?? b.low ?? b.start;
+          const maxLike = b.max ?? b.to ?? b.high ?? b.end;
+
+          if (minLike != null && maxLike != null) {
+            const lo = Number(minLike);
+            const hi = Number(maxLike);
+            if (Number.isFinite(lo) && Number.isFinite(hi)) {
+              mid = (lo + hi) / 2;
+            }
+          }
+
+          if (mid == null && typeof b.label === 'string') {
+            const nums = b.label.match(/(\d+(\.\d+)?)/g);
+            if (nums && nums.length >= 2) {
+              const lo = parseFloat(nums[0]);
+              const hi = parseFloat(nums[1]);
+              if (Number.isFinite(lo) && Number.isFinite(hi)) {
+                mid = (lo + hi) / 2;
+              }
+            } else if (nums && nums.length === 1) {
+              const v = parseFloat(nums[0]);
+              if (Number.isFinite(v)) mid = v;
+            }
+          }
+        }
+
+        if (mid == null || !Number.isFinite(mid)) continue;
+        bins.push({ mid, count });
       }
-      let best = null, bestN = 0;
-      for (const [k, n] of counts.entries()) {
-        if (n > bestN) { best = k; bestN = n; }
+
+      bins.sort((a, b) => a.mid - b.mid);
+      return bins;
+    }
+
+    function weightedQuantile(bins, q) {
+      if (!bins.length) return null;
+      const total = bins.reduce((s, b) => s + b.count, 0);
+      if (!total) return null;
+
+      const target = q * total;
+      let cum = 0;
+      for (const b of bins) {
+        cum += b.count;
+        if (cum >= target) return b.mid;
       }
-      return { value: best, count: bestN };
+      return bins[bins.length - 1].mid;
+    }
+
+    function topFromStats(statsArr, labelKeys) {
+      if (!Array.isArray(statsArr) || !statsArr.length) return null;
+      const first = statsArr[0];
+      for (const key of labelKeys) {
+        if (first[key]) return String(first[key]);
+      }
+      return null;
     }
 
     function computeTakeaways() {
-      const pay = records
-        .map(r => safeNum(r.pay_rate))
-        .filter(v => v != null)
-        .sort((a,b) => a-b);
-
-      const n = pay.length;
-      const median = quantile(pay, 0.5);
-      const p25 = quantile(pay, 0.25);
-      const p75 = quantile(pay, 0.75);
-      const min = n ? pay[0] : null;
-      const max = n ? pay[n-1] : null;
-      const avg = n ? (pay.reduce((s,v)=>s+v,0) / n) : null;
-
-      const topSector = topByKey(records, 'sector');
-      const topRole = topByKey(records, 'job_role_group')?.value ? topByKey(records, 'job_role_group') : topByKey(records, 'job_role');
-
-      // KPI DOM
-      const kMedian = document.getElementById('kpiMedian');
-      const kMedianNote = document.getElementById('kpiMedianNote');
-      const kIqr = document.getElementById('kpiIqr');
-      const kIqrNote = document.getElementById('kpiIqrNote');
-      const kRange = document.getElementById('kpiRange');
+      const kMedian    = document.getElementById('kpiMedian');
+      const kMedianNote= document.getElementById('kpiMedianNote');
+      const kIqr       = document.getElementById('kpiIqr');
+      const kIqrNote   = document.getElementById('kpiIqrNote');
+      const kRange     = document.getElementById('kpiRange');
       const kRangeNote = document.getElementById('kpiRangeNote');
-      const kTop = document.getElementById('kpiTopSlice');
-      const kTopNote = document.getElementById('kpiTopSliceNote');
-      const kConf = document.getElementById('kpiConfidence');
+      const kTop       = document.getElementById('kpiTopSlice');
+      const kTopNote   = document.getElementById('kpiTopSliceNote');
+      const kConf      = document.getElementById('kpiConfidence');
+
+      let n = 0;
+      let median = null;
+      let p25 = null;
+      let p75 = null;
+      let min = null;
+      let max = null;
+      let avg = null;
+      let topSectorText = null;
+      let topRoleText   = null;
+
+      if (Array.isArray(records) && records.length) {
+        const pay = records
+          .map(r => getNumericRate(r))
+          .filter(v => v != null)
+          .sort((a, b) => a - b);
+
+        n = pay.length;
+
+        if (n) {
+          const q = (arr, frac) => {
+            if (!arr.length) return null;
+            const pos = (arr.length - 1) * frac;
+            const base = Math.floor(pos);
+            const rest = pos - base;
+            if (arr[base + 1] == null) return arr[base];
+            return arr[base] + rest * (arr[base + 1] - arr[base + 1]);
+          };
+
+          median = q(pay, 0.5);
+          p25    = q(pay, 0.25);
+          p75    = q(pay, 0.75);
+          min    = pay[0];
+          max    = pay[pay.length - 1];
+          avg    = pay.reduce((s, v) => s + v, 0) / pay.length;
+        }
+      }
+
+      if (!n && stats) {
+        const bins = getBinsFromStats(stats);
+        n = typeof stats.total === 'number'
+          ? stats.total
+          : bins.reduce((s, b) => s + b.count, 0);
+
+        median = weightedQuantile(bins, 0.5);
+        p25    = weightedQuantile(bins, 0.25);
+        p75    = weightedQuantile(bins, 0.75);
+
+        min = Number(stats.min_rate ?? NaN);
+        max = Number(stats.max_rate ?? NaN);
+        avg = Number(stats.avg_rate ?? NaN);
+
+        if (!Number.isFinite(min) && bins.length) min = bins[0].mid;
+        if (!Number.isFinite(max) && bins.length) max = bins[bins.length - 1].mid;
+
+        if (!topSectorText && Array.isArray(stats.sector_stats)) {
+          const sName = topFromStats(stats.sector_stats, ['sector', 'label', 'name']);
+          if (sName) topSectorText = `Sector: ${sName}`;
+        }
+        if (!topRoleText && Array.isArray(stats.top_roles)) {
+          const rName = topFromStats(stats.top_roles, ['job_role', 'role', 'label', 'name']);
+          if (rName) topRoleText = `Role: ${rName}`;
+        }
+      }
 
       if (!n) {
-        kMedian.textContent = '—';
+        kMedian.textContent     = '—';
         kMedianNote.textContent = 'No pay values available in this view.';
-        kIqr.textContent = '—';
-        kIqrNote.textContent = '—';
-        kRange.textContent = '—';
-        kRangeNote.textContent = '—';
-        kTop.textContent = '—';
-        kTopNote.textContent = '—';
-        kConf.textContent = 'No numeric pay rates found for this filter set.';
+        kIqr.textContent        = '—';
+        kIqrNote.textContent    = '—';
+        kRange.textContent      = '—';
+        kRangeNote.textContent  = '—';
+        kTop.textContent        = '—';
+        kTopNote.textContent    = '—';
+        kConf.textContent       = 'No numeric pay rates found for this filter set.';
         return;
       }
 
-      kMedian.textContent = fmtGBP(median);
+      kMedian.textContent = fmtGBP(median ?? avg);
       kMedianNote.textContent = `Average: ${fmtGBP(avg)} • Based on ${n.toLocaleString()} pay rates`;
 
-      if (p25 != null && p75 != null) {
+      if (p25 != null && p75 != null && Number.isFinite(p25) && Number.isFinite(p75)) {
         kIqr.textContent = `${fmtGBP(p25)} → ${fmtGBP(p75)}`;
-        const spread = (p75 - p25);
+        const spread = p75 - p25;
         kIqrNote.textContent = `Middle 50% spread: ${fmtGBP(spread)} (less spread = more consistent pay)`;
       } else {
-        kIqr.textContent = '—';
-        kIqrNote.textContent = 'Not enough data for quartiles.';
+        kIqr.textContent     = '—';
+        kIqrNote.textContent = 'Not enough data for quartiles (using histogram).';
       }
 
-      kRange.textContent = `${fmtGBP(min)} → ${fmtGBP(max)}`;
-      kRangeNote.textContent = `Range width: ${fmtGBP((max - min))} (check outliers if very wide)`;
+      if (min != null && max != null && Number.isFinite(min) && Number.isFinite(max)) {
+        kRange.textContent = `${fmtGBP(min)} → ${fmtGBP(max)}`;
+        kRangeNote.textContent = `Range width: ${fmtGBP(max - min)} (check outliers if very wide)`;
+      } else {
+        kRange.textContent     = '—';
+        kRangeNote.textContent = 'Range not available.';
+      }
 
-      const topTxt = [];
-      if (topSector.value) topTxt.push(`Sector: ${topSector.value}`);
-      if (topRole.value) topTxt.push(`Role: ${topRole.value}`);
-      kTop.textContent = topTxt.join(' • ') || '—';
-      kTopNote.textContent = `Most common sector appears in ${topSector.count.toLocaleString()} record(s).`;
+      const topParts = [];
+      if (topSectorText) topParts.push(topSectorText);
+      if (topRoleText)   topParts.push(topRoleText);
 
-      // Confidence heuristic (simple + honest)
+      kTop.textContent = topParts.join(' • ') || '—';
+      kTopNote.textContent = Array.isArray(stats.top_roles) && stats.top_roles.length
+        ? `Most common role appears in ${(stats.top_roles[0].count ?? stats.top_roles[0].n ?? '?').toString()} record(s).`
+        : 'Based on sector and role distributions in this view.';
+
       let conf = '';
-      if (n < 50) conf = `Small sample (${n}). Treat conclusions as directional; use the volume charts before acting.`;
-      else if (n < 250) conf = `Moderate sample (${n}). Good for benchmarking; still watch thin counties/sectors.`;
-      else conf = `Strong sample (${n}). Insights are more reliable; focus on spread and trends for decision-making.`;
+      if (n < 50)      conf = `Small sample (${n}). Treat conclusions as directional; use the volume charts before acting.`;
+      else if (n < 250)conf = `Moderate sample (${n}). Good for benchmarking; still watch thin counties/sectors.`;
+      else             conf = `Strong sample (${n}). Insights are more reliable; focus on spread and trends for decision-making.`;
 
-      // Add pay-band hint if filters exist
       if (currentFilters?.rate_min || currentFilters?.rate_max) {
         conf += ` You’ve constrained the pay band — that can narrow the spread and shift the “typical” rate.`;
       }
@@ -1037,7 +1283,6 @@
 
     computeTakeaways();
 
-    // Copy takeaways
     const copyTakeaways = document.getElementById('copyTakeaways');
     copyTakeaways?.addEventListener('click', async () => {
       try {
@@ -1052,7 +1297,9 @@
         await navigator.clipboard.writeText(text);
         copyTakeaways.textContent = 'Copied!';
         setTimeout(()=> copyTakeaways.textContent = 'Copy summary', 1200);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Copy takeaways failed', e);
+      }
     });
   </script>
 {% endblock %}

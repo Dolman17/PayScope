@@ -4,52 +4,125 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
 
-  <!-- Page Heading -->
-  <div class="mb-6">
-    <h2 class="text-2xl sm:text-3xl font-bold" style="color: var(--brand);">Dashboard Summary</h2>
-    <p class="text-sm text-gray-500 mt-1">A high-level snapshot of recent activity, data coverage, and job-market patterns.</p>
+  <!-- Header -->
+  <div class="mb-6 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+    <div class="max-w-3xl">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.20);">
+          Dashboard
+        </span>
+        <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+          Operational + data snapshot
+        </span>
+      </div>
+
+      <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--ink);">
+        Dashboard Summary
+      </h1>
+
+      <p class="mt-1 text-sm" style="color: var(--ink-2);">
+        A high-level snapshot of recent activity, data coverage, and job-market patterns.
+        Use filters to narrow the slice and sanity-check sample sizes.
+      </p>
+    </div>
   </div>
 
   <!-- Scrape Activity (Cron / Adzuna) -->
   <section class="mb-6">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="card p-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Jobs scraped today</h3>
-        <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
-          {{ today_jobs_total or 0 }}
-        </p>
-        <p class="mt-1 text-xs text-gray-400">From automated scheduled scrapers</p>
+
+      <div class="card">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+              Jobs scraped today
+            </h3>
+            <span class="text-[11px] font-semibold" style="color: var(--ink-2);">
+              Cron
+            </span>
+          </div>
+          <p class="mt-2 text-2xl sm:text-3xl font-semibold" style="color: var(--ink);">
+            {{ today_jobs_total or 0 }}
+          </p>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            From automated scheduled scrapers
+          </p>
+        </div>
       </div>
 
-      <div class="card p-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Errors today</h3>
-        <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (today_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
-          {{ today_error_runs or 0 }}
-        </p>
-        <p class="mt-1 text-xs text-gray-400">Scrapes reporting error status</p>
+      <div class="card">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+              Errors today
+            </h3>
+            <span class="text-[11px] font-semibold" style="color: var(--ink-2);">
+              Cron
+            </span>
+          </div>
+          <p class="mt-2 text-2xl sm:text-3xl font-semibold"
+             style="color: {% if (today_error_runs or 0) > 0 %}#fecaca{% else %}#86efac{% endif %};">
+            {{ today_error_runs or 0 }}
+          </p>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            Scrapes reporting error status
+          </p>
+        </div>
       </div>
 
-      <div class="card p-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Jobs (last 7 days)</h3>
-        <p class="mt-2 text-2xl sm:text-3xl font-extrabold" style="color: var(--brand);">
-          {{ week_jobs_total or 0 }}
-        </p>
-        <p class="mt-1 text-xs text-gray-400">Total postings ingested</p>
+      <div class="card">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+              Jobs (last 7 days)
+            </h3>
+            <span class="text-[11px] font-semibold" style="color: var(--ink-2);">
+              Ingest
+            </span>
+          </div>
+          <p class="mt-2 text-2xl sm:text-3xl font-semibold" style="color: var(--ink);">
+            {{ week_jobs_total or 0 }}
+          </p>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            Total postings ingested
+          </p>
+        </div>
       </div>
 
-      <div class="card p-4">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Errorful runs (7 days)</h3>
-        <p class="mt-2 text-2xl sm:text-3xl font-extrabold {% if (week_error_runs or 0) > 0 %}text-red-600{% else %}text-emerald-600{% endif %}">
-          {{ week_error_runs or 0 }}
-        </p>
-        <p class="mt-1 text-xs text-gray-400">Cron runs with non-success status</p>
+      <div class="card">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+              Errorful runs (7 days)
+            </h3>
+            <span class="text-[11px] font-semibold" style="color: var(--ink-2);">
+              Health
+            </span>
+          </div>
+          <p class="mt-2 text-2xl sm:text-3xl font-semibold"
+             style="color: {% if (week_error_runs or 0) > 0 %}#fecaca{% else %}#86efac{% endif %};">
+            {{ week_error_runs or 0 }}
+          </p>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            Cron runs with non-success status
+          </p>
+        </div>
       </div>
+
     </div>
   </section>
 
   <!-- Filters -->
-  <section class="card mb-8">
+  <section class="card mb-6">
+    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+         style="border-color: rgba(148,163,184,0.12);">
+      <h2 class="text-sm font-semibold" style="color: var(--ink);">Refine dataset</h2>
+      <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">Filters</span>
+    </div>
+
     <form method="GET" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
       <div>
         <label for="sector" class="label">Sector</label>
         <select id="sector" name="sector" class="input">
@@ -81,50 +154,156 @@
       </div>
 
       <div class="flex items-end">
-        <button type="submit" class="btn btn-primary w-full">Apply Filters</button>
+        <button type="submit" class="btn btn-primary w-full">Apply filters</button>
       </div>
+
+      <div class="lg:col-span-4 flex flex-wrap items-center justify-between gap-3 pt-2"
+           style="border-top: 1px solid rgba(148,163,184,0.12); margin-top: .25rem;">
+        <div class="text-xs" style="color: var(--ink-2);">
+          Dashboard stats and tables reflect the currently selected slice.
+        </div>
+        <a href="{{ request.path }}" class="btn btn-secondary text-xs sm:text-sm">
+          Reset
+        </a>
+      </div>
+
     </form>
   </section>
 
+  <!-- Current view (filter pills) -->
+  <section class="mb-8 card">
+    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+         style="border-color: rgba(148,163,184,0.12);">
+      <h2 class="text-sm font-semibold" style="color: var(--ink);">Current view</h2>
+      <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+        Filters applied
+      </span>
+    </div>
+
+    <div class="p-5 sm:p-6">
+      <div class="flex flex-wrap gap-2">
+        {% if request.args.get('sector') %}
+          <span class="filter-pill">Sector: {{ request.args.get('sector') }}</span>
+        {% endif %}
+        {% if request.args.get('county') %}
+          <span class="filter-pill">County: {{ request.args.get('county') }}</span>
+        {% endif %}
+        {% if request.args.get('job_role') %}
+          <span class="filter-pill">Role: {{ request.args.get('job_role') }}</span>
+        {% endif %}
+
+        {% if not (request.args.get('sector') or request.args.get('county') or request.args.get('job_role')) %}
+          <span class="text-xs" style="color: var(--ink-2);">
+            No filters applied — showing the full dataset.
+          </span>
+        {% endif %}
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold" style="color: var(--ink);">What you’re seeing</div>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            Summary cards and tables reflect the <span style="color: var(--ink); font-semibold;">current filter slice</span>.
+          </p>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold" style="color: var(--ink);">Sanity check</div>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            Use “Count” columns as a confidence cue — thin slices can exaggerate averages.
+          </p>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold" style="color: var(--ink);">Next step</div>
+          <p class="mt-1 text-xs" style="color: var(--ink-2);">
+            For deeper patterns, jump into <span style="color: var(--ink); font-semibold;">Insights</span> or <span style="color: var(--ink); font-semibold;">Pay Explorer</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Summary Cards -->
-  <section class="mb-10">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div class="card p-6 text-center">
-        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Records</h3>
-        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">{{ total_records }}</p>
+  <section class="mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <div class="card">
+        <div class="p-5 sm:p-6">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            Total records
+          </div>
+          <div class="mt-2 text-2xl sm:text-3xl font-semibold" style="color: var(--ink);">
+            {{ total_records }}
+          </div>
+        </div>
       </div>
 
-      <div class="card p-6 text-center">
-        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Total Companies</h3>
-        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">{{ total_companies }}</p>
+      <div class="card">
+        <div class="p-5 sm:p-6">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            Total companies
+          </div>
+          <div class="mt-2 text-2xl sm:text-3xl font-semibold" style="color: var(--ink);">
+            {{ total_companies }}
+          </div>
+        </div>
       </div>
 
-      <div class="card p-6 text-center">
-        <h3 class="text-base sm:text-lg font-semibold text-gray-700">Average Pay Rate</h3>
-        <p class="text-2xl sm:text-3xl font-extrabold mt-1" style="color: var(--brand);">£{{ avg_pay | round(2) }}</p>
+      <div class="card">
+        <div class="p-5 sm:p-6">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            Average pay rate
+          </div>
+          <div class="mt-2 text-2xl sm:text-3xl font-semibold" style="color: var(--ink);">
+            £{{ avg_pay | round(2) }}
+          </div>
+          <div class="mt-1 text-xs" style="color: var(--ink-2);">
+            Mean across records in view
+          </div>
+        </div>
       </div>
+
     </div>
   </section>
 
   <!-- Records by Sector -->
   <section class="card mb-8">
+    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+         style="border-color: rgba(148,163,184,0.12);">
+      <div>
+        <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">Records by sector</h2>
+        <p class="mt-0.5 text-xs" style="color: var(--ink-2);">
+          Sample size + average pay by sector (in view).
+        </p>
+      </div>
+    </div>
+
     <div class="p-5 sm:p-6">
-      <h3 class="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">Records by Sector</h3>
       <div class="overflow-x-auto -mx-5 sm:mx-0">
         <table class="min-w-full text-sm">
-          <thead class="text-left bg-gray-50">
-            <tr class="text-gray-600">
-              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Sector</th>
-              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Count</th>
-              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Avg Pay Rate (£)</th>
+          <thead style="background: rgba(148,163,184,0.06); color: var(--ink-2);">
+            <tr>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap text-left">Sector</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap text-left">Count</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap text-left">Avg pay (£)</th>
             </tr>
           </thead>
-          <tbody class="bg-white">
+          <tbody>
             {% for sector, count, avg in by_sector %}
-            <tr class="border-t hover:bg-gray-50">
-              <td class="py-3 px-5 sm:px-4 font-medium text-gray-900">{{ sector }}</td>
-              <td class="py-3 px-5 sm:px-4">{{ count }}</td>
-              <td class="py-3 px-5 sm:px-4">{{ avg | round(2) }}</td>
+            <tr style="border-top: 1px solid rgba(148,163,184,0.12);">
+              <td class="py-3 px-5 sm:px-4 font-medium" style="color: var(--ink);">
+                {{ sector }}
+              </td>
+              <td class="py-3 px-5 sm:px-4" style="color: var(--ink-2);">
+                {{ count }}
+              </td>
+              <td class="py-3 px-5 sm:px-4" style="color: var(--ink-2);">
+                {{ avg | round(2) }}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -135,21 +314,34 @@
 
   <!-- Records by County -->
   <section class="card">
+    <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+         style="border-color: rgba(148,163,184,0.12);">
+      <div>
+        <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">Records by county</h2>
+        <p class="mt-0.5 text-xs" style="color: var(--ink-2);">
+          Sample size by county (in view).
+        </p>
+      </div>
+    </div>
+
     <div class="p-5 sm:p-6">
-      <h3 class="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">Records by County</h3>
       <div class="overflow-x-auto -mx-5 sm:mx-0">
         <table class="min-w-full text-sm">
-          <thead class="text-left bg-gray-50">
-            <tr class="text-gray-600">
-              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">County</th>
-              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap">Count</th>
+          <thead style="background: rgba(148,163,184,0.06); color: var(--ink-2);">
+            <tr>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap text-left">County</th>
+              <th class="py-3 px-5 sm:px-4 font-semibold whitespace-nowrap text-left">Count</th>
             </tr>
           </thead>
-          <tbody class="bg-white">
+          <tbody>
             {% for county, count in by_county %}
-            <tr class="border-t hover:bg-gray-50">
-              <td class="py-3 px-5 sm:px-4 font-medium text-gray-900">{{ county or "Unknown" }}</td>
-              <td class="py-3 px-5 sm:px-4">{{ count }}</td>
+            <tr style="border-top: 1px solid rgba(148,163,184,0.12);">
+              <td class="py-3 px-5 sm:px-4 font-medium" style="color: var(--ink);">
+                {{ county or "Unknown" }}
+              </td>
+              <td class="py-3 px-5 sm:px-4" style="color: var(--ink-2);">
+                {{ count }}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -159,4 +351,19 @@
   </section>
 
 </div>
+
+<style>
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.20rem 0.70rem;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    background: rgba(34,211,238,0.10);
+    color: #67e8f9;
+    border: 1px solid rgba(34,211,238,0.18);
+  }
+</style>
 {% endblock %}
