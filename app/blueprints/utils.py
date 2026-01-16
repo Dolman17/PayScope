@@ -390,7 +390,11 @@ def get_or_create_company_id(raw_name: str | None) -> str:
 # ---------- UK geocoding ----------
 POSTCODES_IO_BULK_URL = "https://api.postcodes.io/postcodes"
 POSTCODES_IO_SINGLE_URL = "https://api.postcodes.io/postcodes/{pc}"
+POSTCODES_IO_OUTCODE_URL = "https://api.postcodes.io/outcodes/{pc}"
 POSTCODES_IO_REVERSE_URL = "https://api.postcodes.io/postcodes"  # lat/lon params
+
+# Rough outcode pattern, e.g. "WS13", "SW1A"
+OUTCODE_REGEX = re.compile(r"^[A-Z]{1,2}\d[A-Z0-9]?$")
 
 
 # Hard UK bounding box to prevent overseas mis-geocoding
@@ -412,6 +416,7 @@ def inside_uk(lat: float, lon: float) -> bool:
 def normalize_uk_postcode(pc: str) -> str:
     s = re.sub(r"[^A-Za-z0-9]", "", (pc or "")).upper()
     if len(s) < 5:
+        # Likely an outcode (e.g. "WS13") – leave as-is
         return s
     return s[:-3] + " " + s[-3:]
 
@@ -447,33 +452,68 @@ def geocode_postcode_cached(postcode: str) -> Tuple[float | None, float | None]:
 
 def geocode_postcode(postcode: str) -> Tuple[float | None, float | None]:
     """
-    Geocode a UK postcode using postcodes.io only.
+    Geocode a UK postcode or outcode using postcodes.io only.
 
     - Normalises the postcode
-    - Calls postcodes.io
-    - Returns (lat, lon) only if the result lies within the UK bounding box
-    - Otherwise returns (None, None)
+    - Tries the full postcode endpoint first
+    - If that fails with 404 and the value looks like an outcode,
+      falls back to the /outcodes endpoint
+    - Returns (lat, lon) only if the result lies within the UK bounding box,
+      otherwise returns (None, None)
     """
     pc = normalize_uk_postcode(postcode)
     if not pc:
         return (None, None)
 
+    # Helper to extract lat/lon from a postcodes.io result dict
+    def _extract_latlon(result: dict | None, label: str) -> Tuple[float | None, float | None]:
+        if not result:
+            return (None, None)
+        try:
+            lat = float(result["latitude"])
+            lon = float(result["longitude"])
+        except Exception:
+            print(f"postcodes.io missing lat/lon for {label}")
+            return (None, None)
+        if not inside_uk(lat, lon):
+            print(f"postcodes.io returned out-of-UK coords for {label}: {lat}, {lon}")
+            return (None, None)
+        return (lat, lon)
+
+    # 1) Try full postcode endpoint
     try:
         r = requests.get(POSTCODES_IO_SINGLE_URL.format(pc=pc), timeout=10)
         if r.status_code == 200:
             d = (r.json() or {}).get("result")
-            if d:
-                lat = float(d["latitude"])
-                lon = float(d["longitude"])
-                if inside_uk(lat, lon):
-                    return (lat, lon)
-                else:
-                    # Out-of-UK result (should not happen, but be safe)
-                    print(f"postcodes.io returned out-of-UK coords for {pc}: {lat}, {lon}")
+            latlon = _extract_latlon(d, pc)
+            if all(v is not None for v in latlon):
+                return latlon
         else:
+            # Keep existing logging behaviour
             print(f"postcodes.io non-200 ({r.status_code}) for {pc}")
+            # Only fall back to /outcodes on 404-like cases
+            if r.status_code != 404:
+                return (None, None)
     except Exception as e:
         print(f"postcodes.io error for {pc}: {e}")
+        # On hard error we don't attempt outcodes – behave as before
+        return (None, None)
+
+    # 2) Fallback: if it's shaped like an outcode, try /outcodes
+    if not OUTCODE_REGEX.match(pc):
+        return (None, None)
+
+    try:
+        r2 = requests.get(POSTCODES_IO_OUTCODE_URL.format(pc=pc), timeout=10)
+        if r2.status_code == 200:
+            d2 = (r2.json() or {}).get("result")
+            latlon = _extract_latlon(d2, pc)
+            if all(v is not None for v in latlon):
+                return latlon
+        else:
+            print(f"postcodes.io outcode non-200 ({r2.status_code}) for {pc}")
+    except Exception as e:
+        print(f"postcodes.io outcode error for {pc}: {e}")
 
     return (None, None)
 

@@ -1,0 +1,741 @@
+{% extends "base.html" %}
+{% block title %}PayScope • Recruiter radar{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-2 sm:px-4 py-6">
+  <div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div class="max-w-3xl">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style="background: rgba(34,211,238,0.10); color: #67e8f9; border: 1px solid rgba(34,211,238,0.20);">
+            Recruiter radar
+          </span>
+          <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+            one-page market read
+          </span>
+          <span class="text-[11px] font-medium" style="color: rgba(148,163,184,0.75);">
+            v1
+          </span>
+        </div>
+
+        <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" style="color: var(--ink);">
+          One-page market snapshot
+        </h1>
+
+        <p class="mt-1 text-sm" style="color: var(--ink-2);">
+          Pick a <span class="font-semibold" style="color: var(--ink);">role</span>,
+          drop a <span class="font-semibold" style="color: var(--ink);">postcode</span>,
+          and see the pay, demand and competition picture in one place — plus a recommended rate to advertise at.
+        </p>
+      </div>
+
+      <!-- Quick hints -->
+      <div class="space-y-2 text-xs" style="color: var(--ink-2);">
+        <div class="rounded-xl px-3 py-2"
+             style="background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.18);">
+          <div class="font-semibold" style="color: var(--ink);">Good to know</div>
+          <div class="mt-1">
+            • Location is postcode or outcode (e.g. <span class="font-mono">WS13</span> or <span class="font-mono">WS13 6QW</span>).<br>
+            • Radius uses straight-line distance from the centre of that postcode.<br>
+            • Pay is based on <span class="font-semibold">advertised hourly rates</span>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search / slice controls -->
+    <section class="card">
+      <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+           style="border-color: rgba(148,163,184,0.12);">
+        <h2 class="text-sm font-semibold" style="color: var(--ink);">Choose your slice</h2>
+        <span class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+          role • postcode • radius • lookback
+        </span>
+      </div>
+
+      <form id="radar-form" class="p-5 sm:p-6 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Role (free text + datalist) -->
+          <div>
+            <label for="role" class="label">Job role group</label>
+            <input
+              id="role"
+              name="role"
+              type="text"
+              class="input"
+              list="radar-role-options"
+              placeholder="e.g. Senior Support Worker"
+              value="{{ selected_role or '' }}"
+            >
+            <datalist id="radar-role-options">
+              {% for r in role_options %}
+                <option value="{{ r }}">{{ r }}</option>
+              {% endfor %}
+            </datalist>
+            <p class="mt-1 text-xs" style="color: var(--ink-2);">
+              Start typing – suggestions come from roles we've seen in the market.
+            </p>
+          </div>
+
+          <!-- Location -->
+          <div>
+            <label for="location" class="label">Location (postcode / outcode)</label>
+            <input
+              id="location"
+              name="location"
+              type="text"
+              class="input"
+              placeholder="e.g. WS13 or WS13 6QW"
+              value="{{ selected_location or '' }}"
+            >
+            <p class="mt-1 text-xs" style="color: var(--ink-2);">
+              We centre the search on this postcode when calculating the radius.
+            </p>
+          </div>
+
+          <!-- Radius + lookback -->
+          <div class="space-y-3">
+            <div>
+              <span class="label">Radius</span>
+              <div class="flex flex-wrap gap-2">
+                {% set default_radius = selected_radius or 15 %}
+                {% for miles in [5, 15, 25] %}
+                <label class="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full border cursor-pointer"
+                       style="border-color: rgba(148,163,184,0.4);">
+                  <input
+                    type="radio"
+                    name="radius_miles"
+                    value="{{ miles }}"
+                    class="h-3 w-3"
+                    {% if default_radius == miles %}checked{% endif %}
+                  >
+                  <span>{{ miles }} miles</span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div>
+              <label for="lookback_days" class="label">Lookback window</label>
+              <select id="lookback_days" name="lookback_days" class="input !py-1.5">
+                {% set lb = lookback_days or 180 %}
+                <option value="90" {% if lb == 90 %}selected{% endif %}>Last 3 months</option>
+                <option value="180" {% if lb == 180 %}selected{% endif %}>Last 6 months</option>
+                <option value="365" {% if lb == 365 %}selected{% endif %}>Last 12 months</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inline validation / API error -->
+        <p id="radar-form-error"
+           class="mt-1 text-xs text-rose-300 hidden">
+          <!-- filled via JS -->
+        </p>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-3 mt-1"
+             style="border-top: 1px solid rgba(148,163,184,0.12);">
+          <p class="text-xs" style="color: var(--ink-2);">
+            We’ll use all adverts for this role within the chosen radius and time window.
+          </p>
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button type="button" id="radar-reset" class="btn btn-secondary flex-1 sm:flex-none text-sm">
+              Reset
+            </button>
+            <button type="submit" id="radar-submit" class="btn btn-primary flex-1 sm:flex-none text-sm">
+              Run radar
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- Summary KPIs -->
+    <section id="radar-summary-card" class="hidden card">
+      <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+           style="border-color: rgba(148,163,184,0.12);">
+        <h2 class="text-sm font-semibold" style="color: var(--ink);">Snapshot for this slice</h2>
+        <span id="radar-summary-label" class="text-[11px] uppercase tracking-wide" style="color: var(--ink-2);">
+          <!-- filled via JS -->
+        </span>
+      </div>
+
+      <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Adverts in radius</div>
+          <div id="radar-summary-adverts" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Typical pay (median)</div>
+          <div id="radar-summary-median" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+          <div id="radar-summary-range" class="mt-1 text-[11px]" style="color: var(--ink-2);">
+            <!-- £min–£max -->
+          </div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Demand</div>
+          <div id="radar-summary-demand" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+          <div class="mt-1 text-[11px]" style="color: var(--ink-2);">
+            Adverts last 30 / 90 days
+          </div>
+        </div>
+
+        <div class="rounded-2xl p-4"
+             style="background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.15);">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Recommended rate</div>
+          <div id="radar-summary-recommended" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+          <div id="radar-summary-basis" class="mt-1 text-[11px]" style="color: var(--ink-2);">
+            <!-- basis text -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout: chart + commentary + detail -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- Chart + AI commentary -->
+      <div class="xl:col-span-2 space-y-6">
+        <!-- Trend chart -->
+        <div class="card">
+          <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+               style="border-color: rgba(148,163,184,0.12);">
+            <div>
+              <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">
+                Median advertised pay over time
+              </h2>
+              <p class="mt-0.5 text-xs" style="color: var(--ink-2);">
+                Based on JobSummaryDaily medians for this role in the counties touched by your radius.
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div class="h-72 rounded-2xl p-4"
+                 style="background: rgba(2,6,23,0.35); border: 1px solid rgba(148,163,184,0.18);">
+              <canvas id="radar-trend-chart"></canvas>
+            </div>
+            <p id="radar-trend-empty" class="mt-3 text-sm hidden" style="color: var(--ink-2);">
+              Not enough historical data to draw a trend for this slice yet.
+            </p>
+          </div>
+        </div>
+
+        <!-- AI commentary -->
+        <div class="card">
+          <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+               style="border-color: rgba(148,163,184,0.12);">
+            <div>
+              <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">
+                AI commentary for recruiters
+              </h2>
+              <p class="mt-0.5 text-xs" style="color: var(--ink-2);">
+                Short, plain-English read-out of the pay, demand and competition picture for this slice.
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div id="radar-commentary-loading" class="text-sm" style="color: var(--ink-2); display: none;">
+              Generating commentary…
+            </div>
+            <div id="radar-commentary" class="text-sm leading-relaxed" style="color: var(--ink);">
+              <!-- filled via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail: top employers + recent roles -->
+      <div class="card flex flex-col overflow-hidden">
+        <div class="border-b px-5 sm:px-6 py-3 flex items-center justify-between"
+             style="border-color: rgba(148,163,184,0.12);">
+          <div>
+            <h2 class="text-sm sm:text-base font-semibold" style="color: var(--ink);">Employers & recent adverts</h2>
+            <span id="radar-detail-label" class="text-xs" style="color: var(--ink-2);"></span>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6 pt-4 flex-1 space-y-5">
+          <!-- Top employers -->
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--ink-2);">
+              Top employers in this slice
+            </h3>
+            <div class="flex-1 overflow-auto rounded-2xl"
+                 style="max-height: 180px; background: rgba(2,6,23,0.35); border: 1px solid rgba(148,163,184,0.18);">
+              <table class="min-w-full text-xs">
+                <thead class="sticky top-0 z-10"
+                       style="background: rgba(2,6,23,0.92); color: var(--ink-2); border-bottom: 1px solid rgba(148,163,184,0.12);">
+                  <tr>
+                    <th class="px-3 py-2 text-left font-semibold">Employer</th>
+                    <th class="px-3 py-2 text-right font-semibold">Adverts</th>
+                    <th class="px-3 py-2 text-right font-semibold">Avg £/hr</th>
+                  </tr>
+                </thead>
+                <tbody id="radar-top-employers" style="background: rgba(2,6,23,0.20);">
+                  <!-- rows via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Recent adverts -->
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--ink-2);">
+              Most recent adverts
+            </h3>
+            <div class="flex-1 overflow-auto rounded-2xl"
+                 style="max-height: 220px; background: rgba(2,6,23,0.35); border: 1px solid rgba(148,163,184,0.18);">
+              <table class="min-w-full text-xs">
+                <thead class="sticky top-0 z-10"
+                       style="background: rgba(2,6,23,0.92); color: var(--ink-2); border-bottom: 1px solid rgba(148,163,184,0.12);">
+                  <tr>
+                    <th class="px-3 py-2 text-left font-semibold">Employer</th>
+                    <th class="px-3 py-2 text-left font-semibold">Role</th>
+                    <th class="px-3 py-2 text-right font-semibold">£/hr</th>
+                    <th class="px-3 py-2 text-right font-semibold">Area</th>
+                    <th class="px-3 py-2 text-right font-semibold">When</th>
+                  </tr>
+                </thead>
+                <tbody id="radar-recent-postings" style="background: rgba(2,6,23,0.20);">
+                  <!-- rows via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- No-data message -->
+    <p id="radar-empty" class="hidden text-sm" style="color: var(--ink-2);">
+      No adverts found for that role / location / radius combination. Try a slightly wider radius or a longer lookback.
+    </p>
+  </div>
+</div>
+
+<style>
+  #radar-top-employers > :not([hidden]) ~ :not([hidden]),
+  #radar-recent-postings > :not([hidden]) ~ :not([hidden]) {
+    border-top: 1px solid rgba(148,163,184,0.10);
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+
+  <!-- Chart.js for the trend view -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script>
+    (function () {
+      const form = document.getElementById("radar-form");
+      const resetBtn = document.getElementById("radar-reset");
+      const submitBtn = document.getElementById("radar-submit");
+      const roleInput = document.getElementById("role");
+      const locationInput = document.getElementById("location");
+      const errorEl = document.getElementById("radar-form-error");
+
+      const summaryCard = document.getElementById("radar-summary-card");
+      const summaryLabel = document.getElementById("radar-summary-label");
+      const summaryAdverts = document.getElementById("radar-summary-adverts");
+      const summaryMedian = document.getElementById("radar-summary-median");
+      const summaryRange = document.getElementById("radar-summary-range");
+      const summaryDemand = document.getElementById("radar-summary-demand");
+      const summaryRecommended = document.getElementById("radar-summary-recommended");
+      const summaryBasis = document.getElementById("radar-summary-basis");
+
+      const detailLabel = document.getElementById("radar-detail-label");
+      const topEmployersBody = document.getElementById("radar-top-employers");
+      const recentPostingsBody = document.getElementById("radar-recent-postings");
+
+      const emptyMessage = document.getElementById("radar-empty");
+
+      const commentaryEl = document.getElementById("radar-commentary");
+      const commentaryLoading = document.getElementById("radar-commentary-loading");
+
+      const trendCanvas = document.getElementById("radar-trend-chart");
+      const trendEmpty = document.getElementById("radar-trend-empty");
+      let trendChart = null;
+
+      function formatMoney(v) {
+        const num = typeof v === "string" ? Number(v) : v;
+        if (num === null || num === undefined || isNaN(num)) return "–";
+        return "£" + num.toFixed(2);
+      }
+
+      function formatDateShort(iso) {
+        if (!iso) return "–";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+      }
+
+      function formatRelativeDate(iso) {
+        if (!iso) return "–";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const now = new Date();
+        const diffMs = now - d;
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays <= 0) return "Today";
+        if (diffDays === 1) return "Yesterday";
+        if (diffDays < 7) return diffDays + " days ago";
+        if (diffDays < 31) return Math.round(diffDays / 7) + " weeks ago";
+        return formatDateShort(iso);
+      }
+
+      function clearTable(tbody) {
+        while (tbody.firstChild) {
+          tbody.removeChild(tbody.firstChild);
+        }
+      }
+
+      function destroyTrendChart() {
+        if (trendChart) {
+          trendChart.destroy();
+          trendChart = null;
+        }
+      }
+
+      function buildQueryFromForm() {
+        const data = new FormData(form);
+        const params = new URLSearchParams();
+        for (const [key, value] of data.entries()) {
+          if (!value) continue;
+          params.append(key, value.toString().trim());
+        }
+        return params.toString();
+      }
+
+      function renderSummary(payload) {
+        const summary = payload.summary;
+        const demand = payload.demand;
+        const recommended = payload.recommended;
+        const params = payload.params || {};
+
+        if (!summary) {
+          summaryCard.classList.add("hidden");
+          return;
+        }
+
+        summaryCard.classList.remove("hidden");
+
+        const role = params.role || "this role";
+        const radius = params.radius_miles || 0;
+        const location = (payload.location && payload.location.input) || params.location || "";
+
+        summaryLabel.textContent =
+          `${role} • ${location || "Unknown location"} • ${radius} miles`;
+
+        summaryAdverts.textContent = summary.records_count != null
+          ? summary.records_count.toString()
+          : "–";
+
+        summaryMedian.textContent = formatMoney(summary.median_pay);
+        if (summary.min_pay != null && summary.max_pay != null) {
+          summaryRange.textContent = `${formatMoney(summary.min_pay)} – ${formatMoney(summary.max_pay)}`;
+        } else {
+          summaryRange.textContent = "Range not available";
+        }
+
+        if (demand && (demand.adverts_last_30 != null || demand.adverts_last_90 != null)) {
+          const v30 = demand.adverts_last_30 || 0;
+          const v90 = demand.adverts_last_90 || 0;
+          summaryDemand.textContent = `${v30}/${v90}`;
+        } else {
+          summaryDemand.textContent = "–";
+        }
+
+        if (recommended && recommended.recommended_rate != null) {
+          summaryRecommended.textContent = formatMoney(recommended.recommended_rate);
+          summaryBasis.textContent = recommended.basis || "";
+        } else {
+          summaryRecommended.textContent = "–";
+          summaryBasis.textContent = "";
+        }
+      }
+
+      function renderTrend(payload) {
+        const trend = payload.trend;
+        if (!trend || !trend.points || !trend.points.length) {
+          destroyTrendChart();
+          trendEmpty.classList.remove("hidden");
+          return;
+        }
+
+        trendEmpty.classList.add("hidden");
+
+        const labels = trend.points.map(p => p.date);
+        const data = trend.points.map(p => p.median_pay_rate);
+
+        destroyTrendChart();
+
+        trendChart = new Chart(trendCanvas.getContext("2d"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Median advertised £/hr",
+                data,
+                borderWidth: 2,
+                pointRadius: 2.5,
+                tension: 0.2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    if (!items.length) return "";
+                    return formatDateShort(items[0].label);
+                  },
+                  label: (ctx) => "Median: " + formatMoney(ctx.parsed.y),
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => "£" + value,
+                },
+                title: { display: true, text: "Hourly rate (£)" },
+              },
+              x: {
+                ticks: {
+                  maxRotation: 60,
+                  minRotation: 20,
+                  autoSkip: true,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function renderTables(payload) {
+        const competition = payload.competition;
+        const recent = payload.recent_postings || [];
+
+        clearTable(topEmployersBody);
+        clearTable(recentPostingsBody);
+
+        if (competition && Array.isArray(competition.top_companies)) {
+          competition.top_companies.forEach(c => {
+            const tr = document.createElement("tr");
+
+            const tdName = document.createElement("td");
+            tdName.className = "px-3 py-2 whitespace-nowrap text-left";
+            tdName.style.color = "var(--ink)";
+            tdName.textContent = c.company_name || "Unknown employer";
+
+            const tdCount = document.createElement("td");
+            tdCount.className = "px-3 py-2 whitespace-nowrap text-right";
+            tdCount.style.color = "var(--ink-2)";
+            tdCount.textContent = c.adverts_count != null ? c.adverts_count.toString() : "–";
+
+            const tdPay = document.createElement("td");
+            tdPay.className = "px-3 py-2 whitespace-nowrap text-right";
+            tdPay.style.color = "var(--ink-2)";
+            tdPay.textContent = c.avg_pay_rate != null ? formatMoney(c.avg_pay_rate) : "–";
+
+            tr.appendChild(tdName);
+            tr.appendChild(tdCount);
+            tr.appendChild(tdPay);
+            topEmployersBody.appendChild(tr);
+          });
+        }
+
+        recent.forEach(r => {
+          const tr = document.createElement("tr");
+
+          const tdEmployer = document.createElement("td");
+          tdEmployer.className = "px-3 py-2 whitespace-nowrap text-left";
+          tdEmployer.style.color = "var(--ink)";
+          tdEmployer.textContent = r.company_name || "Unknown employer";
+
+          const tdRole = document.createElement("td");
+          tdRole.className = "px-3 py-2 whitespace-nowrap text-left";
+          tdRole.style.color = "var(--ink-2)";
+          tdRole.textContent = r.job_role || "–";
+
+          const tdPay = document.createElement("td");
+          tdPay.className = "px-3 py-2 whitespace-nowrap text-right";
+          tdPay.style.color = "var(--ink-2)";
+          tdPay.textContent = r.pay_rate != null ? formatMoney(r.pay_rate) : "–";
+
+          const area = r.county || r.postcode || "";
+          const tdArea = document.createElement("td");
+          tdArea.className = "px-3 py-2 whitespace-nowrap text-right";
+          tdArea.style.color = "var(--ink-2)";
+          tdArea.textContent = area || "–";
+
+          const tdWhen = document.createElement("td");
+          tdWhen.className = "px-3 py-2 whitespace-nowrap text-right";
+          tdWhen.style.color = "var(--ink-2)";
+          tdWhen.textContent = r.created_at ? formatRelativeDate(r.created_at) : "–";
+
+          tr.appendChild(tdEmployer);
+          tr.appendChild(tdRole);
+          tr.appendChild(tdPay);
+          tr.appendChild(tdArea);
+          tr.appendChild(tdWhen);
+
+          recentPostingsBody.appendChild(tr);
+        });
+
+        const params = payload.params || {};
+        const radius = params.radius_miles || 0;
+        const lookback = params.lookback_days || 0;
+        const role = params.role || "this role";
+
+        detailLabel.textContent =
+          `${role} • radius ${radius} miles • lookback ${lookback} days`;
+      }
+
+      async function loadCommentary(payload) {
+        commentaryEl.textContent = "";
+        commentaryLoading.style.display = "block";
+
+        try {
+          const resp = await fetchWithCsrf("/api/recruiter/radar/commentary", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const data = await resp.json();
+          commentaryEl.textContent = data.text || "";
+        } catch (err) {
+          console.error("Commentary error", err);
+          commentaryEl.textContent =
+            "Couldn't generate commentary just now. The numeric view above is still accurate.";
+        } finally {
+          commentaryLoading.style.display = "none";
+        }
+      }
+
+      async function runRadar() {
+        const role = (roleInput.value || "").trim();
+        const location = (locationInput.value || "").trim();
+
+        // Basic front-end validation
+        if (!role || !location) {
+          errorEl.textContent = "Please enter both a job role group and a postcode/outcode.";
+          errorEl.classList.remove("hidden");
+          return;
+        }
+
+        errorEl.classList.add("hidden");
+
+        const query = buildQueryFromForm();
+        if (!query) return;
+
+        emptyMessage.classList.add("hidden");
+        summaryCard.classList.add("hidden");
+        destroyTrendChart();
+        trendEmpty.classList.add("hidden");
+        clearTable(topEmployersBody);
+        clearTable(recentPostingsBody);
+        commentaryEl.textContent = "";
+        commentaryLoading.style.display = "none";
+
+        // Button loading state
+        const originalLabel = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Running…";
+
+        try {
+          const resp = await fetch(`/api/recruiter/radar?${query}`);
+
+          if (!resp.ok) {
+            let msg = "We couldn't run this slice just now. Please check your inputs and try again.";
+            try {
+              const problem = await resp.json();
+              if (problem && problem.error) {
+                msg = problem.error;
+              }
+            } catch (_) {
+              // ignore JSON errors – fall back to generic text
+            }
+            errorEl.textContent = msg;
+            errorEl.classList.remove("hidden");
+            return;
+          }
+
+          const data = await resp.json();
+
+          if (!data.summary && !data.recent_postings.length) {
+            emptyMessage.textContent =
+              "No adverts found for that role / location / radius combination. Try a slightly wider radius or a longer lookback.";
+            emptyMessage.classList.remove("hidden");
+            return;
+          }
+
+          emptyMessage.classList.add("hidden");
+          renderSummary(data);
+          renderTrend(data);
+          renderTables(data);
+          await loadCommentary(data);
+        } catch (err) {
+          console.error("Radar fetch error", err);
+          errorEl.textContent =
+            "Something went wrong running this slice. Please try again in a moment.";
+          errorEl.classList.remove("hidden");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalLabel;
+        }
+      }
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        runRadar();
+      });
+
+      resetBtn.addEventListener("click", function () {
+        roleInput.value = "";
+        locationInput.value = "";
+        const radiusInputs = form.querySelectorAll("input[name='radius_miles']");
+        radiusInputs.forEach(inp => {
+          inp.checked = (inp.value === "15");
+        });
+        document.getElementById("lookback_days").value = "180";
+        emptyMessage.classList.add("hidden");
+        summaryCard.classList.add("hidden");
+        destroyTrendChart();
+        clearTable(topEmployersBody);
+        clearTable(recentPostingsBody);
+        commentaryEl.textContent = "";
+        commentaryLoading.style.display = "none";
+        errorEl.classList.add("hidden");
+        errorEl.textContent = "";
+      });
+
+      // Optional: auto-run if role+location pre-filled (e.g. from a deep link)
+      const initialRole = (roleInput.value || "").trim();
+      const initialLocation = (locationInput.value || "").trim();
+      if (initialRole && initialLocation) {
+        runRadar();
+      }
+    })();
+  </script>
+{% endblock %}

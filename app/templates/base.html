@@ -465,9 +465,10 @@
           Pay Explorer
         </a>
 
-        <a href="{{ url_for('dashboard.quick_search') }}"
-           class="nav-chip {% if endpoint == 'dashboard.quick_search' %}nav-chip--active{% endif %}">
-          Quick search
+        <!-- NEW: Recruiter Radar -->
+        <a href="{{ url_for('maps.recruiter_radar') }}"
+           class="nav-chip {% if endpoint == 'maps.recruiter_radar' or endpoint == 'maps.api_recruiter_radar' %}nav-chip--active{% endif %}">
+          Recruiter radar
         </a>
 
         <a href="{{ url_for('records.records') }}"

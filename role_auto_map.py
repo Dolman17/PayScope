@@ -597,6 +597,286 @@ def admin_job_roles_ai_suggest():
 
 
 # ----------------------------------------------------------------------
+# New: CSV review export / import for job role mappings
+# ----------------------------------------------------------------------
+
+
+@bp.route("/admin/job-roles/review-export")
+@login_required
+def admin_job_roles_review_export():
+    """
+    Export a CSV of raw job roles + suggestions for offline review.
+
+    Respects the same filters as admin_job_roles:
+      - q
+      - canonical_search
+      - status: all / with / without
+
+    CSV columns:
+      raw_value
+      raw_count
+      current_canonical
+      suggested_canonical
+      suggestion_score
+      suggestion_source
+      decision
+      final_canonical
+      notes
+    """
+    try:
+        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        pass
+
+    search = (request.args.get("q") or "").strip()
+    canonical_search = (request.args.get("canonical_search") or "").strip()
+    status = (request.args.get("status") or "all").strip().lower()
+    if status not in ("all", "with", "without"):
+        status = "all"
+
+    try:
+        limit = int((request.args.get("limit") or "1000").strip())
+    except Exception:
+        limit = 1000
+    if limit <= 0:
+        limit = 1000
+
+    JRM = aliased(JobRoleMapping)
+
+    q = db.session.query(
+        JobRecord.job_role.label("raw_value"),
+        func.count(JobRecord.id).label("count"),
+    ).filter(JobRecord.job_role.isnot(None))
+
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(JobRecord.job_role.ilike(pattern))
+
+    if status == "with" or canonical_search:
+        q = q.join(JRM, JobRecord.job_role == JRM.raw_value)
+    elif status == "without":
+        q = q.outerjoin(JRM, JobRecord.job_role == JRM.raw_value).filter(JRM.id.is_(None))
+
+    if canonical_search:
+        pattern_c = f"%{canonical_search}%"
+        q = q.filter(JRM.canonical_role.ilike(pattern_c))
+
+    rows = (
+        q.group_by(JobRecord.job_role)
+        .order_by(func.count(JobRecord.id).desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Existing mappings
+    try:
+        mapping_rows = JobRoleMapping.query.order_by(JobRoleMapping.raw_value).all()
+        mappings = {m.raw_value: m for m in mapping_rows}
+    except Exception:
+        mappings = {}
+
+    vocab = _build_canonical_vocab()
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "raw_value",
+            "raw_count",
+            "current_canonical",
+            "suggested_canonical",
+            "suggestion_score",
+            "suggestion_source",
+            "decision",         # ACCEPT / MANUAL / REJECT (you fill)
+            "final_canonical",  # your override if MANUAL
+            "notes",            # free text, ignored by importer
+        ]
+    )
+
+    for r in rows:
+        raw_value = getattr(r, "raw_value", "") or ""
+        count = int(getattr(r, "count", 0) or 0)
+
+        mapping = mappings.get(raw_value)
+        current_canonical = (mapping.canonical_role if mapping and mapping.canonical_role else "").strip()
+
+        suggestion = _suggest_canonical_for_raw(raw_value, vocab)
+        suggested = (suggestion.get("suggested") or "").strip()  # type: ignore
+        score = suggestion.get("score") or ""  # type: ignore
+        source = suggestion.get("source") or ""  # type: ignore
+
+        writer.writerow(
+            [
+                raw_value,
+                count,
+                current_canonical,
+                suggested,
+                score,
+                source,
+                "",  # decision (to be filled by user)
+                "",  # final_canonical (to be filled by user, if MANUAL)
+                "",  # notes
+            ]
+        )
+
+    csv_data = output.getvalue()
+    resp = make_response(csv_data)
+    resp.headers["Content-Type"] = "text/csv"
+    resp.headers["Content-Disposition"] = "attachment; filename=job_role_review.csv"
+    return resp
+
+
+@bp.route("/admin/job-roles/review-import", methods=["POST"])
+@login_required
+def admin_job_roles_review_import():
+    """
+    Import a reviewed CSV from admin_job_roles_review_export and apply mappings.
+
+    Expects a file field named 'file'.
+
+    For each row:
+      - reads: raw_value, decision, suggested_canonical, final_canonical
+      - decision:
+          ACCEPT -> use suggested_canonical
+          MANUAL -> use final_canonical
+          anything else -> skip
+      - upserts JobRoleMapping(raw_value -> canonical_role)
+      - if apply_now == "1", backfills JobRecord.job_role_group / job_role.
+    """
+    # Preserve filters for redirect
+    q_param = (request.form.get("q") or "").strip()
+    status_param = (request.form.get("status") or "all").strip().lower()
+    canonical_param = (request.form.get("canonical_search") or "").strip()
+
+    file = request.files.get("file")
+    apply_now = request.form.get("apply_now") == "1"
+
+    if not file or not file.filename:
+        flash("Please choose a CSV file to upload.", "error")
+        return redirect(
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
+        )
+
+    try:
+        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        pass
+
+    try:
+        content = file.read().decode("utf-8-sig", errors="ignore")
+    except Exception:
+        flash("Could not read the uploaded file as UTF-8.", "error")
+        return redirect(
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
+        )
+
+    reader = csv.DictReader(StringIO(content))
+    if not reader.fieldnames:
+        flash("Uploaded CSV has no header row.", "error")
+        return redirect(
+            url_for(
+                "dashboard.admin_job_roles",
+                q=q_param,
+                status=status_param,
+                canonical_search=canonical_param,
+            )
+        )
+
+    updated_mappings = 0
+    backfill_pairs: List[Tuple[str, str]] = []
+
+    for row in reader:
+        # Be tolerant of slight header differences
+        raw_value = (row.get("raw_value") or row.get("raw_role") or "").strip()
+        if not raw_value:
+            continue
+
+        decision = (row.get("decision") or "").strip().upper()
+        if decision not in ("ACCEPT", "MANUAL"):
+            # REJECT / blank / anything else -> ignore this row
+            continue
+
+        suggested = (row.get("suggested_canonical") or "").strip()
+        final_canonical = (row.get("final_canonical") or "").strip()
+
+        if decision == "MANUAL" and final_canonical:
+            canonical = final_canonical
+        else:
+            canonical = suggested
+
+        canonical = _clean_canonical_label(canonical or "").strip()
+        if not canonical:
+            # Nothing useful to apply
+            continue
+
+        mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
+        if mapping is None:
+            mapping = JobRoleMapping(raw_value=raw_value, canonical_role=canonical)
+            db.session.add(mapping)
+        else:
+            mapping.canonical_role = canonical
+
+        updated_mappings += 1
+
+        if apply_now:
+            backfill_pairs.append((raw_value, canonical))
+
+    # Backfill JobRecord rows if requested
+    if apply_now and backfill_pairs:
+        if hasattr(JobRecord, "job_role_group"):
+            for raw_value, canonical in backfill_pairs:
+                db.session.query(JobRecord).filter(JobRecord.job_role == raw_value).update(
+                    {JobRecord.job_role_group: canonical},
+                    synchronize_session=False,
+                )
+        else:
+            for raw_value, canonical in backfill_pairs:
+                db.session.query(JobRecord).filter(JobRecord.job_role == raw_value).update(
+                    {JobRecord.job_role: canonical},
+                    synchronize_session=False,
+                )
+
+    if updated_mappings:
+        db.session.commit()
+        if apply_now:
+            flash(
+                f"Applied {updated_mappings} mapping(s) from review file and backfilled existing adverts.",
+                "success",
+            )
+        else:
+            flash(
+                f"Applied {updated_mappings} mapping(s) from review file (no backfill run).",
+                "success",
+            )
+    else:
+        flash(
+            "No mappings were applied from the review file. "
+            "Check that 'decision' is set to ACCEPT or MANUAL and that canonical columns are filled.",
+            "info",
+        )
+
+    return redirect(
+        url_for(
+            "dashboard.admin_job_roles",
+            q=q_param,
+            status=status_param,
+            canonical_search=canonical_param,
+        )
+    )
+
+
+# ----------------------------------------------------------------------
 # Admin: Sector Override Cleaner
 # ----------------------------------------------------------------------
 
@@ -835,279 +1115,3 @@ def admin_job_roles_clean_canonical():
         )
 
     return redirect(url_for("dashboard.admin_job_roles_report"))
-
-
-# ----------------------------------------------------------------------
-# Admin: CSV review export + import for job roles
-# ----------------------------------------------------------------------
-
-
-@bp.route("/admin/job-roles/review-export")
-@login_required
-def admin_job_roles_review_export():
-    """
-    Export a CSV of raw job roles for offline review.
-
-    Columns:
-      - raw_value
-      - count
-      - suggested
-      - suggested_score
-      - suggested_source
-      - existing_canonical
-      - decision        (blank; user fills ACCEPT / MANUAL / SKIP)
-      - final_canonical (blank; user fills if decision = MANUAL)
-    """
-    # Mirror filters from admin_job_roles
-    search = (request.args.get("q") or "").strip()
-    canonical_search = (request.args.get("canonical_search") or "").strip()
-    status = (request.args.get("status") or "all").strip().lower()
-    if status not in ("all", "with", "without"):
-        status = "all"
-
-    try:
-        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
-    except Exception:
-        pass
-
-    JRM = aliased(JobRoleMapping)
-
-    q = db.session.query(
-        JobRecord.job_role.label("raw_value"),
-        func.count(JobRecord.id).label("count"),
-    ).filter(JobRecord.job_role.isnot(None))
-
-    if search:
-        pattern = f"%{search}%"
-        q = q.filter(JobRecord.job_role.ilike(pattern))
-
-    if status == "with" or canonical_search:
-        q = q.join(JRM, JobRecord.job_role == JRM.raw_value)
-    elif status == "without":
-        q = q.outerjoin(JRM, JobRecord.job_role == JRM.raw_value).filter(JRM.id.is_(None))
-
-    if canonical_search:
-        pattern_c = f"%{canonical_search}%"
-        q = q.filter(JRM.canonical_role.ilike(pattern_c))
-
-    rows = (
-        q.group_by(JobRecord.job_role)
-        .order_by(func.count(JobRecord.id).desc())
-        .limit(5000)
-        .all()
-    )
-
-    # Existing mappings
-    try:
-        mapping_rows = JobRoleMapping.query.order_by(JobRoleMapping.raw_value).all()
-        mappings = {m.raw_value: m for m in mapping_rows}
-    except Exception:
-        mappings = {}
-
-    vocab = _build_canonical_vocab()
-    suggestions: Dict[str, Dict[str, object]] = {}
-    for r in rows:
-        rv = getattr(r, "raw_value", None)
-        suggestions[rv] = _suggest_canonical_for_raw(rv or "", vocab)
-
-    output = StringIO()
-    writer = csv.writer(output)
-
-    writer.writerow(
-        [
-            "raw_value",
-            "count",
-            "suggested",
-            "suggested_score",
-            "suggested_source",
-            "existing_canonical",
-            "decision",
-            "final_canonical",
-        ]
-    )
-
-    for r in rows:
-        raw_value = getattr(r, "raw_value", "") or ""
-        count = getattr(r, "count", 0) or 0
-
-        mapping = mappings.get(raw_value)
-        existing_canonical = (mapping.canonical_role if mapping else "") or ""
-
-        sugg = suggestions.get(raw_value) or {}
-        suggested = (sugg.get("suggested") or "")  # type: ignore
-        suggested_score = sugg.get("score") or ""  # type: ignore
-        suggested_source = sugg.get("source") or ""  # type: ignore
-
-        writer.writerow(
-            [
-                raw_value,
-                count,
-                suggested,
-                suggested_score,
-                suggested_source,
-                existing_canonical,
-                "",  # decision
-                "",  # final_canonical
-            ]
-        )
-
-    csv_data = output.getvalue()
-    resp = make_response(csv_data)
-    resp.headers["Content-Type"] = "text/csv"
-    resp.headers["Content-Disposition"] = 'attachment; filename="job_role_review.csv"'
-    return resp
-
-
-@bp.route("/admin/job-roles/review-import", methods=["POST"])
-@login_required
-def admin_job_roles_review_import():
-    """
-    Import a reviewed CSV and apply mappings.
-
-    Expected columns:
-      - raw_value
-      - suggested
-      - existing_canonical
-      - decision        (ACCEPT / MANUAL / SKIP or blank)
-      - final_canonical (used when decision = MANUAL)
-
-    Rules:
-      - If decision == ACCEPT: use 'suggested' (fallback to final_canonical if present).
-      - If decision == MANUAL: use 'final_canonical' (fallback to suggested if present).
-      - Anything else is skipped.
-    """
-    file = request.files.get("file")
-    apply_now = request.form.get("apply_now") == "1"
-
-    q_param = (request.form.get("q") or "").strip()
-    status_param = (request.form.get("status") or "all").strip().lower()
-    canonical_param = (request.form.get("canonical_search") or "").strip()
-
-    if not file or file.filename == "":
-        flash("Please choose a CSV file to upload.", "error")
-        return redirect(
-            url_for(
-                "dashboard.admin_job_roles",
-                q=q_param,
-                status=status_param,
-                canonical_search=canonical_param,
-            )
-        )
-
-    try:
-        JobRoleMapping.__table__.create(bind=db.engine, checkfirst=True)
-    except Exception:
-        pass
-
-    try:
-        content = file.read().decode("utf-8-sig", errors="ignore")
-    except Exception as e:
-        flash(f"Could not read uploaded file: {e}", "error")
-        return redirect(
-            url_for(
-                "dashboard.admin_job_roles",
-                q=q_param,
-                status=status_param,
-                canonical_search=canonical_param,
-            )
-        )
-
-    reader = csv.DictReader(StringIO(content))
-
-    created = 0
-    updated = 0
-    skipped_no_decision = 0
-    skipped_no_canonical = 0
-
-    # We’ll collect per-raw mappings then optionally backfill in bulk
-    backfill_pairs: List[Tuple[str, str]] = []
-
-    for row in reader:
-        raw_value = (row.get("raw_value") or "").strip()
-        if not raw_value:
-            continue
-
-        decision = (row.get("decision") or "").strip().upper()
-        suggested = (row.get("suggested") or "").strip()
-        final_canonical = (row.get("final_canonical") or "").strip()
-        existing_canonical = (row.get("existing_canonical") or "").strip()
-
-        if decision not in ("ACCEPT", "MANUAL"):
-            skipped_no_decision += 1
-            continue
-
-        canonical_role = ""
-
-        if decision == "ACCEPT":
-            canonical_role = suggested or final_canonical or existing_canonical
-        elif decision == "MANUAL":
-            canonical_role = final_canonical or suggested or existing_canonical
-
-        canonical_role = canonical_role.strip()
-
-        if not canonical_role:
-            skipped_no_canonical += 1
-            continue
-
-        mapping = JobRoleMapping.query.filter_by(raw_value=raw_value).first()
-        if mapping is None:
-            mapping = JobRoleMapping(raw_value=raw_value, canonical_role=canonical_role)
-            db.session.add(mapping)
-            created += 1
-        else:
-            if (mapping.canonical_role or "").strip() != canonical_role:
-                mapping.canonical_role = canonical_role
-                updated += 1
-
-        if apply_now:
-            backfill_pairs.append((raw_value, canonical_role))
-
-    if apply_now and backfill_pairs:
-        # Deduplicate pairs in case of duplicates in the CSV
-        dedup = {}
-        for raw, canon in backfill_pairs:
-            dedup[raw] = canon
-        pairs = list(dedup.items())
-
-        if hasattr(JobRecord, "job_role_group"):
-            for raw, canonical_role in pairs:
-                db.session.query(JobRecord).filter(JobRecord.job_role == raw).update(
-                    {JobRecord.job_role_group: canonical_role},
-                    synchronize_session=False,
-                )
-        else:
-            for raw, canonical_role in pairs:
-                db.session.query(JobRecord).filter(JobRecord.job_role == raw).update(
-                    {JobRecord.job_role: canonical_role},
-                    synchronize_session=False,
-                )
-
-    db.session.commit()
-
-    msg_parts = []
-    if created:
-        msg_parts.append(f"{created} new mapping(s) created")
-    if updated:
-        msg_parts.append(f"{updated} existing mapping(s) updated")
-    if skipped_no_decision:
-        msg_parts.append(f"{skipped_no_decision} row(s) skipped (no decision)")
-    if skipped_no_canonical:
-        msg_parts.append(f"{skipped_no_canonical} row(s) skipped (no final canonical role)")
-
-    if not msg_parts:
-        msg = "No valid rows were found in the uploaded CSV."
-        category = "info"
-    else:
-        msg = "CSV review import complete: " + "; ".join(msg_parts) + "."
-        category = "success"
-
-    flash(msg, category)
-
-    return redirect(
-        url_for(
-            "dashboard.admin_job_roles",
-            q=q_param,
-            status=status_param,
-            canonical_search=canonical_param,
-        )
-    )
