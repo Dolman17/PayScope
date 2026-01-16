@@ -1,6 +1,6 @@
 # PayScope – Architecture & Developer Overview
 
-_Last updated: 15 January 2026_
+_Last updated: 16 January 2026_
 
 This document is a “how the thing actually hangs together” map. It does **not** define product rules (see `brief.md` / PayScope Memory Spec for that); it explains where those rules are implemented in code.
 
@@ -14,14 +14,16 @@ This document is a “how the thing actually hangs together” map. It does **no
 - Aggregates scraped job adverts, normalises them, and exposes:
   - **Maps** of pay by area and sector.
   - **Pay Explorer** comparisons (market vs ONS).
+  - **Recruiter Radar** – one-page market snapshot for a role+area with forecast and AI commentary.
   - **Dashboards & insights** for monitoring.
   - **Admin tools** for ingestion, hygiene, coverage, and diagnostics.
   - **AI Insights** – narrative summaries of filtered views in the Insights screen.
+  - **Data hygiene tools** – job-role & sector mapping, canonical label cleaning, review/export/import workflow.
 
 **Runtime surfaces**
 
 - **Flask web app**
-  - Primary UI for users, admin tools, and marketing site.
+  - Primary UI for users, admin tools, marketing site, and Recruiter Radar.
 - **Cron / batch runner**
   - `cron_runner.py` orchestrates scraping, importing, summaries, and coverage.
 - **One-off scripts**
@@ -46,7 +48,9 @@ This document is a “how the thing actually hangs together” map. It does **no
     - Migrations (`extensions.migrate`)
     - Login manager (`login_manager` in this file).
   - Imports and **registers blueprints**:
-    - `auth`, `admin`, `upload`, `records`, `maps`, `dashboard`, `api`, `marketing`, `public_landing`, `insights`, `company` (and any others defined in `app/blueprints`).
+    - `auth`, `admin`, `upload`, `records`, `maps`, `dashboard`, `api`,
+      `marketing`, `public_landing`, `insights`, `company`, `recruiter_radar`
+      (and any others defined in `app/blueprints`).
   - Defines an app-level `/` route (login-required home) that renders `index.html`.
 
 ### 2.2 Cron / batch
@@ -70,12 +74,14 @@ Key files at the repo root:
   - `run_migrations.py` – wrapper for running Alembic/Flask-Migrate.
   - `seed_users.py`, `seed_sector_mappings.py` – initial data seeds.
 - **Backfills / hygiene**
-  - `backfill_counties.py`, `backfill_coordinates.py`, `backfill_sectors.py`, `backfill_other_sectors_from_roles.py`, `restore_sectors_from_postings.py`, etc.
+  - `backfill_counties.py`, `backfill_coordinates.py`, `backfill_sectors.py`,
+    `backfill_other_sectors_from_roles.py`, `restore_sectors_from_postings.py`, etc.
 - **Summaries & ONS**
   - `summary_runner.py` – drives summary rebuilding.
   - `ons_loader.py` – loads ONS earnings into `OnsEarnings`.
 - **Ops**
-  - `adzuna_cron.py`, `reed_checks.py`, `backup_to_dropbox.py`, `payscope_backup_now.dump` (example backup).
+  - `adzuna_cron.py`, `reed_checks.py`, `backup_to_dropbox.py`,
+    `payscope_backup_now.dump` (example backup).
 
 > These scripts are intended to be run manually or via platform jobs, not as part of the web request path.
 
@@ -88,6 +94,13 @@ At a glance:
 - `/app`
   - `__init__.py` – app factory, blueprint registration, root route.
   - `blueprints/` – route handlers grouped by feature.
+    - `dashboard/` is now a package with:
+      - `core.py` – main dashboard, core charts.
+      - `insights.py` – Insights view + AI analyse endpoint.
+      - `quick_search.py` – quick search UI/API.
+      - `role_admin.py` – role & sector hygiene tools (job-role cleaner, sector overrides, canonical label cleaner).
+      - `role_report.py` – role mapping reports and CSV review-export/import.
+      - `helpers.py` – shared helpers (canonical vocab, fuzzy matching, hygiene scoring).
   - `importers/` – logic to convert scraped postings into canonical records.
   - `scrapers/` – Adzuna/Reed/etc. scraping clients.
   - `templates/` – Jinja templates (app, admin, marketing, legal).
@@ -124,7 +137,7 @@ _All models live in `models.py`._
   - Feeds into `JobRecord`.
 
 - **`JobRecord`**
-  - Normalised record used for maps, dashboards, and Pay Explorer.
+  - Normalised record used for maps, dashboards, Pay Explorer and Recruiter Radar.
   - Contains:
     - Employer, role, **canonical `job_role_group`**, sector, contract type.
     - Pay values (hourly, annual, etc.).
@@ -135,8 +148,9 @@ _All models live in `models.py`._
 
 - **`JobRoleMapping`**
   - Maps “raw” job role strings → canonical job role group.
-  - May also store AI suggestions and confidence scores.
-
+  - Also used as:
+    - A cache for AI suggestions.
+    - The target of review-export/review-import workflows in role hygiene.
 - **`SectorMapping`**
   - Maps raw sectors → canonical sectors.
 
@@ -152,6 +166,7 @@ _All models live in `models.py`._
     - Dashboard / Insights.
     - Pay Explorer backend (via `pay_compare.py`).
     - Coverage reporting.
+    - Recruiter Radar (trend & forecast for a role+area).
 
 - **`WeeklyMarketChange`**
   - Weekly summary of market changes (counts, medians).
@@ -297,7 +312,6 @@ All blueprints live in `app/blueprints`.
   - `JobSummaryDaily`, `OnsEarnings` indirectly via `pay_compare.get_pay_explorer_data`.
   - Helpers in `app.blueprints.utils` (`logo_url_for`, `company_has_logo`, role grouping).
 
-
 ### 5.9 `pay_compare` – Pay Explorer business logic
 
 - File: `pay_compare.py` (no Blueprint; imported and used by `maps.py` and `api.py`).
@@ -335,37 +349,73 @@ All blueprints live in `app/blueprints`.
 
 > This is the main place where “compare this job/sector in this area vs the market/ONS” lives. The JS in `pay_explorer.html` relies on the JSON shape returned by `get_pay_explorer_data` via `/api/pay-compare`.
 
-### 5.10 `dashboard` – dashboards, Insights & AI view analysis
+### 5.10 `dashboard` package – dashboards, Insights & AI, quick search, hygiene tools
 
-- File: `dashboard.py`
-- Routes:
-  - `/dashboard` – main dashboard (key stats, charts).
-  - `/insights` – interactive insights view over `JobSummaryDaily` (filters, charts, summary cards).
-  - `/insights/ai-analyze` – **POST-only endpoint** used by the “Use AI to analyse this view” button in `insights.html`.
-    - Expects JSON: `{ filters: {...}, records: [ {sector, county, job_role, company_name, pay_rate, imported_month, imported_year}, ... ] }`.
-    - Extracts numeric hourly pay from the `pay_rate` field (already normalised by the frontend).
-    - Computes simple stats (count, median, quartiles, range) from the payload.
-    - Calls OpenAI to generate a narrative summary of the current filter slice.
-    - Returns JSON with `{"html": "<p>...</p>", "text": "plain text version"}`.
-  - `/quick-search` – lightweight search over `JobRecord`.
-  - Admin mapping tools under `/admin/...` paths:
-    - `/admin/job-roles`, `/admin/job-roles/map`, `/admin/job-roles/bulk-map`.
-    - `/admin/role-sectors`, `/admin/role-sectors/map`, `/admin/role-sectors/bulk-map`.
+- Package: `app/blueprints/dashboard/`
+  - `__init__.py` – defines the `dashboard` blueprint (`url_prefix` as configured).
+  - `core.py`
+    - Routes:
+      - `/dashboard` – main dashboard (key stats, charts).
+  - `insights.py`
+    - Routes:
+      - `/insights` – interactive insights view over `JobSummaryDaily` (filters, charts, summary cards).
+      - `/insights/ai-analyze` – **POST-only endpoint** used by the “Use AI to analyse this view” button in `insights.html`.
+        - Expects JSON: `{ filters: {...}, records: [ {sector, county, job_role, company_name, pay_rate, imported_month, imported_year}, ... ] }`.
+        - Extracts numeric hourly pay from the `pay_rate` field (already normalised by the frontend).
+        - Computes simple stats (count, median, quartiles, range) from the payload.
+        - Calls OpenAI to generate a narrative summary of the current filter slice.
+        - Returns JSON with `{"html": "<p>...</p>", "text": "plain text version"}`.
+  - `quick_search.py`
+    - Routes:
+      - `/quick-search` – lightweight search over `JobRecord` (role+location+free-text) with shortcuts into Records, Maps, Pay Explorer and Recruiter Radar.
+  - `role_admin.py`
+    - Routes:
+      - `/admin/job-roles` – Job Role Cleaner UI for raw `job_role` → canonical mapping.
+      - `/admin/job-roles/map` – create/update a single mapping; optional backfill into `JobRecord.job_role_group`.
+      - `/admin/job-roles/bulk-map` – bulk assign canonical role to multiple raw values.
+      - `/admin/job-roles/auto-clean` – run rules+fuzzy auto-clean over selected raw roles with confidence threshold; optional backfill.
+      - `/admin/job-roles/ai-suggest` – AJAX AI helper for per-row canonical suggestions (uses JobRoleMapping as cache + heuristics, only calls OpenAI as last resort).
+      - `/admin/role-sectors` – sector override cleaner for canonical roles currently sitting in “Other”/missing sectors.
+      - `/admin/role-sectors/map` – map one canonical role → canonical sector.
+      - `/admin/role-sectors/bulk-map` – bulk sector overrides for many roles.
+      - `/admin/job-roles/clean-canonical` – one-off (but safe to re-run) canonical label cleaner to strip AI-paragraph-style labels down to proper job-title-style labels using `_clean_canonical_label`.
+  - `role_report.py`
+    - Routes:
+      - `/admin/job-roles/report` – HTML report over current role mappings, hygiene flags and counts.
+      - `/admin/job-roles/report.csv` (or similar) – CSV export of the mapping report.
+      - `/admin/job-roles/review-export` – exports a **review CSV** containing raw roles, counts, existing canonical roles, suggested roles and hygiene flags for offline review.
+      - `/admin/job-roles/review-import` – accepts an updated review CSV; for each row decides whether to:
+        - apply the suggested canonical role, or
+        - apply a manually-edited canonical role from the CSV,
+        and then optionally backfills `JobRecord.job_role_group` where configured.
+        This is the “review list export + re-upload” workflow.
+  - `helpers.py`
+    - Functions such as:
+      - `_build_canonical_vocab()` – builds canonical role vocabulary from existing mappings and data.
+      - `_suggest_canonical_for_raw()` – rules + fuzzy matching suggestion engine.
+      - `_clean_canonical_label()` – canonical label cleaner (used by the route above and other tools).
+      - `_role_hygiene_flags()` / `_role_hygiene_score()` – helpers to score how “clean” a mapping is for reporting.
+
+
 - Uses:
   - `JobRecord`, `JobSummaryDaily`, `JobRoleMapping`, `JobRoleSectorOverride`, `SectorMapping`.
   - Helpers in `app.blueprints.utils` (filter building, caching, canonical role/sector filters).
-- The **Insights feature** depends heavily on:
-  - Canonical `job_role_group`.
-  - Canonical sectors.
-  - Aggregations in `JobSummaryDaily` that mirror those used in Pay Explorer, but with a more “dashboard-style” UX (multiple charts and cards).
-- The **AI analyse endpoint** is intentionally decoupled:
-  - It does **not** hit the DB again; it trusts the compact `records` payload from the browser.
-  - Rate parsing is defensive and accepts both numeric and string pay values.
-  - Falls back to a “no numeric hourly rates in this view” message if nothing sane is found.
+
+The **Insights feature** depends heavily on:
+
+- Canonical `job_role_group`.
+- Canonical sectors.
+- Aggregations in `JobSummaryDaily` that mirror those used in Pay Explorer, but with a more “dashboard-style” UX (multiple charts and cards).
+
+The **AI analyse endpoint** is intentionally decoupled:
+
+- It does **not** hit the DB again; it trusts the compact `records` payload from the browser.
+- Rate parsing is defensive and accepts both numeric and string pay values.
+- Falls back to a “no numeric hourly rates in this view” message if nothing sane is found.
 
 ### 5.11 `insights` – weekly insights
 
-- File: `insights.py`
+- File: `insights.py` (separate from the dashboard package; this one is for **weekly** insights)
 - Routes:
   - `/insights/week/<string:week_start_iso>`
 - Uses:
@@ -392,14 +442,16 @@ All blueprints live in `app/blueprints`.
   - User admin:
     - `/admin/users` – manage `User` rows.
   - Data hygiene & backfills:
-    - `/admin/backfill-counties`, `/admin/regeocode-jobs`, `/admin/companies/regenerate-ids`, etc.
+    - `/admin/backfill-counties`, `/admin/regeocode-jobs`,
+      `/admin/companies/regenerate-ids`, etc.
   - ONS & Pay Explorer diagnostics:
     - `/admin/ons/import`, `/admin/inspect/ons`.
     - `/admin/debug/pay-explorer-json`, `/admin/debug/pay-explorer-mapping`.
   - Companies/admin views:
     - `/admin/companies`.
   - Summaries & cron:
-    - `/admin/admin/rebuild-summaries`, `/admin/weekly`, `/admin/weekly-market-changes`.
+    - `/admin/admin/rebuild-summaries`, `/admin/weekly`,
+      `/admin/weekly-market-changes`.
     - `/admin/cron-runs`, `/admin/cron-runs/run-now`.
     - `/admin/cron/job-role-canonicaliser/run-now`.
     - `/admin/status.json`.
@@ -427,6 +479,70 @@ All blueprints live in `app/blueprints`.
   - Filter builders for dashboards/maps.
   - Small caching utilities.
   - Cached filter options for sectors / job_role_group used by dashboard and insights.
+  - UK geocoding helpers:
+    - `normalize_uk_postcode()`
+    - `geocode_postcode()` / `geocode_postcode_cached()`
+    - `lookup_nearest_postcode()` / `snap_to_nearest_postcode()`
+  - These are used by:
+    - Import/backfill scripts.
+    - Map features.
+    - Recruiter Radar radius search.
+
+### 5.16 `recruiter_radar` – Recruiter Radar (role+area snapshot)
+
+- File: `recruiter_radar.py`
+- Routes:
+  - `/recruiter/radar` (GET)
+    - Renders `recruiter_radar.html`.
+    - UI:
+      - Free-text **Role** input with auto-complete/autosuggest based on canonical roles in the DB (job_role_group / canonical roles).
+      - **Location** free-text input (typically town, postcode district or full postcode).
+      - **Radius** selectors (5, 15, 25 miles).
+      - **Lookback window** dropdown (e.g. 30, 60, 90, 180 days – configurable).
+    - On submit, JS calls the API endpoint below.
+  - `/api/recruiter/radar` (GET/JSON)
+    - Query params:
+      - `role` – canonical role label (or raw job_role; backend normalises).
+      - `location` – free-typed location/postcode.
+      - `radius_miles` – numeric radius (5/15/25).
+      - `lookback_days` – how many days back to consider.
+    - Behaviour:
+      - Uses `geocode_postcode()` + `normalize_uk_postcode()` from `utils.py` to resolve `location` into a UK postcode and lat/lon.
+      - Builds a radius filter over `JobRecord` using the geocoded point and `radius_miles`.
+      - Filters to the selected role (via canonical job_role_group where available) and lookback window.
+      - Uses:
+        - `JobRecord` for **most recent adverts**, recent employers, raw demand and competition metrics.
+        - `JobSummaryDaily` for **trend and forecast**:
+          - Pulls last N months of daily medians for the role+area.
+          - Fits a simple trend line (e.g. linear) for median hourly pay.
+          - Projects a forecast a few months ahead.
+    - Returns JSON:
+      - `input_summary` – echo of role, location, radius, lookback, and any canonicalisation applied.
+      - `headline` – current and forecasted typical pay:
+        - `median_now`, `median_3m_ahead`, `median_6m_ahead` (depending on forecast horizon).
+      - `recommendation` – suggested hourly pay to offer:
+        - Contains `recommended_rate` and a band (e.g. `recommended_low`, `recommended_high`),
+          derived from current medians + recent trend and competition.
+      - `demand` – demand metrics in the radius:
+        - `total_adverts`, `adverts_last_30_days`, simple trend flag (rising/flat/falling).
+      - `competition` – competition metrics:
+        - `distinct_employers`, `top_employers` list with counts.
+      - `recent_roles` – list of the most recent adverts matching the role+area.
+      - `forecast_series` – time series used to plot the trend/forecast (dates, median pay).
+      - `ai_commentary` – optional pre-rendered HTML/text if the API chooses to call AI, or `null` if deferring to frontend AI.
+
+- AI behaviour:
+  - Either the API calls OpenAI directly per request, or (preferred) returns a compact `context` object which the frontend sends to a dedicated AI endpoint if/when the user asks for commentary.
+  - The AI commentary summarises:
+    - Current level vs recent history.
+    - Whether the market looks tight or loose.
+    - How aggressive the recommended rate is vs local typical pay.
+    - Any obvious changes in demand/competition.
+
+- Uses:
+  - `JobRecord`, `JobSummaryDaily`.
+  - Geocoding helpers from `utils.py`.
+  - Shared canonicalisation logic for roles and sectors from dashboard helpers.
 
 ---
 
@@ -474,12 +590,21 @@ All blueprints live in `app/blueprints`.
   - `/pay-explorer`, `/api/pay-compare` use:
     - `JobSummaryDaily` + `OnsEarnings`.
     - Logic in `pay_compare.py`.
+- **Recruiter Radar**
+  - `/recruiter/radar`, `/api/recruiter/radar` use:
+    - `JobRecord` for most recent adverts/employers.
+    - `JobSummaryDaily` for trend + forecast of typical pay in the radius.
 - **AI Insights**
   - `insights.html` builds a **compact JSON payload** from the current view:
     - Filters (`sector`, `county`, `job_role`, `year`, pay band constraints).
     - A sampled list of records with numeric `pay_rate`.
   - Posts to `/insights/ai-analyze`.
   - Renders the returned HTML/text into the “Narrative insights” panel.
+- **Role hygiene review**
+  - `role_report.py` exports:
+    - A CSV view of raw roles, canonical roles, suggestions, counts, and hygiene flags.
+  - Superusers can edit this offline and re-import via `/admin/job-roles/review-import`,
+    which updates `JobRoleMapping` and optionally backfills `JobRecord.job_role_group`.
 
 ---
 
@@ -509,10 +634,10 @@ All blueprints live in `app/blueprints`.
   - `COVERAGE_BOOST_MIN_DAYS_SEEN`
   - `CRON_MAX_TOTAL_ROLES`
   - `COVERAGE_BOOST_WHERE`
-- **AI Insights**
+- **AI Insights & Recruiter Radar**
   - OpenAI key and model config (e.g. `OPENAI_API_KEY`, `OPENAI_MODEL`), used by:
     - `/insights/ai-analyze`
-    - Any future AI-powered admin tools.
+    - Recruiter Radar commentary (if server-side AI is enabled).
 - Other feature flags and tuning knobs are defined inline in their respective modules.
 
 ---
@@ -527,14 +652,16 @@ All blueprints live in `app/blueprints`.
     - Logged-out marketing nav vs logged-in app nav.
     - Dark-theme styles (as per PayScope design).
   - App nav includes:
-    - Home, Upload, Map View, Pay Explorer, Records, Admin Tools (for superusers).
-    - On immersive map pages (e.g. `map.html`), the app nav supports an **auto-hide** behaviour:
+    - Home, Upload, Map View, Pay Explorer, Records, Recruiter Radar, Admin Tools (for superusers).
+  - On immersive map pages (e.g. `map.html`), the app nav supports an **auto-hide** behaviour:
     - The header collapses out of view to free vertical space for the map.
     - Moving the pointer towards the top edge of the viewport reveals the nav again.
     - This is wired via small JS/CSS hooks in `base.html` and is opt-in per page.
 
   - Exposes a global `window.fetchWithCsrf` helper used by:
     - AI Insights (`/insights/ai-analyze`).
+    - Role hygiene AI buttons.
+    - Recruiter Radar (if using POST/JSON).
     - Any other POST/JSON ajax calls that need CSRF tokens.
 
 ### 8.2 Key templates
@@ -543,16 +670,15 @@ All blueprints live in `app/blueprints`.
   - `home.html` – logged-in tiles/landing.
   - `dashboard.html` – dashboard charts over `JobSummaryDaily`.
   - `map.html`, `map_select.html` – sector map view:
-  - `map_select.html` – list of canonical sectors with entry points into the map.
-  - `map.html` – **full-width, two-column layout**:
-    - Left: filters card (job role, min/max pay, “current view” pills).
-    - Right: Leaflet map plus a “Map Insights” card.
-    - The map uses **one teal `£` marker per `JobRecord`** (no clustering).
-    - “Map Insights” computes live stats from the **currently visible markers**:
-      - Count, average, median, min/max, simple banded distribution.
-      - Estimated Real Living Wage (RLW) compliance (UK vs London thresholds).
-    - A “Visible jobs” card opens a modal listing the jobs currently in view.
-
+    - `map_select.html` – list of canonical sectors with entry points into the map.
+    - `map.html` – **full-width, two-column layout**:
+      - Left: filters card (job role, min/max pay, “current view” pills).
+      - Right: Leaflet map plus a “Map Insights” card.
+      - The map uses **one teal `£` marker per `JobRecord`** (no clustering).
+      - “Map Insights” computes live stats from the **currently visible markers**:
+        - Count, average, median, min/max, simple banded distribution.
+        - Estimated Real Living Wage (RLW) compliance (UK vs London thresholds).
+      - A “Visible jobs” card opens a modal listing the jobs currently in view.
   - `pay_explorer.html` – Pay Explorer UI:
     - Filters:
       - Sector dropdown (canonical sectors).
@@ -576,6 +702,26 @@ All blueprints live in `app/blueprints`.
       - Opens a confirmation modal.
       - Compacts the current dataset (`records`) into `{sector, county, job_role, company_name, pay_rate, imported_month, imported_year}`.
       - POSTs to `/insights/ai-analyze` and renders the HTML/text into the AI card.
+  - `recruiter_radar.html` – Recruiter Radar UI:
+    - Inputs:
+      - Role auto-complete (searches canonical roles as the user types).
+      - Location box with helper text (postcode or town/city).
+      - Radius buttons (5 / 15 / 25 miles).
+      - Lookback window selector.
+    - Outputs (single-page snapshot):
+      - Headline cards:
+        - Typical pay now (median).
+        - Forecasted pay (e.g. 3 months ahead).
+        - Recommended pay to offer (single value + band).
+      - Demand & competition:
+        - Recent adverts count, trend over last N days.
+        - Distinct employers and top employer list.
+      - Recent roles:
+        - Table/list of most recent adverts for this role+area.
+      - Trend chart:
+        - Simple chart showing median pay over time plus forecast line.
+      - AI commentary:
+        - Card with narrative summary of the above (optional, via AI call).
   - `records.html`, `edit_record.html` – records table and editor.
   - `upload.html`, `upload_preview.html` – upload flow.
 
@@ -584,10 +730,20 @@ All blueprints live in `app/blueprints`.
   - `admin/coverage*.html` – coverage dashboard + heatmap.
   - `admin/weekly*.html` – weekly changes & insights.
   - `admin/cron_runs.html`, `admin/admin_tools.html`, `admin/db_health.html`, etc.
+  - `admin_job_roles.html` – Job Role Cleaner:
+    - Shows raw `job_role` values with counts, mapping inputs, suggestions, AI buttons.
+    - Includes:
+      - Bulk map and auto-clean forms (multi-select + threshold).
+      - A button to open the mapping report and review-export.
+    - Uses JS helpers:
+      - “Select all” and “collect selected” logic for bulk forms.
+      - Per-row “Use suggestion” and “Ask AI” actions.
+  - `admin_job_roles_report.html` – role mapping report view, with CSV/Review export links.
 
 - **Marketing & legal**
   - `index.html` – marketing landing (plus reused as logged-in landing).
-  - `solutions.html`, `pricing.html`, `data.html`, `resources.html`, `customer_success.html`, `company.html`.
+  - `solutions.html`, `pricing.html`, `data.html`, `resources.html`,
+    `customer_success.html`, `company.html`.
   - `legal/privacy.html`, `legal/terms.html`.
 
 ### 8.3 JavaScript
@@ -611,7 +767,13 @@ All blueprints live in `app/blueprints`.
     - Computes stats (count, mean, median, min/max, simple distribution, RLW compliance) and renders them into the “Map Insights” card.
     - Drives the “Visible jobs” modal table.
   - All analysis is done client-side from the markers payload; `/api/points` remains a simple GeoJSON provider.
-
+- Recruiter Radar:
+  - Inline JS in `recruiter_radar.html`:
+    - Handles role auto-complete by hitting a small suggestion endpoint or reusing cached canonical role list from the dashboard helpers.
+    - Debounces calls to `/api/recruiter/radar`.
+    - Populates cards and charts from the JSON response.
+    - Optionally triggers an AI commentary request and renders the returned HTML/text.
+  - Uses the same `window.fetchWithCsrf` helper for any POST/JSON calls.
 
 ---
 
@@ -622,7 +784,7 @@ All blueprints live in `app/blueprints`.
 - Ensure `.env` has at least:
   - `DATABASE_URL` (or accept SQLite fallback).
   - Any required scraper keys if you plan to scrape.
-  - `OPENAI_API_KEY` if you want AI Insights to work.
+  - `OPENAI_API_KEY` if you want AI Insights and Recruiter Radar commentary to work.
 - Typical commands:
   - `python run.py`
   - or `flask run` if configured appropriately.
@@ -652,13 +814,16 @@ These are architectural hotspots where behaviour is coupled across modules:
   - Multiple definitions exist for `/` and `/home`.
   - `/api/pay-compare` is implemented in both `maps` and `api` blueprints.
   - `admin` routes are used throughout the UI; names and paths should be treated as stable.
-  - `/insights/ai-analyze` is called directly from `insights.html` JavaScript. Changing its path, method or JSON shape requires a coordinated frontend update.
+  - `/insights/ai-analyze` is called directly from `insights.html` JavaScript.
+  - `/recruiter/radar` and `/api/recruiter/radar` are called from the Recruiter Radar UI.
+  - Changing paths, methods or JSON shapes for these endpoints requires a coordinated frontend update.
 
 - **Canonicalisation**
   - `JobRoleMapping`, `SectorMapping`, and `JobRoleSectorOverride` drive:
     - Dashboard filters.
     - Coverage.
     - Pay Explorer.
+    - Recruiter Radar (role canonicalisation).
     - Admin mapping tools.
   - Changes here have cross-cutting effects.
 
@@ -681,7 +846,14 @@ These are architectural hotspots where behaviour is coupled across modules:
     - Frontend numeric `pay_rate` extraction.
     - Backend trusting that payload rather than re-querying the DB.
 
+- **Role hygiene review**
+  - The review CSV export/import routes assume a specific column layout and semantics.
+  - Changing column names/order in `role_report.py` must be mirrored in:
+    - `admin_job_roles.html` export links.
+    - Any documentation/training material for users editing the CSV offline.
+
 Any change in these areas should be considered through the lens of:
+
 - What uses this route/field/function today?
 - Does `cron_runner.py` or any admin tool rely on this behaviour?
 - Does the frontend expect a specific JSON shape or template context?

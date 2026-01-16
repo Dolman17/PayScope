@@ -1,5 +1,5 @@
 # PayScope Memory Spec (Product Rules & Behaviours)
-_Version 2.0 – 14 January 2026_
+_Version 2.1 – 16 January 2026_
 
 This document describes **what PayScope should do** and how features are expected to behave from a product point of view.
 
@@ -16,9 +16,11 @@ It is **not** an architecture guide – see `architecture.md` for routes, bluepr
 - Surfaces:
   - Pay maps by area and sector.
   - A Pay Explorer view that compares advertised pay vs ONS earnings.
+  - A Recruiter Radar view that gives a one-page snapshot for a specific role+area (current/forecast pay, demand, competition, and recommended pay to offer).
   - Dashboards/Insights for monitoring pay levels, spread and change over time.
   - Admin tools for ingestion, role/sector hygiene, coverage and diagnostics.
-  - AI helpers that explain patterns in plain language (AI Insights).
+  - AI helpers that explain patterns in plain language (AI Insights, Radar commentary).
+  - Role & sector hygiene workflows including AI-assisted mapping and CSV review-export/import.
 
 **Primary user personas**
 
@@ -26,6 +28,7 @@ It is **not** an architecture guide – see `architecture.md` for routes, bluepr
    - Wants to benchmark pay, spot under/over-payment and justify changes.
 2. **Talent Acquisition / Resourcing lead**
    - Wants to understand market pressure, hotspots, and where to advertise.
+   - Uses **Recruiter Radar** to answer “what should we pay for this role in this area?” quickly and defensibly.
 3. **Internal “data steward” / superuser**
    - Maintains mappings, monitors coverage and ingestion, runs backfills.
 
@@ -49,6 +52,10 @@ These terms should be used consistently in the UI and docs.
 - **Pay spread** – the interquartile range (P25 → P75) of hourly pay.
 - **Range** – minimum → maximum hourly pay in the current slice.
 - **Records in view** – number of **JobSummaryDaily-backed pay points** contributing to the current Insights view (or raw JobRecords where relevant).
+- **Radar slice** – the filtered mini-market used by Recruiter Radar:
+  - A canonical role (or small cluster of roles).
+  - A central location + radius.
+  - A lookback window (e.g. last 90 days).
 
 ---
 
@@ -93,6 +100,7 @@ Implementation detail: the exact definition of “outlier” (e.g. > P75 + k·IQ
     - Pay Explorer filters.
     - Dashboard & Insights filters.
     - Coverage computations.
+    - Recruiter Radar role selection and canonicalisation.
 
 ---
 
@@ -106,6 +114,7 @@ Purpose: tile-based “launchpad” for main tools.
   - **Upload data**
   - **Map View**
   - **Pay Explorer**
+  - **Recruiter Radar**
   - **Insights & Analytics**
   - **Records**
   - **Admin / Tools** (for superusers)
@@ -195,7 +204,6 @@ All of these stats are computed **client-side** from the markers payload; the ba
 - Sample-size sensitivity:
   - If no markers are visible, the Insights panel should clearly say so and nudge the user to pan/zoom or relax filters.
   - RLW and other metrics must show dashes / “n/a” rather than misleading numbers when there is no numeric pay.
-
 
 ### 4.4 Pay Explorer (`/pay-explorer`)
 
@@ -418,6 +426,151 @@ AI constraints:
 - AI should only summarise and interpret **what is in the payload**; no hallucinated external numbers.
 - Wording should avoid making strong legal/compliance claims.
 
+### 4.6 Recruiter Radar (`/recruiter/radar`)
+
+Purpose: give a recruiter a **one-page, decision-ready view** for a specific role in a specific area:
+
+> “If I advertise for this role here, what should I pay, and how hot is the market?”
+
+#### 4.6.1 Inputs
+
+- **Role**:
+  - Single text box with typeahead/auto-complete.
+  - As the user types, suggest canonical role groups (e.g. “Support Worker”, “Registered Nurse”) backed by `job_role_group` / `JobRoleMapping`.
+  - The selected value should always map to a canonical role if possible.
+- **Location**:
+  - Single free-text input:
+    - Accepts full postcodes (e.g. “WS13 6QX”).
+    - Accepts postcode districts (e.g. “WS13”).
+    - Accepts town/city names where possible.
+  - UI hint: “Postcode or town/city (WS13, Lichfield, etc.).”
+- **Radius**:
+  - Three quick buttons:
+    - 5 miles, 15 miles, 25 miles.
+  - Exactly one must be selected; default can be 15 miles.
+- **Lookback window**:
+  - Configurable options, typically:
+    - 30 days, 60 days, 90 days, 180 days.
+  - Default: 90 days.
+
+Behind the scenes:
+
+- The system geocodes the location into a **UK postcode + lat/lon** and applies a radius filter.
+- The **Radar slice** is defined as:
+  - `role` (canonical group).
+  - adverts within `radius` miles of location.
+  - adverts in the `lookback window`.
+
+If geocoding fails or falls outside the UK bounds:
+
+- Show a clear error:
+  - “We couldn’t find that as a UK location. Try a full postcode or nearby town/city.”
+
+#### 4.6.2 Outputs: layout & content
+
+The Recruiter Radar page should follow a consistent layout:
+
+1. **Header & filter summary**
+   - Role, location and radius clearly summarised.
+   - Lookback window shown in plain English (“Last 90 days of adverts”).
+
+2. **Headline pay cards**
+   - **Typical pay now**
+     - Main number: median hourly pay in the Radar slice.
+     - Sub-note: average pay and sample size (adverts in slice).
+   - **Forecasted pay**
+     - Main number: forecast median hourly pay 3 months ahead (or similar).
+     - Sub-note: trend direction:
+       - “Trend: rising”, “Trend: flat”, “Trend: falling”.
+       - Include a short phrase: “based on last 6 months of adverts”.
+   - **Recommended pay to offer**
+     - Main number: recommended hourly rate if recruiting **now**.
+     - Sub-band: “Recommended band: £X.XX – £Y.YY”.
+     - Principle:
+       - Base on current median + trend + competition:
+         - Tight market: recommend above median.
+         - Loose market: close to median or slightly below, but not absurdly low.
+       - Always display it as **guidance**, not a guarantee.
+
+3. **Demand & competition panel**
+
+- **Demand**
+  - Advert counts:
+    - Total adverts in the lookback window.
+    - Adverts in last 30 days (or shorter sub-window).
+  - Trend:
+    - Rising / flat / falling – based on simple counts by week or month.
+  - Copy:
+    - “Demand has increased/decreased X% vs the previous period.”
+- **Competition**
+  - Distinct employers:
+    - Number of unique employers posting for that role in the radius.
+  - Top employers:
+    - List top 3–5 employers by advert count, with badges showing count.
+  - Optional note:
+    - “Most active employer: <name> (N adverts in this window).”
+
+4. **Recent adverts list**
+
+- A small table (or card list) of the most recent adverts in the Radar slice:
+  - Columns:
+    - Employer.
+    - Job title (raw).
+    - Hourly pay (or – if missing).
+    - Postcode / town.
+    - Posting date / imported month.
+  - Typically limited to the last 10–20 adverts, with a link to “View these in Records” if the user wants the full table.
+
+5. **Trend & forecast chart**
+
+- Simple line (or area) chart:
+  - X-axis: time (e.g. weeks or months).
+  - Y-axis: median hourly pay.
+- Shows:
+  - Historical medians (solid line).
+  - Forecast line (dashed) for the next 2–3 points (e.g. next 3 months).
+- Visual cues:
+  - Clear distinction between historical and forecast.
+  - Tooltip explaining that forecasts are simple trend projections, not guarantees.
+
+6. **AI commentary card**
+
+- Goal: a short, well-structured narrative that ties everything together.
+- Should answer:
+  - Where is typical pay sitting right now?
+  - Is the market heating up or cooling down?
+  - Are there a lot of other employers fishing in the same pond?
+  - How “safe” vs “aggressive” is the recommended pay?
+- Tone:
+  - Calm, factual, non-alarmist.
+  - Avoid jargon and legalistic wording.
+- The card should include:
+  - 2–4 paragraphs or bullet blocks.
+  - A final “sanity check” note along the lines of:
+    - “Use this as a starting point and sense-check against your own bands and internal equity.”
+
+AI behaviour:
+
+- Inputs to the AI should be:
+  - Role, location, radius, lookback window.
+  - The key numeric outputs (medians, forecast, recommended band).
+  - Demand and competition metrics.
+  - Any caveats (small sample size, patchy coverage).
+- Constraints:
+  - AI should not invent external market numbers.
+  - AI should never promise that offering the recommended rate will “guarantee applicants”; instead talk in likelihood / attractiveness terms.
+  - If sample size is low, AI must say so explicitly.
+
+#### 4.6.3 Sample size & coverage in Radar
+
+- If the Radar slice has **very few adverts** (e.g. <20 ads in lookback window):
+  - A visible warning should appear near the header:
+    - “Small sample – treat these figures as directional only.”
+  - Recommended pay should still be calculated, but with softer language (e.g. “rough starting point”).
+- If local coverage is weak (based on coverage logic):
+  - Add a note in the commentary or a badge:
+    - “Coverage for this role/area is thin; actual market may be noisier than shown.”
+
 ---
 
 ## 5. Admin, coverage & quality
@@ -430,6 +583,7 @@ Product goals:
   - Map messy role titles into canonical groups.
   - Override sectors for specific roles.
   - See the impact of mappings on coverage and analytics.
+  - Review and approve large batches of mappings safely.
 
 Expected behaviours:
 
@@ -440,6 +594,93 @@ Expected behaviours:
 - Changes should:
   - Be idempotent and reversible via UI (editing existing mapping).
   - Take effect in future imports and, where reasonable, in recomputed summaries.
+
+#### 5.1.1 Job Role Cleaner (interactive)
+
+- Screen shows:
+  - Raw `job_role` strings with counts.
+  - Current canonical mapping (if any).
+  - Suggestions:
+    - Rule-based cleaning.
+    - Fuzzy matches against existing canonical vocabulary.
+    - Optional AI suggestions (“Ask AI”) when heuristics are weak.
+- Actions:
+  - Map a single raw value → canonical role.
+  - Bulk-map multiple selected raw values → canonical role.
+  - Auto-clean subset:
+    - Uses rules + fuzzy matching.
+    - Only accepts suggestions above a confidence threshold (configurable per run).
+- Optional **Apply to existing records** flags:
+  - If ticked, updates `job_role_group` on matching `JobRecord` rows to the chosen canonical role.
+  - Defaults can be tuned; generally safe to enable on high-confidence mappings.
+
+#### 5.1.2 Canonical label cleaner
+
+- One-off (but safe to re-run) action that:
+  - Scans `JobRoleMapping.canonical_role` labels.
+  - Detects labels that look like long AI paragraphs (too many words/sentences).
+  - Replaces them with cleaner, title-like labels using a deterministic helper.
+- Product rule:
+  - Do not silently change meaning; aim to compress long text into a sane job title.
+  - Provide a clear success message with counts of updated vs unchanged mappings.
+
+#### 5.1.3 Sector override cleaner
+
+- Focuses on roles whose sector is:
+  - Missing, empty, or “Other”.
+- Shows:
+  - Canonical roles (prefer `job_role_group`, fallback to `job_role`).
+  - Current sector.
+  - Basic pay stats (min, max, average).
+- Actions:
+  - Set canonical sector per role.
+  - Bulk-assign canonical sector to multiple roles.
+- These overrides:
+  - Take precedence over other sector-derivation logic.
+  - Feed through to dashboards, Insights, Pay Explorer and Recruiter Radar.
+
+#### 5.1.4 CSV review-export & re-import workflow
+
+Goal: allow a superuser to **export a review list**, work on it in Excel, then re-import their decisions.
+
+- From the Job Role Cleaner UI:
+  - A button like “Download review CSV” should export a file containing:
+    - `raw_role` – raw `job_role` text.
+    - `count` – how many records share this raw role.
+    - `current_canonical` – current canonical role (if any).
+    - `suggested_canonical` – best suggestion from rules/fuzzy/AI (non-binding).
+    - `hygiene_score` / flags – optional, to help prioritise.
+  - The CSV should be reasonably self-explanatory with a header row.
+
+- Offline workflow (user expectation):
+  - Open CSV in Excel/Sheets.
+  - For each row, the user can:
+    - Accept the suggested canonical role.
+    - Override with a better canonical role.
+    - Leave blank if they want to defer a decision.
+  - The spec does not prescribe exact column names for decisions, but a typical pattern is:
+    - `final_canonical` – field the system actually uses on re-import.
+    - Optionally, a `mode` column (“use_suggested” vs “manual”) if needed.
+
+- Re-import behaviour:
+  - Admin uploads the modified CSV via a dedicated screen.
+  - The system:
+    - Validates file shape (columns present, no obviously broken rows).
+    - For each row where a final canonical role is present:
+      - Creates or updates `JobRoleMapping` for that `raw_role`.
+    - Optional toggle:
+      - “Also backfill existing records”: if enabled, updates `job_role_group` on matching JobRecords.
+  - After a successful import:
+    - The UI should confirm:
+      - How many mappings were created vs updated.
+      - Whether backfill ran and how many records were affected (approximate is fine).
+  - Failure modes:
+    - If columns are missing or misnamed, show a clear error and example.
+
+- Product rules:
+  - This flow is intended for **trusted superusers** only.
+  - It should be easier and safer than hacking mappings directly in the DB.
+  - It must not silently delete or overwrite mappings where the CSV row is blank.
 
 ### 5.2 Coverage & health
 
@@ -469,7 +710,8 @@ Cron behaviour:
 - `cron_runner.py` periodically:
   - Recomputes coverage stats.
   - Logs coverage summary into `CronRunLog` (for trend & debugging).
-- Coverage logic is centralised in `coverage.py` so the admin UI and cron share the same rules.
+
+Coverage logic is centralised in `coverage.py` so the admin UI and cron share the same rules.
 
 ### 5.3 Cron & ingestion monitoring
 
@@ -498,7 +740,7 @@ Even though the implementation details live in `architecture.md` and code, these
    - “Spread” = P25–P75; “range” = min–max.
 
 2. **Routes and JSON shapes are contracts.**
-   - URLs like `/pay-explorer`, `/api/pay-compare`, `/insights`, `/insights/ai-analyze` are assumed stable by the UI and cron tools.
+   - URLs like `/pay-explorer`, `/api/pay-compare`, `/insights`, `/insights/ai-analyze`, `/recruiter/radar`, `/api/recruiter/radar` are assumed stable by the UI and cron/tools.
    - Any change here is a breaking product change and must be deliberate.
 
 3. **Sample size must always be visible.**
@@ -508,10 +750,17 @@ Even though the implementation details live in `architecture.md` and code, these
 4. **AI features are advisory, not authoritative.**
    - They summarise, they don’t decide.
    - Messaging must encourage verification against charts/tables.
+   - Recruiter Radar commentary should explicitly position recommendations as guidance, not guarantees or legal advice.
 
 5. **Canonicalisation is central.**
-   - Role and sector mappings power almost everything.
+   - Role and sector mappings power almost everything:
+     - Maps, Pay Explorer, Insights, Recruiter Radar, coverage.
    - Admin tools for managing these mappings are first-class, not “hidden dev knobs”.
+   - The CSV review-export/import workflow is the preferred mechanism for large-scale cleanups.
+
+6. **Location handling must be UK-sensitive.**
+   - Geocoding and radius searches should respect UK bounds; obviously non-UK results should be rejected.
+   - If a user enters something ambiguous, the system should fail clearly rather than silently mis-locating the Radar slice.
 
 ---
 
@@ -520,19 +769,21 @@ Even though the implementation details live in `architecture.md` and code, these
 These are **not** all implemented yet, but the spec assumes they’re on the roadmap and should be added without contradicting current behaviour:
 
 - Deeper AI support:
-  - AI-assisted role/sector mapping suggestions with confidence scores.
+  - AI-assisted role/sector mapping suggestions with confidence scores (already partially present through “Ask AI”; can be extended).
   - AI narrative for Pay Explorer comparisons (per role/sector).
+  - AI commentary variants tuned for different personas (HR vs TA vs Reward).
 - More coverage-aware UX:
-  - Badges/alerts in Pay Explorer/Insights when a view crosses weak-coverage thresholds.
+  - Badges/alerts in Pay Explorer/Insights/Radar when a view crosses weak-coverage thresholds.
 - Client-specific overlays:
-  - Ability to overlay a client’s own pay bands on top of market data.
+  - Ability to overlay a client’s own pay bands on top of market data (Pay Explorer, Insights, Radar).
+- Recruiter Radar enhancements:
+  - Allow saving “Radar snapshots” as sharable reports.
+  - Add a “What if we pay £X?” slider to show how aggressive/competitive that rate would be vs local distribution.
 
 When adding new features, they should:
 
-- Reuse existing concepts (market slice, canonical roles, coverage).
+- Reuse existing concepts (market slice, Radar slice, canonical roles, coverage).
 - Prefer additive behaviour over changing existing semantics.
 - Be documented by **extending this Memory Spec**, not overwriting it.
 
 ---
-
-
