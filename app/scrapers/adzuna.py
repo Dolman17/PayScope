@@ -6,7 +6,7 @@ import re
 import time
 import random
 from datetime import datetime, date
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -14,15 +14,170 @@ from .base import BaseScraper, JobRecord, normalise_whitespace
 
 ADZUNA_BASE_URL = "https://api.adzuna.com/v1/api/jobs"
 
-# Hours + weeks → annual → hourly conversion
-HOURS_PER_WEEK = float(os.getenv("JOB_HOURS_PER_WEEK", 37.5))
-WEEKS_PER_YEAR = float(os.getenv("JOB_WEEKS_PER_YEAR", 52))
+# -------------------------------------------------------------------
+# Salary conversion guardrails
+# -------------------------------------------------------------------
+def _safe_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(str(raw).strip())
+    except Exception:
+        return default
+
+
+def _clamp(v: float, lo: float, hi: float, default: float) -> float:
+    try:
+        if v < lo or v > hi:
+            return default
+        return v
+    except Exception:
+        return default
+
+
+# Sane UK defaults
+_DEFAULT_HOURS_PER_WEEK = 37.5
+_DEFAULT_WEEKS_PER_YEAR = 52.0
+_DEFAULT_DAYS_PER_WEEK = 5.0
+
+# Read env, then clamp to sane ranges (prevents accidental inflation)
+HOURS_PER_WEEK = _clamp(
+    _safe_float_env("JOB_HOURS_PER_WEEK", _DEFAULT_HOURS_PER_WEEK),
+    30.0,
+    45.0,
+    _DEFAULT_HOURS_PER_WEEK,
+)
+WEEKS_PER_YEAR = _clamp(
+    _safe_float_env("JOB_WEEKS_PER_YEAR", _DEFAULT_WEEKS_PER_YEAR),
+    48.0,
+    53.0,
+    _DEFAULT_WEEKS_PER_YEAR,
+)
+DAYS_PER_WEEK = _clamp(
+    _safe_float_env("JOB_DAYS_PER_WEEK", _DEFAULT_DAYS_PER_WEEK),
+    4.0,
+    6.0,
+    _DEFAULT_DAYS_PER_WEEK,
+)
 
 # Very broad UK postcode regex
 UK_POSTCODE_REGEX = re.compile(
     r"\b([A-Z]{1,2}[0-9][0-9A-Z]?\s*[0-9][A-Z]{2})\b",
     re.IGNORECASE,
 )
+
+
+def _to_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _normalise_interval(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    # Adzuna commonly uses: "year", "month", "week", "day", "hour"
+    # Some feeds may return "annum" etc – map those.
+    if s in ("year", "annum", "annual", "per year", "pa", "p.a."):
+        return "year"
+    if s in ("month", "per month", "pm", "p.m."):
+        return "month"
+    if s in ("week", "per week", "pw", "p.w."):
+        return "week"
+    if s in ("day", "per day", "pd", "p.d."):
+        return "day"
+    if s in ("hour", "per hour", "ph", "p.h."):
+        return "hour"
+    return s  # keep unknown token for debugging
+
+
+def _salary_to_hourly(
+    salary_min: Optional[float],
+    salary_max: Optional[float],
+    salary_interval: Optional[str],
+) -> Tuple[Optional[float], Optional[float], dict]:
+    """
+    Convert Adzuna salary_min/max + salary_interval to hourly.
+
+    Returns: (hourly_min, hourly_max, debug_dict)
+    """
+    interval = _normalise_interval(salary_interval)
+    debug = {
+        "_salary_interval": interval,
+        "_hours_per_week": HOURS_PER_WEEK,
+        "_weeks_per_year": WEEKS_PER_YEAR,
+        "_days_per_week": DAYS_PER_WEEK,
+    }
+
+    # If interval is hourly already, no conversion.
+    if interval == "hour":
+        hourly_min = salary_min
+        hourly_max = salary_max
+        debug["_hourly_method"] = "interval=hour"
+        debug["_hourly_divisor"] = None
+        return hourly_min, hourly_max, debug
+
+    # Convert to annual first
+    annual_min = None
+    annual_max = None
+
+    if interval == "year" or interval is None:
+        # If interval is missing, Adzuna salary fields are often annual.
+        annual_min = salary_min
+        annual_max = salary_max
+        debug["_hourly_method"] = "annual_assumed" if interval is None else "annual"
+    elif interval == "month":
+        annual_min = salary_min * 12.0 if salary_min is not None else None
+        annual_max = salary_max * 12.0 if salary_max is not None else None
+        debug["_hourly_method"] = "month_to_annual"
+    elif interval == "week":
+        annual_min = salary_min * WEEKS_PER_YEAR if salary_min is not None else None
+        annual_max = salary_max * WEEKS_PER_YEAR if salary_max is not None else None
+        debug["_hourly_method"] = "week_to_annual"
+    elif interval == "day":
+        # Approximate: daily * days/week * weeks/year
+        annual_min = salary_min * DAYS_PER_WEEK * WEEKS_PER_YEAR if salary_min is not None else None
+        annual_max = salary_max * DAYS_PER_WEEK * WEEKS_PER_YEAR if salary_max is not None else None
+        debug["_hourly_method"] = "day_to_annual"
+    else:
+        # Unknown interval: do not guess. Keep None and surface debug.
+        debug["_hourly_method"] = f"unknown_interval:{interval}"
+        return None, None, debug
+
+    debug["_annual_min"] = annual_min
+    debug["_annual_max"] = annual_max
+
+    divisor = HOURS_PER_WEEK * WEEKS_PER_YEAR
+    if not divisor or divisor <= 0:
+        divisor = _DEFAULT_HOURS_PER_WEEK * _DEFAULT_WEEKS_PER_YEAR
+
+    debug["_hourly_divisor"] = divisor
+
+    hourly_min = annual_min / divisor if annual_min is not None else None
+    hourly_max = annual_max / divisor if annual_max is not None else None
+
+    # Sanity guard: if computed hourly is implausible, don’t publish it.
+    # (Still store debug fields so you can inspect.)
+    def _sane(v: Optional[float]) -> bool:
+        if v is None:
+            return True
+        # pay < £1/hr or > £200/hr is almost certainly broken conversion/interval data
+        return 1.0 <= v <= 200.0
+
+    is_sane = _sane(hourly_min) and _sane(hourly_max)
+    debug["_hourly_is_sane"] = bool(is_sane)
+
+    if not is_sane:
+        return None, None, debug
+
+    return hourly_min, hourly_max, debug
 
 
 class AdzunaScraper(BaseScraper):
@@ -239,22 +394,22 @@ class AdzunaScraper(BaseScraper):
         latitude = item.get("latitude")
         longitude = item.get("longitude")
 
-        salary_min = item.get("salary_min")
-        salary_max = item.get("salary_max")
+        # Raw salary fields from Adzuna
+        salary_min_raw = item.get("salary_min")
+        salary_max_raw = item.get("salary_max")
+        salary_interval_raw = item.get("salary_interval")  # hour/day/week/month/year (often)
+        salary_currency = item.get("salary_currency")
+        salary_is_predicted = item.get("salary_is_predicted")
 
-        try:
-            annual_min = float(salary_min) if salary_min is not None else None
-        except Exception:
-            annual_min = None
+        salary_min = _to_float(salary_min_raw)
+        salary_max = _to_float(salary_max_raw)
 
-        try:
-            annual_max = float(salary_max) if salary_max is not None else None
-        except Exception:
-            annual_max = None
+        hourly_min, hourly_max, salary_debug = _salary_to_hourly(
+            salary_min=salary_min,
+            salary_max=salary_max,
+            salary_interval=salary_interval_raw,
+        )
 
-        divisor = HOURS_PER_WEEK * WEEKS_PER_YEAR
-        hourly_min = annual_min / divisor if annual_min else None
-        hourly_max = annual_max / divisor if annual_max else None
         rate_type = "hourly"
 
         created_raw = item.get("created")
@@ -287,8 +442,18 @@ class AdzunaScraper(BaseScraper):
         raw["_latitude"] = latitude
         raw["_longitude"] = longitude
         raw["_postcode_extracted"] = postcode
+
+        # Preserve raw salary fields + conversion debug (additive)
+        raw["_salary_min_raw"] = salary_min_raw
+        raw["_salary_max_raw"] = salary_max_raw
+        raw["_salary_currency"] = salary_currency
+        raw["_salary_interval_raw"] = salary_interval_raw
+        raw["_salary_is_predicted"] = salary_is_predicted
+
+        raw.update(salary_debug)
         raw["_hourly_min"] = hourly_min
         raw["_hourly_max"] = hourly_max
+
         raw["_search_what"] = self.what
         raw["_search_where"] = self.where
 
@@ -359,4 +524,3 @@ class AdzunaScraper(BaseScraper):
 
         print(f"[Adzuna] total records mapped: {len(all_records)}")
         return all_records
-

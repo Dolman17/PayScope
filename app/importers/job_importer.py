@@ -203,6 +203,14 @@ def import_posting_to_record(
     # --- Pay ---
     pay_rate = posting.min_rate or posting.max_rate
 
+    # Additive safety: if posting fields are missing but raw_json has derived hourly values, use them
+    if pay_rate is None:
+        data = _safe_load_raw_json(getattr(posting, "raw_json", None))
+        if isinstance(data, dict):
+            # Prefer sane computed values if present
+            if data.get("_hourly_is_sane") is True:
+                pay_rate = data.get("_hourly_min") or data.get("_hourly_max")
+
     # --- Dates ---
     imported_at = datetime.utcnow()
     imported_month = imported_at.strftime("%B")
