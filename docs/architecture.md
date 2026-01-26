@@ -1,6 +1,6 @@
 # PayScope – Architecture & Developer Overview
 
-_Last updated: 16 January 2026_
+_Last updated: 23 January 2026_
 
 This document is a “how the thing actually hangs together” map. It does **not** define product rules (see `brief.md` / PayScope Memory Spec for that); it explains where those rules are implemented in code.
 
@@ -27,7 +27,7 @@ This document is a “how the thing actually hangs together” map. It does **no
 - **Cron / batch runner**
   - `cron_runner.py` orchestrates scraping, importing, summaries, and coverage.
 - **One-off scripts**
-  - Backfills, seeds, and utilities (e.g. `backfill_*`, `seed_sector_mappings.py`, etc.).
+  - Backfills, seeds, and utilities (e.g. `backfill_*`, `seed_sector_mappings.py`, `backfill_adzuna_hourly_rates.py`, `summary_runner.py`, etc.).
 
 ---
 
@@ -73,12 +73,26 @@ Key files at the repo root:
 - **Migration / DB**
   - `run_migrations.py` – wrapper for running Alembic/Flask-Migrate.
   - `seed_users.py`, `seed_sector_mappings.py` – initial data seeds.
+
 - **Backfills / hygiene**
   - `backfill_counties.py`, `backfill_coordinates.py`, `backfill_sectors.py`,
     `backfill_other_sectors_from_roles.py`, `restore_sectors_from_postings.py`, etc.
+  - `backfill_adzuna_hourly_rates.py` – audits Adzuna-sourced `JobPosting` rows and recomputes `min_rate` / `max_rate` hourly values from annual salaries using a fixed hours-per-week/weeks-per-year assumption.  
+    - Flags “suspicious” postings whose current hourly values exceed a configurable threshold (e.g. `suspicious_over_hourly=30.0`) and, when `only_if_suspicious=True`, only touches those rows.
+    - Applies a simple **scale fix** when the existing hourly looks like a clean 10× multiple of the recomputed rate (e.g. £162.56 → £16.26), to undo mis-scaled salaries.
+    - Supports:
+      - `dry_run=True` / `False` – logging-only vs real updates.
+      - `commit_every` – batching for large backfills to avoid giant transactions.
+      - `id_min` / `id_max` / `max_rows` – processing JobPosting IDs in slices.
+    - Optionally updates linked `JobRecord` rows where `JobRecord.imported_from_posting_id` matches the corrected `JobPosting.id`, so map/records/Radar views see the corrected hourly pay immediately.
+
 - **Summaries & ONS**
-  - `summary_runner.py` – drives summary rebuilding.
+  - `summary_runner.py` – drives **day-by-day** rebuilding of `JobSummaryDaily` over a configurable window:
+    - Uses `SUMMARY_DAYS_BACK` (default 30) to decide how many days to rebuild ending at “today”.
+    - Wraps the run in a `CronRunLog` row (`job_name` from `SUMMARY_JOB_NAME` or a sensible default), capturing per-day row counts and totals in `run.run_stats`.
+    - Calls `build_daily_job_summaries(target_date, delete_existing=True)` for each date in the window, committing each day in turn to avoid huge transactions.
   - `ons_loader.py` – loads ONS earnings into `OnsEarnings`.
+
 - **Ops**
   - `adzuna_cron.py`, `reed_checks.py`, `backup_to_dropbox.py`,
     `payscope_backup_now.dump` (example backup).
@@ -135,14 +149,20 @@ _All models live in `models.py`._
     - Source (`source_site`), job title, raw text, pay fields, location text.
     - `raw_json` blob (API payload).
   - Feeds into `JobRecord`.
+  - For Adzuna rows, `min_rate` / `max_rate` and `rate_type` are normalised
+    from the API payload and can later be audited/recomputed by
+    `backfill_adzuna_hourly_rates.py` if pay logic changes.
 
 - **`JobRecord`**
   - Normalised record used for maps, dashboards, Pay Explorer and Recruiter Radar.
   - Contains:
     - Employer, role, **canonical `job_role_group`**, sector, contract type.
-    - Pay values (hourly, annual, etc.).
+    - Pay values (hourly, annual, etc.), with `pay_rate` being the canonical hourly used in analytics.
     - Location (postcode, county, lat/lon).
     - Metadata: import batch, imported date/year, source, etc.
+  - Some JobRecords carry a link back to `JobPosting` via
+    `imported_from_posting_id` – this is used by the Adzuna backfill script to
+    cascade corrected hourly pay into existing records where safe.
 
 ### 4.3 Canonicalisation & mapping
 
@@ -151,6 +171,7 @@ _All models live in `models.py`._
   - Also used as:
     - A cache for AI suggestions.
     - The target of review-export/review-import workflows in role hygiene.
+
 - **`SectorMapping`**
   - Maps raw sectors → canonical sectors.
 
@@ -186,6 +207,9 @@ _All models live in `models.py`._
     - What ran.
     - When.
     - Success/failure, counts, and optional error info.
+  - Also used by:
+    - `summary_runner.py` to log summary rebuilds.
+    - Any manual/cron executions of larger backfills or hygiene jobs (via their own wrappers) if you choose to log them.
 
 ### 4.6 Funnel & marketing
 
@@ -396,7 +420,6 @@ All blueprints live in `app/blueprints`.
       - `_clean_canonical_label()` – canonical label cleaner (used by the route above and other tools).
       - `_role_hygiene_flags()` / `_role_hygiene_score()` – helpers to score how “clean” a mapping is for reporting.
 
-
 - Uses:
   - `JobRecord`, `JobSummaryDaily`, `JobRoleMapping`, `JobRoleSectorOverride`, `SectorMapping`.
   - Helpers in `app.blueprints.utils` (filter building, caching, canonical role/sector filters).
@@ -430,7 +453,7 @@ The **AI analyse endpoint** is intentionally decoupled:
 - Uses:
   - `JobSummaryDaily`, `OnsEarnings`, `pay_compare` helpers.
 
-> Note: There are **two** `/api/pay-compare` endpoints – one in `maps` (no prefix) and one in `api` (with `/api` prefix). The former is effectively `/api/pay-compare`, the latter `/api/pay-compare` via the api blueprint. Registration order determines which one handles requests; treat this as sensitive.
+> Note: There are **two** `/api/pay-compare` endpoints – one in `maps` and one in `api` blueprints. Registration order determines which one handles requests; treat this as sensitive.
 
 ### 5.13 `admin` – ingestion, coverage, and diagnostic tools
 
@@ -444,6 +467,9 @@ The **AI analyse endpoint** is intentionally decoupled:
   - Data hygiene & backfills:
     - `/admin/backfill-counties`, `/admin/regeocode-jobs`,
       `/admin/companies/regenerate-ids`, etc.
+    - These routes are for smaller, targeted jobs. Larger or more experimental
+      runs (like `backfill_adzuna_hourly_rates.py` and `summary_runner.py`)
+      are typically run via CLI / cron rather than interactive admin buttons.
   - ONS & Pay Explorer diagnostics:
     - `/admin/ons/import`, `/admin/inspect/ons`.
     - `/admin/debug/pay-explorer-json`, `/admin/debug/pay-explorer-mapping`.
@@ -499,6 +525,7 @@ The **AI analyse endpoint** is intentionally decoupled:
       - **Location** free-text input (typically town, postcode district or full postcode).
       - **Radius** selectors (5, 15, 25 miles).
       - **Lookback window** dropdown (e.g. 30, 60, 90, 180 days – configurable).
+      - Role + location + radius + lookback together define the **Radar slice**.
     - On submit, JS calls the API endpoint below.
   - `/api/recruiter/radar` (GET/JSON)
     - Query params:
@@ -555,7 +582,15 @@ The **AI analyse endpoint** is intentionally decoupled:
    - Others as configured (e.g. Reed).
 2. Scrapers:
    - Call external APIs (Adzuna, etc.) using API keys from env (e.g. `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`).
-   - Normalise and insert/update rows in `JobPosting`.
+   - Normalise payloads and insert/update rows in `JobPosting`.
+   - For Adzuna:
+     - Pay fields are parsed into `min_rate`, `max_rate` and `rate_type`.
+     - Initial hourly equivalents are computed in the scraper/importer using a standard hours/week & weeks/year assumption.
+
+3. When pay-normalisation rules are tuned or Adzuna behaviour changes in the wild, you can run **`backfill_adzuna_hourly_rates.py`** over the existing JobPostings to:
+   - Recompute hourly equivalents from the stored annual salaries.
+   - Detect and correct clearly mis-scaled hourly values (10× errors) while leaving plausible rates alone.
+   - Restrict changes to suspicious rows only (above a threshold) to avoid churning the whole dataset unnecessarily.
 
 ### 6.2 JobPosting → JobRecord
 
@@ -566,17 +601,32 @@ The **AI analyse endpoint** is intentionally decoupled:
 3. During import:
    - Normalises role titles (and may update `JobRoleMapping`).
    - Derives sector (with `SectorMapping` and overrides).
-   - Cleans pay fields.
+   - Cleans pay fields:
+     - Uses hourly rates derived from `JobPosting.min_rate` / `max_rate` + `rate_type`.
+     - If `backfill_adzuna_hourly_rates.py` has been run, the importer benefits from the corrected hourly equivalents for Adzuna postings.
    - Resolves or creates `Company` as needed.
-   - Writes final records into `JobRecord`.
+   - Writes final records into `JobRecord`:
+     - `pay_rate` stores the canonical hourly figure used by Maps, Insights, Pay Explorer and Recruiter Radar.
+     - `imported_from_posting_id` may store the originating `JobPosting.id`.
+
+4. When the Adzuna backfill script is run with `update_job_records=True` (or equivalent flag), it:
+   - Locates JobRecords whose `imported_from_posting_id` matches a corrected JobPosting.
+   - Updates `pay_rate` (and any derived hourly fields) to the corrected values.
+   - Leaves records from other sources untouched.
 
 ### 6.3 JobRecord → JobSummaryDaily
 
 1. Summaries are built via:
-   - `summary_runner.py` and/or admin routes (`/admin/admin/rebuild-summaries`).
+   - `summary_runner.py` (CLI/cron).
+   - Admin routes (`/admin/admin/rebuild-summaries`).
 2. Aggregation:
    - Groups `JobRecord` by date, sector, **job_role_group**, geography, etc.
    - Stores counts, medians, and other summary stats in `JobSummaryDaily`.
+
+3. **After any large pay backfill affecting historical JobRecords** (e.g. Adzuna hourly corrections), you should:
+   - Run `summary_runner.py` for an appropriate window (e.g. last 30–90 days) so that:
+     - Map, Insights, Pay Explorer and Recruiter Radar views based on `JobSummaryDaily` align with the corrected hourly rates.
+   - This is necessary because `JobSummaryDaily` stores **snapshots** of pay stats; it does not automatically recalc when individual JobRecords change.
 
 ### 6.4 Summaries → UI & analytics
 
@@ -634,6 +684,9 @@ The **AI analyse endpoint** is intentionally decoupled:
   - `COVERAGE_BOOST_MIN_DAYS_SEEN`
   - `CRON_MAX_TOTAL_ROLES`
   - `COVERAGE_BOOST_WHERE`
+- **Summaries**
+  - `SUMMARY_DAYS_BACK` – number of days for `summary_runner.py` to rebuild, counting backwards from today (default 30).
+  - `SUMMARY_JOB_NAME` – optional job name string for `CronRunLog.job_name` when `summary_runner.py` runs.
 - **AI Insights & Recruiter Radar**
   - OpenAI key and model config (e.g. `OPENAI_API_KEY`, `OPENAI_MODEL`), used by:
     - `/insights/ai-analyze`
@@ -804,58 +857,188 @@ The **AI analyse endpoint** is intentionally decoupled:
 - For manual runs / debugging:
   - `python cron_runner.py` (parameters/config as defined in the file).
 
----
+### 9.4 Adzuna hourly backfill & summary rebuild
 
-## 10. Invariants & “handle with care” zones
+Operational pattern when you need to correct Adzuna hourly rates and keep analytics consistent:
+
+1. **Inspect what would change (dry run)**  
+   In a Flask shell or standalone script:
+
+   ```python
+   from scripts.backfill_adzuna_hourly_rates import run_backfill
+
+   run_backfill(
+       dry_run=True,
+       only_if_suspicious=True,
+       suspicious_over_hourly=30.0,
+       commit_every=200,
+       id_min=None,
+       id_max=None,
+   )
+
+   Confirms:
+
+How many Adzuna postings are in scope.
+
+How many would be updated.
+
+A sample of postings with current vs recomputed hourly, plus job titles and companies.
+
+Apply corrections in batches
+Once you’re happy:
+
+run_backfill(
+    dry_run=False,
+    only_if_suspicious=True,
+    suspicious_over_hourly=30.0,
+    commit_every=200,
+    id_min=1,
+    id_max=5000,
+)
+
+
+Repeat for subsequent ID ranges as needed (e.g. 5001–10000, etc.).
+
+commit_every keeps transactions small and avoids long-lived cursors.
+
+The script:
+
+Fixes obviously mis-scaled hourly values.
+
+Leaves plausible hourly rates alone.
+
+Optionally cascades corrections into JobRecord rows via imported_from_posting_id.
+
+Rebuild JobSummaryDaily for the affected window
+
+After the backfill (and any re-imports if you choose to re-run importers for older postings):
+
+Run summary_runner.py to rebuild daily summaries:
+
+SUMMARY_DAYS_BACK=60 SUMMARY_JOB_NAME=job_summary_daily_rebuild python summary_runner.py
+
+
+Or trigger the equivalent admin route (/admin/admin/rebuild-summaries) if available.
+
+This keeps:
+
+Pay Explorer.
+
+Insights.
+
+Recruiter Radar trend/forecast.
+aligned with the corrected hourly pay from Adzuna.
+
+Check CronRunLog / admin screens
+
+Verify CronRunLog entries for:
+
+The backfill run(s) (if you wire them to CronRunLog).
+
+The summary rebuild (SUMMARY_JOB_NAME).
+
+Spot-check:
+
+Pay Explorer outputs for Adzuna-heavy roles/areas.
+
+Recruiter Radar slices where you previously saw absurd hourly rates.
+
+10. Invariants & “handle with care” zones
 
 These are architectural hotspots where behaviour is coupled across modules:
 
-- **Route names & paths**
-  - Multiple definitions exist for `/` and `/home`.
-  - `/api/pay-compare` is implemented in both `maps` and `api` blueprints.
-  - `admin` routes are used throughout the UI; names and paths should be treated as stable.
-  - `/insights/ai-analyze` is called directly from `insights.html` JavaScript.
-  - `/recruiter/radar` and `/api/recruiter/radar` are called from the Recruiter Radar UI.
-  - Changing paths, methods or JSON shapes for these endpoints requires a coordinated frontend update.
+Route names & paths
 
-- **Canonicalisation**
-  - `JobRoleMapping`, `SectorMapping`, and `JobRoleSectorOverride` drive:
-    - Dashboard filters.
-    - Coverage.
-    - Pay Explorer.
-    - Recruiter Radar (role canonicalisation).
-    - Admin mapping tools.
-  - Changes here have cross-cutting effects.
+Multiple definitions exist for / and /home.
 
-- **Pay Explorer**
-  - `pay_compare.py` + `maps.py` + `api.py` + `pay_explorer.html`.
-  - Input/output formats from the API are consumed directly by JS charts and table UI.
-  - **Do not** change the JSON shape from `get_pay_explorer_data` without updating the UI in lockstep.
+/api/pay-compare is implemented in both maps and api blueprints.
 
-- **Coverage**
-  - `coverage.py` helpers are used by:
-    - `cron_runner.py` for coverage stats.
-    - Admin coverage and heatmap routes.
+admin routes are used throughout the UI; names and paths should be treated as stable.
 
-- **Insights**
-  - `/dashboard` and `/insights` both depend on:
-    - Canonical `job_role_group` and sectors.
-    - Correct aggregation in `JobSummaryDaily`.
-  - Changes to the way summaries are computed or filtered will affect both dashboards and Pay Explorer, so be deliberate and keep behaviour consistent.
-  - AI Insights relies on:
-    - Frontend numeric `pay_rate` extraction.
-    - Backend trusting that payload rather than re-querying the DB.
+/insights/ai-analyze is called directly from insights.html JavaScript.
 
-- **Role hygiene review**
-  - The review CSV export/import routes assume a specific column layout and semantics.
-  - Changing column names/order in `role_report.py` must be mirrored in:
-    - `admin_job_roles.html` export links.
-    - Any documentation/training material for users editing the CSV offline.
+/recruiter/radar and /api/recruiter/radar are called from the Recruiter Radar UI.
 
-Any change in these areas should be considered through the lens of:
+Changing paths, methods or JSON shapes for these endpoints requires a coordinated frontend update.
 
-- What uses this route/field/function today?
-- Does `cron_runner.py` or any admin tool rely on this behaviour?
-- Does the frontend expect a specific JSON shape or template context?
+Canonicalisation
 
----
+JobRoleMapping, SectorMapping, and JobRoleSectorOverride drive:
+
+Dashboard filters.
+
+Coverage.
+
+Pay Explorer.
+
+Recruiter Radar (role canonicalisation).
+
+Admin mapping tools.
+
+Changes here have cross-cutting effects.
+
+Pay Explorer
+
+pay_compare.py + maps.py + api.py + pay_explorer.html.
+
+Input/output formats from the API are consumed directly by JS charts and table UI.
+
+Do not change the JSON shape from get_pay_explorer_data without updating the UI in lockstep.
+
+Coverage
+
+coverage.py helpers are used by:
+
+cron_runner.py for coverage stats.
+
+Admin coverage and heatmap routes.
+
+Insights
+
+/dashboard and /insights both depend on:
+
+Canonical job_role_group and sectors.
+
+Correct aggregation in JobSummaryDaily.
+
+Changes to the way summaries are computed or filtered will affect both dashboards and Pay Explorer, so be deliberate and keep behaviour consistent.
+
+AI Insights relies on:
+
+Frontend numeric pay_rate extraction.
+
+Backend trusting that payload rather than re-querying the DB.
+
+Role hygiene review
+
+The review CSV export/import routes assume a specific column layout and semantics.
+
+Changing column names/order in role_report.py must be mirrored in:
+
+admin_job_roles.html export links.
+
+Any documentation/training material for users editing the CSV offline.
+
+Adzuna hourly backfill
+
+backfill_adzuna_hourly_rates.py assumes:
+
+Stable JobPosting IDs.
+
+Consistent rate_type semantics (annual vs hourly).
+
+Known hours-per-week/weeks-per-year conversion values.
+
+Running it repeatedly with the same parameters is intended to be idempotent:
+
+Suspicious postings converge to the recomputed hourly values.
+
+Non-suspicious postings are left untouched.
+
+Always treat backfill scripts as “handle with care”:
+
+Dry-run first.
+
+Run in batches.
+
+Rebuild summaries where appropriate.

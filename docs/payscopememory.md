@@ -1,5 +1,14 @@
+
+---
+
+## `payscopememory.md` – PayScope Memory Spec (updated)
+
+:contentReference[oaicite:1]{index=1}  
+
+```markdown
 # PayScope Memory Spec (Product Rules & Behaviours)
-_Version 2.1 – 16 January 2026_
+
+_Version 2.2 – 23 January 2026_
 
 This document describes **what PayScope should do** and how features are expected to behave from a product point of view.
 
@@ -64,13 +73,43 @@ These terms should be used consistently in the UI and docs.
 ### 3.1 Pay values
 
 - PayScope aims to work in **hourly equivalent** where possible.
+
 - When importing, the importer:
   - Converts annual salaries to an hourly equivalent using configurable assumptions (e.g. 37.5–40 hours/week).
-  - Normalises mixed formats (£14–£16 per hour, “£30k–£35k per annum”, etc.) into numeric fields on `JobRecord`.
+  - Normalises mixed formats (“£14–£16 per hour”, “£30k–£35k per annum”, etc.) into numeric fields on `JobRecord`.
+  - Interprets source-specific quirks (e.g. Adzuna’s API fields) into a consistent `min_rate`, `max_rate` and `rate_type` on `JobPosting` that can then be converted to hourly.
+
 - Whenever pay is displayed in analytics:
-  - **Prefer the canonical hourly field** (e.g. `canonical_hourly_rate` or equivalent).
+  - **Prefer the canonical hourly field** (e.g. `JobRecord.pay_rate` or equivalent).
   - Ignore non-sensical values (≤0, missing, or clearly broken).
   - Ignore values clearly marked as annual-only where conversion was not possible.
+
+- For **Adzuna-sourced data**, there is an additional safety rail in the form of a dedicated backfill:
+
+  - A script (`backfill_adzuna_hourly_rates.py`) can be run to **audit and correct** hourly rates derived from Adzuna’s payload when either:
+    - Adzuna changes how it encodes pay, or
+    - New conversion rules are introduced (e.g. hours/week assumptions are updated).
+
+  - The backfill does the following (implementation detail, but important for product behaviour):
+
+    - Recomputes hourly equivalents from the stored annual salaries using fixed assumptions:
+      - e.g. 37.5 hours/week, 52 weeks/year (plus days/week where relevant).
+    - Flags “suspicious” postings where the currently stored hourly is **too high to be plausible** for the sector (e.g. above a threshold like £30/hour, configurable).
+    - Applies a simple **scale fix** where the existing hourly is almost exactly 10× the recomputed hourly:
+      - e.g. a support worker job at £162.56/hour with a `salary_min` of £317,000/year gets corrected to £16.26/hour.
+    - Leaves non-suspicious postings alone, so genuine high-paying roles are not automatically flattened.
+    - Optionally propagates the corrected hourly into any linked JobRecords via `imported_from_posting_id`, ensuring that:
+      - Maps.
+      - Insights.
+      - Pay Explorer.
+      - Recruiter Radar.
+      all see the corrected hourly value.
+
+  - From a **product point of view**, the promise is:
+
+    - Adzuna-sourced pay numbers should sit in **plausible bands** for the role/sector, rather than silently showing absurd 10× salaries that distort charts.
+    - If and when pay logic is tuned, **historical Adzuna adverts can be brought into line** via a controlled backfill process, rather than being stuck with legacy conversion mistakes.
+    - After a significant backfill, daily summaries (`JobSummaryDaily`) are rebuilt for the affected time window, so users always see analytics that match the corrected underlying adverts.
 
 ### 3.2 Outliers
 
@@ -547,7 +586,8 @@ The Recruiter Radar page should follow a consistent layout:
 - The card should include:
   - 2–4 paragraphs or bullet blocks.
   - A final “sanity check” note along the lines of:
-    - “Use this as a starting point and sense-check against your own bands and internal equity.”
+
+> “Use this as a starting point and sense-check against your own bands and internal equity.”
 
 AI behaviour:
 
@@ -729,6 +769,26 @@ Product expectations:
   - Health summary (DB reachable, last cron, coverage status).
   - Used for external monitoring or internal dashboards.
 
+In addition:
+
+- Larger **backfill / hygiene operations** that materially affect pay or summaries are expected to run as **explicit maintenance tasks**, not as part of the regular cron:
+
+  - Example: running `backfill_adzuna_hourly_rates.py` with `only_if_suspicious=True` and a high `suspicious_over_hourly` threshold to clean up obviously mis-scaled Adzuna rates.
+  - Example: running `summary_runner.py` afterwards to rebuild `JobSummaryDaily` for the last N days so that:
+    - Pay Explorer.
+    - Insights.
+    - Recruiter Radar.
+    all reflect the corrected pay.
+
+- From a product perspective, the important behaviours are:
+
+  - Users **do not need to know** that a backfill happened behind the scenes; they simply see more realistic hourly rates and analytics that no longer spike because of encoding errors.
+  - Superusers can see, from `CronRunLog` and admin tools, when such maintenance was done and at what scale.
+  - Backfills are **deliberate events** with:
+    - Dry-run capability.
+    - Batching where needed.
+    - Clear start/end logging.
+
 ---
 
 ## 6. Safety rails & invariants (product-level)
@@ -762,6 +822,13 @@ Even though the implementation details live in `architecture.md` and code, these
    - Geocoding and radius searches should respect UK bounds; obviously non-UK results should be rejected.
    - If a user enters something ambiguous, the system should fail clearly rather than silently mis-locating the Radar slice.
 
+7. **Backfills should be transparent but non-disruptive.**
+   - When pay backfills (like the Adzuna hourly correction) are run:
+     - They should be logged and inspectable by superusers.
+     - They should be **idempotent and narrow** by default (target suspicious values, not everything).
+     - Downstream analytics (`JobSummaryDaily`) should be refreshed so user-facing surfaces are coherent.
+   - Business copy in the UI should not need to change; the backfill is there to make the product keep its existing promises (“typical pay” is believable, outliers are real, not formatting bugs).
+
 ---
 
 ## 7. Roadmap hooks (for future spec extensions)
@@ -779,6 +846,11 @@ These are **not** all implemented yet, but the spec assumes they’re on the roa
 - Recruiter Radar enhancements:
   - Allow saving “Radar snapshots” as sharable reports.
   - Add a “What if we pay £X?” slider to show how aggressive/competitive that rate would be vs local distribution.
+- Pay-quality diagnostics:
+  - Admin-facing view that surfaces:
+    - Sectors/roles with lots of suspiciously high hourly values.
+    - Where backfills (like Adzuna hourly correction) have had the biggest impact.
+  - This can help direct future ingestion rule tweaks.
 
 When adding new features, they should:
 
