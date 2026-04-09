@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -192,7 +192,7 @@ def sample_job_records(app):
     from extensions import db
     from models import JobRecord
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     records = [
         JobRecord(

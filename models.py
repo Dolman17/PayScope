@@ -1,13 +1,18 @@
 # models.py
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import datetime, date, UTC
 
 from flask_login import UserMixin
 from sqlalchemy import CheckConstraint, Index, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
 
 # -------------------------------------------------------------------
 # Core job/pay data
@@ -32,7 +37,7 @@ class JobRecord(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     imported_from_posting_id = db.Column(db.Integer)
     imported_at = db.Column(db.DateTime)
@@ -145,7 +150,7 @@ class JobPosting(db.Model):
     url = db.Column(db.Text, nullable=True)
 
     posted_date = db.Column(db.Date, nullable=True)
-    scraped_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    scraped_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     imported = db.Column(db.Boolean, default=False)
 
@@ -167,7 +172,7 @@ class WaitlistSignup(db.Model):
     email = db.Column(db.String(255), nullable=False, index=True, unique=True)
     source = db.Column(db.String(50), nullable=True)  # e.g. "landing"
     notes = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
 
 
 class AccessRequest(db.Model):
@@ -177,7 +182,7 @@ class AccessRequest(db.Model):
     email = db.Column(db.String(255), nullable=True, index=True)
     notes = db.Column(db.Text, nullable=True)
     source = db.Column(db.String(50), nullable=True)  # e.g. "landing"
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     status = db.Column(
         db.String(30), nullable=False, default="new"
     )  # new/triaged/approved/rejected
@@ -192,7 +197,7 @@ class Company(db.Model):
         db.String(255), index=True
     )  # normalized form for fuzzy match
     sector = db.Column(db.String(50), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
 
 class JobRoleMapping(db.Model):
@@ -211,12 +216,12 @@ class JobRoleMapping(db.Model):
     canonical_role = db.Column(db.String(255), nullable=False)
     source = db.Column(db.String(50))  # optional: e.g. "adzuna", "indeed"
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
     updated_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         nullable=False,
     )
 
@@ -249,12 +254,12 @@ class SectorMapping(db.Model):
     )
 
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
     updated_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         nullable=False,
     )
 
@@ -267,7 +272,7 @@ class CronRunLog(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     job_name = db.Column(db.String(100), nullable=False)
-    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, nullable=False, default=utc_now)
     finished_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(
         db.String(20), nullable=False, default="running"
@@ -298,7 +303,7 @@ class OnsEarnings(db.Model):
     value = db.Column(db.Float, nullable=True)
 
     created_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow
+        db.DateTime, nullable=False, default=utc_now
     )
 
     __table_args__ = (
@@ -324,7 +329,7 @@ class Organisation(db.Model):
         db.Boolean, default=True, nullable=False
     )
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
 
     def __repr__(self):
@@ -386,7 +391,7 @@ class AIAnalysisLog(db.Model):
         db.Text
     )  # store AI output so you can review it later
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow
+        db.DateTime, default=utc_now
     )
 
     user = db.relationship("User", backref="ai_logs")
@@ -397,7 +402,7 @@ class UploadBatch(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
     created_by = db.Column(
         db.String(120), nullable=True
@@ -492,7 +497,7 @@ class WeeklyMarketChange(db.Model):
     )  # When the AI fields were generated
 
     created_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow
+        db.DateTime, nullable=False, default=utc_now
     )
 
     __table_args__ = (
@@ -518,12 +523,12 @@ class WeeklyInsight(db.Model):
     ai_model = db.Column(db.String(64), nullable=True)
 
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
     updated_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         nullable=False,
     )
 
@@ -548,12 +553,12 @@ class JobRoleSectorOverride(db.Model):
     )
 
     created_at = db.Column(
-        db.DateTime, default=datetime.utcnow, nullable=False
+        db.DateTime, default=utc_now, nullable=False
     )
     updated_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         nullable=False,
     )
 
@@ -597,7 +602,7 @@ def ensure_default_organisation() -> Organisation:
             name="Default Organisation",
             slug="default",
             is_active=True,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
         db.session.add(org)
         db.session.commit()

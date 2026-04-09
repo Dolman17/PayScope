@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required
@@ -35,7 +35,7 @@ def login():
             login_user(user, remember=remember)
 
             # Track last login time for monitoring / auditing
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now(UTC)
             try:
                 db.session.commit()
             except Exception:

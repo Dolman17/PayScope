@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import json
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, UTC
 from functools import wraps
 
 from flask import (
@@ -2228,7 +2228,7 @@ def admin_status_json():
         if token_given != token_expected:
             return jsonify({"ok": False, "error": "unauthorised"}), 401
 
-    started = datetime.utcnow()
+    started = datetime.now(UTC)
 
     db_ok = False
     db_error = None
@@ -2264,7 +2264,7 @@ def admin_status_json():
             counts["job_postings"] = None
 
         try:
-            since = datetime.utcnow() - timedelta(days=1)
+            since = datetime.now(UTC) - timedelta(days=1)
             counts["cron_runs_24h"] = int(
                 db.session.query(func.count(CronRunLog.id))
                 .filter(CronRunLog.started_at >= since)
@@ -2418,7 +2418,7 @@ def admin_status_json():
         except Exception:
             cron_last = []
 
-    elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
+    elapsed_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
 
     ok = db_ok
     # Simple RAG for the endpoint itself
@@ -2427,7 +2427,7 @@ def admin_status_json():
     payload = {
         "ok": ok,
         "status": status,
-        "app_time_utc": datetime.utcnow().isoformat() + "Z",
+        "app_time_utc": datetime.now(UTC).isoformat(),
         "elapsed_ms": elapsed_ms,
         "db_ok": db_ok,
         "db_error": db_error,
