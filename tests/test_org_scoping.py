@@ -30,8 +30,9 @@ def test_users_can_belong_to_different_organisations(app, normal_user, second_or
         "Replace this with true tenant-scoping assertions once record-level tenancy "
         "exists in the schema or query layer."
     ),
-    strict=False,
+    strict=True,
 )
+@pytest.mark.xfail_architecture
 def test_job_records_should_eventually_be_scoped_by_organisation():
     from models import JobRecord
 

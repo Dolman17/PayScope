@@ -30,8 +30,9 @@ def test_pay_compare_accepts_expected_query_params(logged_in_client, sample_job_
         "not yet an external API with API-key auth. Convert this test when "
         "external API auth is added under /api/v1."
     ),
-    strict=False,
+    strict=True,
 )
+@pytest.mark.xfail_architecture
 def test_external_api_should_require_auth_when_hardened(client):
     response = client.get("/api/pay-compare")
     assert response.status_code in (401, 403)
