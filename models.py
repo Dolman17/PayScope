@@ -133,7 +133,7 @@ class JobPosting(db.Model):
     postcode = db.Column(db.String(20), nullable=True)
 
     # high-level sector classification, e.g. "Social Care", "Nursing", "HR"
-    sector = db.Column(db.Text, nullable=True, index=True)
+    sector = db.Column(db.Text, nullable=True)
 
     min_rate = db.Column(db.Numeric(10, 2), nullable=True)
     max_rate = db.Column(db.Numeric(10, 2), nullable=True)

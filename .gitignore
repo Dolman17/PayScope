@@ -53,3 +53,7 @@ app.db
 *.sqlite
 *.sqlite3
 instance/
+
+# Local CI/test sqlite files
+test_ci.sqlite
+test_*.sqlite

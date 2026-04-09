@@ -15,7 +15,6 @@ from models import JobRecord, JobSummaryDaily
 from app.blueprints.dashboard.helpers import _canonical_role_filter_options  # type: ignore
 from .utils import geocode_postcode_cached, inside_uk
 
-
 bp = Blueprint("recruiter", __name__)
 
 # Used only for outcode lookups like WS13, B1 etc.
@@ -42,19 +41,24 @@ def _geocode_flexible_location(raw_location: str) -> Tuple[float | None, float |
         return lat, lon
 
     # 2) Outcode path – very lightweight heuristic so we don't
-    #    accidentally treat "West Midlands" as a postcode.
+    # accidentally treat "West Midlands" as a postcode.
     token = loc.upper().replace(" ", "")
+
     # 1–4 chars is a good guard rail for things like B1, B15, WS13
     if not token or len(token) > 4:
         return (None, None)
 
     try:
-        resp = requests.get(POSTCODES_IO_OUTCODE_URL.format(outcode=token), timeout=10)
+        resp = requests.get(
+            POSTCODES_IO_OUTCODE_URL.format(outcode=token),
+            timeout=10,
+        )
         if resp.status_code != 200:
             return (None, None)
 
         payload = resp.json() or {}
         result = payload.get("result") or {}
+
         lat_val = result.get("latitude")
         lon_val = result.get("longitude")
         if lat_val is None or lon_val is None:
@@ -62,10 +66,12 @@ def _geocode_flexible_location(raw_location: str) -> Tuple[float | None, float |
 
         lat_f = float(lat_val)
         lon_f = float(lon_val)
+
         if not inside_uk(lat_f, lon_f):
             return (None, None)
 
         return (lat_f, lon_f)
+
     except Exception as exc:  # pragma: no cover – defensive logging only
         print(f"[recruiter_radar] Outcode geocode error for '{loc}': {exc}")
         return (None, None)
@@ -74,9 +80,11 @@ def _geocode_flexible_location(raw_location: str) -> Tuple[float | None, float |
 def _bounding_box(lat: float, lon: float, radius_miles: float) -> Dict[str, float]:
     """
     Approximate bounding box for a radius (in miles) around a lat/lon.
+
     Good enough for 5–25 mile searches.
     """
     radius_km = radius_miles * 1.60934
+
     km_per_deg_lat = 111.0
     km_per_deg_lon = 111.0 * max(math.cos(math.radians(lat)), 0.1)
 
@@ -93,6 +101,7 @@ def _bounding_box(lat: float, lon: float, radius_miles: float) -> Dict[str, floa
 
 def _pay_stats_from_records(records: List[JobRecord]) -> Dict[str, Any]:
     rates = [r.pay_rate for r in records if r.pay_rate is not None]
+
     if not rates:
         return {
             "count": 0,
@@ -101,9 +110,11 @@ def _pay_stats_from_records(records: List[JobRecord]) -> Dict[str, Any]:
             "avg_rate": None,
             "median_rate": None,
         }
+
     sorted_rates = sorted(rates)
     n = len(sorted_rates)
     mid = n // 2
+
     if n % 2 == 1:
         median = float(sorted_rates[mid])
     else:
@@ -120,12 +131,12 @@ def _pay_stats_from_records(records: List[JobRecord]) -> Dict[str, Any]:
 
 def _role_fragments(raw_role_input: str) -> List[str]:
     """
-    Turn the free-text role input into one or more lowercase fragments that we
-    will use as case-insensitive substring matches.
+    Turn the free-text role input into one or more lowercase fragments
+    that we will use as case-insensitive substring matches.
 
     Examples:
-      "HR Advisor"                  -> ["hr advisor"]
-      "Support Worker / Senior SW"  -> ["support worker", "senior sw"]
+      "HR Advisor" -> ["hr advisor"]
+      "Support Worker / Senior SW" -> ["support worker", "senior sw"]
     """
     text = (raw_role_input or "").strip()
     if not text:
@@ -133,6 +144,7 @@ def _role_fragments(raw_role_input: str) -> List[str]:
 
     # Split on common separators, but keep words together.
     parts = re.split(r"[/,;|+]", text)
+
     seen: set[str] = set()
     fragments: List[str] = []
 
@@ -140,14 +152,23 @@ def _role_fragments(raw_role_input: str) -> List[str]:
         frag = part.strip()
         if not frag:
             continue
+
         low = frag.lower()
+
+        # Avoid overly broad matching on extremely short fragments.
+        # Keep 2-char values only if they include a digit, to allow outlier
+        # patterns if ever needed while reducing noisy role matches.
+        if len(low) < 3 and not any(ch.isdigit() for ch in low):
+            continue
+
         if low in seen:
             continue
+
         seen.add(low)
         fragments.append(low)
 
-    # If we failed to produce any fragments for some reason, fall back to the
-    # whole string lowercased.
+    # If we failed to produce any fragments for some reason,
+    # fall back to the whole string lowercased.
     if not fragments:
         fragments.append(text.lower())
 
@@ -156,12 +177,13 @@ def _role_fragments(raw_role_input: str) -> List[str]:
 
 def _build_timeseries(raw_role_input: str, counties: List[str], lookback_days: int) -> Dict[str, Any]:
     """
-    Build a simple daily median pay time series for the slice, aggregated
-    across counties in the radius, and fit a straight line for a
-    very lightweight 'forecast' 90 days ahead.
+    Build a simple daily median pay time series for the slice,
+    aggregated across counties in the radius, and fit a straight line
+    for a very lightweight 'forecast' 90 days ahead.
 
     We treat the role input as free text and include any JobSummaryDaily row
-    whose job_role_group contains one of the role fragments (case-insensitive).
+    whose job_role_group contains one of the role fragments
+    (case-insensitive).
     """
     today = date.today()
     start_date = today - timedelta(days=lookback_days)
@@ -196,13 +218,16 @@ def _build_timeseries(raw_role_input: str, counties: List[str], lookback_days: i
         q = q.filter(JobSummaryDaily.county.in_(counties))
 
     q = q.group_by(JobSummaryDaily.date).order_by(JobSummaryDaily.date.asc())
-
     rows = q.all()
+
     if not rows:
         return {"points": [], "forecast_3m": None}
 
     points = [
-        {"date": r.date.isoformat(), "median_pay_rate": float(r.median_pay_rate)}
+        {
+            "date": r.date.isoformat(),
+            "median_pay_rate": float(r.median_pay_rate),
+        }
         for r in rows
     ]
 
@@ -211,11 +236,18 @@ def _build_timeseries(raw_role_input: str, counties: List[str], lookback_days: i
     ys = [float(r.median_pay_rate) for r in rows]
 
     n = len(xs)
+    if n < 2:
+        return {
+            "points": points,
+            "forecast_3m": ys[0] if ys else None,
+        }
+
     x_mean = sum(xs) / n
     y_mean = sum(ys) / n
 
     s_xx = sum((x - x_mean) ** 2 for x in xs)
-    s_xy = sum((x - x_mean) * (y - y_mean) for x in ys)
+    s_xy = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+
     slope = 0.0 if s_xx == 0 else s_xy / s_xx
     intercept = y_mean - slope * x_mean
 
@@ -235,8 +267,8 @@ def recruiter_radar():
     """
     Top-level recruiter radar view.
 
-    We just need enough context to build the role typeahead; everything else
-    is driven by the /api/recruiter/radar endpoint.
+    We just need enough context to build the role typeahead;
+    everything else is driven by the /api/recruiter/radar endpoint.
     """
     role_options = _canonical_role_filter_options()
     return render_template("recruiter_radar.html", role_options=role_options)
@@ -249,11 +281,11 @@ def api_recruiter_radar():
     One-shot 'recruiter radar' API.
 
     Query params:
-      - role (required): free-text job role text; we include all roles where
-        job_role_group or job_role contains this text (case-insensitive).
-      - location (required): UK postcode or outcode (e.g. WS13)
-      - radius_miles: 5, 15, 25 (default 15)
-      - lookback_days: history window for demand/forecast (default 180)
+    - role (required): free-text job role text; we include all roles where
+      job_role_group or job_role contains this text (case-insensitive).
+    - location (required): UK postcode or outcode (e.g. WS13)
+    - radius_miles: 5, 15, 25 (default 15)
+    - lookback_days: history window for demand/forecast (default 180)
     """
     raw_role = (request.args.get("role") or "").strip()
     raw_location = (request.args.get("location") or "").strip()
@@ -262,6 +294,7 @@ def api_recruiter_radar():
 
     if not raw_role:
         return jsonify({"error": "Job role is required."}), 400
+
     if not raw_location:
         return jsonify({"error": "Location is required."}), 400
 
@@ -320,14 +353,15 @@ def api_recruiter_radar():
         jr_q = jr_q.filter(or_(*role_clauses))
 
     records: List[JobRecord] = jr_q.limit(5000).all()
-    pay_stats = _pay_stats_from_records(records)
 
+    pay_stats = _pay_stats_from_records(records)
     counties = sorted({r.county for r in records if r.county})
     timeseries = _build_timeseries(raw_role, counties, lookback_days)
 
     # Simple demand signal: adverts per day over the window.
     adverts_count = len(records)
     adverts_per_day = adverts_count / float(lookback_days) if lookback_days > 0 else adverts_count
+
     if adverts_per_day >= 3:
         demand_level = "high"
     elif adverts_per_day >= 1:
@@ -386,6 +420,7 @@ def api_recruiter_radar():
         .limit(50)
         .all()
     )
+
     debug_roles = [
         {
             "job_role": jr.job_role,
