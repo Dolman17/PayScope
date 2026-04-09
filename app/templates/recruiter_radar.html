@@ -2,7 +2,7 @@
 {% block title %}PayScope • Recruiter radar{% endblock %}
 
 {% block content %}
-<div class="mx-auto px-3 sm:px-4 lg:px-6 2xl:px-8 py-4 max-w-[96vw]"></div>
+<div class="mx-auto px-3 sm:px-4 lg:px-6 2xl:px-8 py-4 max-w-[96vw]">
   <div class="space-y-6">
 
     <!-- Header -->
@@ -52,7 +52,8 @@
           <div class="mt-1">
             • Location is postcode or outcode (e.g. <span class="font-mono">WS13</span> or <span class="font-mono">WS13 6QW</span>).<br>
             • Radius uses straight-line distance from the centre of that postcode.<br>
-            • Pay is based on <span class="font-semibold">advertised hourly rates</span>.
+            • Results are prefiltered using a postcode bounding box, then trimmed to a <span class="font-semibold" style="color: var(--ink);">true circular radius</span>.<br>
+            • Pay summaries exclude sub-NLW rates for the advert period and extreme high hourly outliers, but adverts still remain visible in employer and recent-advert tables.
           </div>
         </div>
       </div>
@@ -70,7 +71,7 @@
 
       <form id="radar-form" class="p-5 sm:p-6 space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <!-- Role (free text + datalist) -->
+          <!-- Role (plain free text search) -->
           <div>
             <label for="role" class="label">Job role group</label>
             <input
@@ -78,17 +79,11 @@
               name="role"
               type="text"
               class="input"
-              list="radar-role-options"
-              placeholder="e.g. Senior Support Worker"
+              placeholder="e.g. Senior Support"
               value="{{ selected_role or '' }}"
             >
-            <datalist id="radar-role-options">
-              {% for r in role_options %}
-                <option value="{{ r }}">{{ r }}</option>
-              {% endfor %}
-            </datalist>
             <p class="mt-1 text-xs" style="color: var(--ink-2);">
-              Start typing – suggestions come from roles we've seen in the market.
+              Type any role text and we’ll return matching roles that contain those words.
             </p>
           </div>
 
@@ -180,6 +175,9 @@
              style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
           <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">Adverts in radius</div>
           <div id="radar-summary-adverts" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
+          <div id="radar-summary-eligible-rates" class="mt-1 text-[11px]" style="color: var(--ink-2);">
+            <!-- eligible rate count -->
+          </div>
         </div>
 
         <div class="rounded-2xl p-4"
@@ -206,6 +204,120 @@
           <div id="radar-summary-recommended" class="mt-1 text-2xl font-semibold" style="color: var(--ink);">–</div>
           <div id="radar-summary-basis" class="mt-1 text-[11px]" style="color: var(--ink-2);">
             <!-- basis text -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Radius accuracy diagnostics -->
+      <div id="radar-debug-card"
+           class="hidden px-5 sm:px-6 pb-5 sm:pb-6">
+        <div class="rounded-2xl p-4"
+             style="background: rgba(34,211,238,0.05); border: 1px solid rgba(34,211,238,0.14);">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+                Radius accuracy
+              </div>
+              <p class="mt-1 text-sm" style="color: var(--ink);">
+                Results are first narrowed using a bounding box, then trimmed to the true circular radius.
+              </p>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-0">
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Box candidates</div>
+                <div id="radar-debug-bbox" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Excluded</div>
+                <div id="radar-debug-excluded" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Returned</div>
+                <div id="radar-debug-returned" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Max distance</div>
+                <div id="radar-debug-max-distance" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pay calculation filters -->
+      <div id="radar-pay-filters-card"
+           class="hidden px-5 sm:px-6 pb-5 sm:pb-6">
+        <div class="rounded-2xl p-4"
+             style="background: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.14);">
+          <div class="flex flex-col gap-3">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--ink-2);">
+                Calculation filters applied
+              </div>
+              <p class="mt-1 text-sm" style="color: var(--ink);">
+                Pay summaries and recommended rate use only eligible hourly rates. Adverts remain visible in employer and recent-advert tables even when excluded from calculations.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 lg:grid-cols-6 gap-3 min-w-0">
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">With pay</div>
+                <div id="radar-pay-debug-raw-with-pay" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Below NLW</div>
+                <div id="radar-pay-debug-below-nlw" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">NLW valid</div>
+                <div id="radar-pay-debug-nlw-valid" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">High cutoff</div>
+                <div id="radar-pay-debug-high-cutoff" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">High outliers</div>
+                <div id="radar-pay-debug-high-excluded" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.06); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Eligible rates</div>
+                <div id="radar-pay-debug-eligible" class="mt-1 text-sm font-semibold" style="color: var(--ink);">–</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.04); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">NLW rule</div>
+                <div id="radar-pay-debug-nlw-rule" class="mt-1 text-sm" style="color: var(--ink);">
+                  –
+                </div>
+              </div>
+
+              <div class="rounded-xl px-3 py-2"
+                   style="background: rgba(148,163,184,0.04); border: 1px solid rgba(148,163,184,0.10);">
+                <div class="text-[10px] uppercase tracking-wide" style="color: var(--ink-2);">Outlier rule</div>
+                <div id="radar-pay-debug-outlier-rule" class="mt-1 text-sm" style="color: var(--ink);">
+                  –
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -320,6 +432,8 @@
                     <th class="px-3 py-2 text-left font-semibold">Role</th>
                     <th class="px-3 py-2 text-right font-semibold">£/hr</th>
                     <th class="px-3 py-2 text-right font-semibold">Area</th>
+                    <th class="px-3 py-2 text-right font-semibold">Dist.</th>
+                    <th class="px-3 py-2 text-right font-semibold">Used</th>
                     <th class="px-3 py-2 text-right font-semibold">When</th>
                   </tr>
                 </thead>
@@ -351,9 +465,7 @@
     border-top: 1px solid rgba(148,163,184,0.10);
   }
 
-  /* ---------- PRINT / PDF EXPORT ---------- */
   @media print {
-    /* A4 portrait default; you can switch to landscape if you prefer */
     @page { size: A4; margin: 12mm; }
 
     html, body {
@@ -363,7 +475,6 @@
       print-color-adjust: exact;
     }
 
-    /* Make cards print as clean blocks */
     .card {
       background: #ffffff !important;
       border: 1px solid #e2e8f0 !important;
@@ -372,37 +483,32 @@
       page-break-inside: avoid;
     }
 
-    /* Disable dark translucent panels for print */
     .card [style*="rgba(2,6,23"] {
       background: #ffffff !important;
       border-color: #e2e8f0 !important;
     }
 
-    /* Kill sticky headers + scrolling containers so tables fully render */
     .radar-print-unscroll {
       max-height: none !important;
       overflow: visible !important;
     }
+
     thead.sticky {
       position: static !important;
     }
 
-    /* Make text readable in print */
     [style*="var(--ink)"], [style*="var(--ink-2)"] {
       color: #0f172a !important;
     }
 
-    /* Chart: hide canvas, show print image */
     #radar-trend-chart { display: none !important; }
     #radar-trend-print-img { display: block !important; }
 
-    /* Avoid ugly cut-offs */
     section, .card, table, tr {
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
-    /* Hide any leftover interactive bits */
     button, input, select, textarea, datalist { display: none !important; }
   }
 </style>
@@ -411,7 +517,6 @@
 {% block scripts %}
   {{ super() }}
 
-  <!-- Chart.js for the trend view -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <script>
@@ -429,11 +534,28 @@
       const summaryCard = document.getElementById("radar-summary-card");
       const summaryLabel = document.getElementById("radar-summary-label");
       const summaryAdverts = document.getElementById("radar-summary-adverts");
+      const summaryEligibleRates = document.getElementById("radar-summary-eligible-rates");
       const summaryMedian = document.getElementById("radar-summary-median");
       const summaryRange = document.getElementById("radar-summary-range");
       const summaryDemand = document.getElementById("radar-summary-demand");
       const summaryRecommended = document.getElementById("radar-summary-recommended");
       const summaryBasis = document.getElementById("radar-summary-basis");
+
+      const debugCard = document.getElementById("radar-debug-card");
+      const debugBbox = document.getElementById("radar-debug-bbox");
+      const debugExcluded = document.getElementById("radar-debug-excluded");
+      const debugReturned = document.getElementById("radar-debug-returned");
+      const debugMaxDistance = document.getElementById("radar-debug-max-distance");
+
+      const payFiltersCard = document.getElementById("radar-pay-filters-card");
+      const payDebugRawWithPay = document.getElementById("radar-pay-debug-raw-with-pay");
+      const payDebugBelowNLW = document.getElementById("radar-pay-debug-below-nlw");
+      const payDebugNLWValid = document.getElementById("radar-pay-debug-nlw-valid");
+      const payDebugHighCutoff = document.getElementById("radar-pay-debug-high-cutoff");
+      const payDebugHighExcluded = document.getElementById("radar-pay-debug-high-excluded");
+      const payDebugEligible = document.getElementById("radar-pay-debug-eligible");
+      const payDebugNLWRule = document.getElementById("radar-pay-debug-nlw-rule");
+      const payDebugOutlierRule = document.getElementById("radar-pay-debug-outlier-rule");
 
       const detailLabel = document.getElementById("radar-detail-label");
       const topEmployersBody = document.getElementById("radar-top-employers");
@@ -453,6 +575,29 @@
         const num = typeof v === "string" ? Number(v) : v;
         if (num === null || num === undefined || isNaN(num)) return "–";
         return "£" + num.toFixed(2);
+      }
+
+      function formatMiles(v) {
+        const num = typeof v === "string" ? Number(v) : v;
+        if (num === null || num === undefined || isNaN(num)) return "–";
+        return num.toFixed(1) + " mi";
+      }
+
+      function formatNumber(v) {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return "–";
+        return String(v);
+      }
+
+      function formatPercentFromDecimal(v) {
+        const num = typeof v === "string" ? Number(v) : v;
+        if (num === null || num === undefined || isNaN(num)) return "–";
+        return Math.round(num * 100) + "%";
+      }
+
+      function yesNoBadge(used) {
+        if (used === true) return "Yes";
+        if (used === false) return "No";
+        return "–";
       }
 
       function formatDateShort(iso) {
@@ -497,11 +642,32 @@
         return params.toString();
       }
 
+      function resetDebugCard() {
+        debugCard.classList.add("hidden");
+        debugBbox.textContent = "–";
+        debugExcluded.textContent = "–";
+        debugReturned.textContent = "–";
+        debugMaxDistance.textContent = "–";
+      }
+
+      function resetPayFiltersCard() {
+        payFiltersCard.classList.add("hidden");
+        payDebugRawWithPay.textContent = "–";
+        payDebugBelowNLW.textContent = "–";
+        payDebugNLWValid.textContent = "–";
+        payDebugHighCutoff.textContent = "–";
+        payDebugHighExcluded.textContent = "–";
+        payDebugEligible.textContent = "–";
+        payDebugNLWRule.textContent = "–";
+        payDebugOutlierRule.textContent = "–";
+      }
+
       function renderSummary(payload) {
-        const summary = payload.summary;
-        const demand = payload.demand;
-        const recommended = payload.recommended;
+        const summary = payload.summary || {};
+        const demand = payload.demand || {};
+        const recommended = payload.recommended || {};
         const params = payload.params || {};
+        const debug = payload.debug || {};
 
         if (!summary) {
           summaryCard.classList.add("hidden");
@@ -514,12 +680,17 @@
         const radius = params.radius_miles || 0;
         const location = (payload.location && payload.location.input) || params.location || "";
 
-        summaryLabel.textContent =
-          `${role} • ${location || "Unknown location"} • ${radius} miles`;
+        summaryLabel.textContent = `${role} • ${location || "Unknown location"} • ${radius} miles`;
 
         summaryAdverts.textContent = summary.records_count != null
           ? summary.records_count.toString()
           : "–";
+
+        if (summary.eligible_rates_count != null) {
+          summaryEligibleRates.textContent = `${summary.eligible_rates_count} eligible rate${summary.eligible_rates_count === 1 ? "" : "s"} used in pay calculations`;
+        } else {
+          summaryEligibleRates.textContent = "";
+        }
 
         summaryMedian.textContent = formatMoney(summary.median_pay);
         if (summary.min_pay != null && summary.max_pay != null) {
@@ -541,7 +712,59 @@
           summaryBasis.textContent = recommended.basis || "";
         } else {
           summaryRecommended.textContent = "–";
-          summaryBasis.textContent = "";
+          summaryBasis.textContent = recommended.basis || "";
+        }
+
+        if (
+          debug.bbox_records_count != null ||
+          debug.excluded_outside_true_radius != null ||
+          debug.true_radius_records_count != null ||
+          debug.max_returned_distance_miles != null
+        ) {
+          debugCard.classList.remove("hidden");
+          debugBbox.textContent = debug.bbox_records_count != null ? String(debug.bbox_records_count) : "–";
+          debugExcluded.textContent = debug.excluded_outside_true_radius != null ? String(debug.excluded_outside_true_radius) : "–";
+          debugReturned.textContent = debug.true_radius_records_count != null ? String(debug.true_radius_records_count) : "–";
+          debugMaxDistance.textContent = formatMiles(debug.max_returned_distance_miles);
+        } else {
+          resetDebugCard();
+        }
+
+        if (
+          debug.raw_with_pay_count != null ||
+          debug.excluded_below_nlw != null ||
+          debug.nlw_valid_count != null ||
+          debug.high_rate_cutoff != null ||
+          debug.excluded_above_high_cutoff != null ||
+          debug.eligible_pay_rates_count != null
+        ) {
+          payFiltersCard.classList.remove("hidden");
+          payDebugRawWithPay.textContent = formatNumber(debug.raw_with_pay_count);
+          payDebugBelowNLW.textContent = formatNumber(debug.excluded_below_nlw);
+          payDebugNLWValid.textContent = formatNumber(debug.nlw_valid_count);
+          payDebugHighCutoff.textContent = formatMoney(debug.high_rate_cutoff);
+          payDebugHighExcluded.textContent = formatNumber(debug.excluded_above_high_cutoff);
+          payDebugEligible.textContent = formatNumber(debug.eligible_pay_rates_count);
+
+          const nlwRules = debug.nlw_rules || {};
+          if (nlwRules.before_2026_04_06 != null || nlwRules.from_2026_04_06 != null) {
+            payDebugNLWRule.textContent =
+              `Before 06 Apr 2026: ${formatMoney(nlwRules.before_2026_04_06)} minimum. On/after 06 Apr 2026: ${formatMoney(nlwRules.from_2026_04_06)} minimum.`;
+          } else {
+            payDebugNLWRule.textContent = "–";
+          }
+
+          const pct = params.high_rate_outlier_pct != null
+            ? formatPercentFromDecimal(params.high_rate_outlier_pct)
+            : "–";
+          const baseMedian = debug.baseline_median_before_high_cutoff != null
+            ? formatMoney(debug.baseline_median_before_high_cutoff)
+            : "–";
+
+          payDebugOutlierRule.textContent =
+            `Rates above baseline median (${baseMedian}) + ${pct} are excluded from pay calculations.`;
+        } else {
+          resetPayFiltersCard();
         }
       }
 
@@ -667,6 +890,16 @@
           tdArea.style.color = "var(--ink-2)";
           tdArea.textContent = area || "–";
 
+          const tdDistance = document.createElement("td");
+          tdDistance.className = "px-3 py-2 whitespace-nowrap text-right";
+          tdDistance.style.color = "var(--ink-2)";
+          tdDistance.textContent = r.distance_miles != null ? formatMiles(r.distance_miles) : "–";
+
+          const tdUsed = document.createElement("td");
+          tdUsed.className = "px-3 py-2 whitespace-nowrap text-right";
+          tdUsed.style.color = r.included_in_pay_calculations === true ? "var(--ink)" : "var(--ink-2)";
+          tdUsed.textContent = yesNoBadge(r.included_in_pay_calculations);
+
           const tdWhen = document.createElement("td");
           tdWhen.className = "px-3 py-2 whitespace-nowrap text-right";
           tdWhen.style.color = "var(--ink-2)";
@@ -676,6 +909,8 @@
           tr.appendChild(tdRole);
           tr.appendChild(tdPay);
           tr.appendChild(tdArea);
+          tr.appendChild(tdDistance);
+          tr.appendChild(tdUsed);
           tr.appendChild(tdWhen);
 
           recentPostingsBody.appendChild(tr);
@@ -729,6 +964,8 @@
 
         emptyMessage.classList.add("hidden");
         summaryCard.classList.add("hidden");
+        resetDebugCard();
+        resetPayFiltersCard();
         destroyTrendChart();
         trendEmpty.classList.add("hidden");
         trendPrintImg.src = "";
@@ -757,7 +994,7 @@
 
           const data = await resp.json();
 
-          if (!data.summary && !data.recent_postings.length) {
+          if ((!data.summary || !data.summary.records_count) && !(data.recent_postings || []).length) {
             emptyMessage.textContent =
               "No adverts found for that role / location / radius combination. Try a slightly wider radius or a longer lookback.";
             emptyMessage.classList.remove("hidden");
@@ -780,7 +1017,6 @@
         }
       }
 
-      // --- PDF EXPORT HELPERS ---
       function setGeneratedAt() {
         if (!printGeneratedAt) return;
         const now = new Date();
@@ -794,7 +1030,6 @@
       }
 
       function snapshotChartForPrint() {
-        // Canvas -> PNG data URL so print reliably captures the chart
         try {
           if (!trendCanvas || !trendPrintImg) return;
           if (trendEmpty && !trendEmpty.classList.contains("hidden")) {
@@ -816,7 +1051,6 @@
         });
       }
 
-      // Also refresh the snapshot when user opens print dialog manually (Ctrl+P)
       window.addEventListener("beforeprint", function () {
         setGeneratedAt();
         snapshotChartForPrint();
@@ -836,6 +1070,8 @@
 
         emptyMessage.classList.add("hidden");
         summaryCard.classList.add("hidden");
+        resetDebugCard();
+        resetPayFiltersCard();
         destroyTrendChart();
         trendPrintImg.src = "";
         clearTable(topEmployersBody);
@@ -846,7 +1082,6 @@
         errorEl.textContent = "";
       });
 
-      // Optional: auto-run if role+location pre-filled (e.g. from a deep link)
       const initialRole = (roleInput.value || "").trim();
       const initialLocation = (locationInput.value || "").trim();
       if (initialRole && initialLocation) {
