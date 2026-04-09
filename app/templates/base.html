@@ -8,8 +8,8 @@
   <!-- Tailwind -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" />
 
-  <!-- Fonts: Open Sans -->
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Fonts: Inter (brand typeface) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Favicon & App Icons -->
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/favicon-32.png') }}">
@@ -26,31 +26,39 @@
 
   <style>
     :root{
-      /* Core brand tokens */
-      --brand: #005b5a;
-      --brand-light: #60A5FA;
-      --brand-dark: #013462;
+      /* Brand palette (from marketing blueprint) */
+      --navy: #0F2A44;         /* Primary Navy – headers, nav, footer, large text */
+      --lens-blue: #0084BD;    /* Lens Blue – primary CTAs, key highlights */
+      --soft-teal: #2FA4A9;    /* Soft Teal – charts, map markers, secondary highlights */
+      --slate: #5F6B7A;        /* Slate Grey – body text, labels, secondary UI */
+      --light-grey: #D1D9E0;   /* Borders, dividers, card outlines */
+      --off-white: #F7F9FC;    /* Page + dashboard backgrounds */
 
-      /* Design tokens */
-      --brand-600: #0b6b6a;
-      --ink: #e5e7eb;
-      --ink-2: #9ca3af;
-      --muted: #020617;
-      --card: #020617;
-      --ring: rgba(34,211,238,0.3);
-      --success-bg: #022c22;
-      --success-fg: #6ee7b7;
-      --info-bg: #1e293b;
-      --info-fg: #bfdbfe;
-      --error-bg: #450a0a;
-      --error-fg: #fecaca;
+      /* Backwards-compatible tokens used across templates */
+      --brand: var(--lens-blue);
+      --brand-light: #33A4D5;
+      --brand-dark: var(--navy);
+      --brand-600: #006C9A;
+
+      --ink: var(--navy);
+      --ink-2: var(--slate);
+      --muted: var(--off-white);
+      --card: #ffffff;
+      --ring: rgba(0,132,189,0.30);
+
+      --success-bg: #ECFDF3;
+      --success-fg: #166534;
+      --info-bg: #EFF6FF;
+      --info-fg: #1D4ED8;
+      --error-bg: #FEF2F2;
+      --error-fg: #B91C1C;
     }
 
     html, body { height: 100%; }
     body {
-      font-family: 'Open Sans', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background-color:#020617;
-      color:#e5e7eb;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background-color: var(--off-white);
+      color: var(--ink-2);
     }
 
     .btn{
@@ -64,55 +72,60 @@
       transition: all .15s ease;
       border:1px solid transparent;
       cursor: pointer;
+      font-size: 0.875rem;
+      white-space: nowrap;
     }
     .btn-primary{
-      background: var(--brand);
-      color:#fff;
-      box-shadow: 0 16px 40px rgba(5,150,105,0.55);
+      background: var(--lens-blue);
+      color:#ffffff;
+      box-shadow: 0 14px 30px rgba(0,132,189,0.35);
     }
     .btn-primary:hover{
       background: var(--brand-600);
       transform: translateY(-1px);
-      box-shadow: 0 20px 50px rgba(5,150,105,0.75);
+      box-shadow: 0 18px 40px rgba(0,132,189,0.45);
     }
     .btn-secondary{
       background: transparent;
-      color: var(--brand-light);
-      border-color: rgba(148,163,184,0.6);
+      color: var(--lens-blue);
+      border-color: var(--light-grey);
     }
     .btn-secondary:hover{
-      background: rgba(15,23,42,0.75);
+      background: rgba(0,132,189,0.04);
       transform: translateY(-1px);
-      box-shadow: 0 14px 35px rgba(15,23,42,0.85);
+      box-shadow: 0 10px 26px rgba(15,23,42,0.08);
     }
 
     .card{
       background: var(--card);
       border-radius: 1rem;
-      box-shadow: 0 18px 60px rgba(15,23,42,0.95);
-      border: 1px solid #1f2937;
+      box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+      border: 1px solid var(--light-grey);
     }
 
     .input{
       width: 100%;
-      border:1px solid #374151;
-      background:#020617;
-      color:#e5e7eb;
+      border:1px solid var(--light-grey);
+      background:#ffffff;
+      color:var(--ink-2);
       padding: .6rem .75rem;
       border-radius:.75rem;
       outline: none;
       transition: box-shadow .15s ease, border-color .15s ease, background-color .15s ease;
+      font-size: 0.875rem;
     }
     .input:focus{
-      border-color: var(--brand-light);
+      border-color: var(--lens-blue);
       box-shadow: 0 0 0 3px var(--ring);
-      background:#020617;
+      background:#ffffff;
     }
     .label{
       display:block;
       font-weight:600;
       color: var(--ink-2);
       margin-bottom:.35rem;
+      font-size: 0.8rem;
+      text-transform:none;
     }
 
     .nav-chip{
@@ -122,41 +135,46 @@
       padding: 0 .8rem;
       border-radius: 9999px;
       font-weight:600;
-      color: #e5e7eb;
-      border:1px solid rgba(148,163,184,0.45);
+      color: var(--slate);
+      border:1px solid var(--light-grey);
       background: transparent;
       transition: all .15s ease;
       font-size: 0.75rem;
     }
     .nav-chip:hover{
-      background: rgba(15,23,42,0.85);
+      background: rgba(0,132,189,0.06);
       transform: translateY(-1px);
-      border-color: rgba(56,189,248,0.6);
+      border-color: rgba(0,132,189,0.45);
+      color: var(--ink);
     }
     .nav-chip--active{
-      background: rgba(45,212,191,0.12);
-      border-color: rgba(45,212,191,0.9);
-      color: #a5f3fc;
-      box-shadow: 0 0 0 1px rgba(45,212,191,0.45);
+      background: rgba(0,132,189,0.10);
+      border-color: rgba(0,132,189,0.90);
+      color: var(--ink);
+      box-shadow: 0 0 0 1px rgba(0,132,189,0.35);
     }
 
     .flash{
       padding:.75rem 1rem;
       border-radius:.75rem;
-      font-weight:600;
+      font-weight:500;
       transition: opacity .4s ease-out, transform .4s ease-out;
+      font-size: 0.875rem;
     }
     .flash-success{
       background: var(--success-bg);
       color: var(--success-fg);
+      border: 1px solid #BBF7D0;
     }
     .flash-info{
       background: var(--info-bg);
       color: var(--info-fg);
+      border: 1px solid #BFDBFE;
     }
     .flash-error{
       background: var(--error-bg);
       color: var(--error-fg);
+      border: 1px solid #FECACA;
     }
     .flash-fade-out{
       opacity: 0;
@@ -180,10 +198,9 @@
     .card-hover:hover{
       transform: translateY(-2px);
       box-shadow:
-        0 24px 70px rgba(15,23,42,0.95),
-        0 0 0 1px rgba(45,212,191,0.45);
-      border-color: rgba(45,212,191,0.7);
-      background-color: #020617;
+        0 18px 44px rgba(15,23,42,0.12);
+      border-color: rgba(0,132,189,0.45);
+      background-color: #ffffff;
     }
 
     /* Fade-in-on-scroll animation */
@@ -203,40 +220,41 @@
       overflow: hidden;
       border-radius: 1.5rem;
       background:
-        radial-gradient(circle at top left, rgba(45,212,191,0.22), transparent 55%),
-        radial-gradient(circle at bottom right, rgba(59,130,246,0.3), transparent 60%),
-        #020617;
-      border: 1px solid rgba(148,163,184,0.65);
-      box-shadow: 0 32px 90px rgba(15,23,42,0.98);
+        radial-gradient(circle at top left, rgba(0,132,189,0.16), transparent 55%),
+        radial-gradient(circle at bottom right, rgba(47,164,169,0.18), transparent 60%),
+        #0F2236;
+      border: 1px solid rgba(15,23,42,0.18);
+      box-shadow: 0 24px 70px rgba(15,23,42,0.36);
+      color: #E5F0FF;
     }
     .hero-shell::before{
       content:"";
       position:absolute;
       inset:-1px;
       border-radius: inherit;
-      border:1px solid rgba(15,23,42,0.9);
+      border:1px solid rgba(15,23,42,0.35);
       pointer-events:none;
     }
     .hero-orbit{
       position: absolute;
       border-radius: 9999px;
       pointer-events: none;
-      opacity: 0.55;
+      opacity: 0.6;
     }
     .hero-orbit--teal{
       width: 220px;
       height: 220px;
-      background: radial-gradient(circle, rgba(45,212,191,1), transparent 60%);
+      background: radial-gradient(circle, rgba(47,164,169,1), transparent 60%);
       top:-40px;
       right:-40px;
     }
     .hero-orbit--blue{
       width: 260px;
       height: 260px;
-      background: radial-gradient(circle, rgba(59,130,246,1), transparent 60%);
+      background: radial-gradient(circle, rgba(0,132,189,1), transparent 60%);
       bottom:-80px;
       left:-80px;
-      opacity:0.55;
+      opacity:0.6;
     }
     .hero-orbit--amber{
       width: 140px;
@@ -244,10 +262,10 @@
       background: radial-gradient(circle, rgba(251,191,36,0.85), transparent 60%);
       top:32%;
       left:46%;
-      opacity:0.35;
+      opacity:0.4;
     }
 
-    /* Global dark form controls */
+    /* Global light form controls so raw Tailwind inputs look on-brand */
     input[type="text"],
     input[type="number"],
     input[type="email"],
@@ -255,43 +273,30 @@
     input[type="search"],
     select,
     textarea {
-      background-color: #020617 !important;
-      color: #e5e7eb !important;
-      border: 1px solid #374151 !important;
+      background-color: #ffffff !important;
+      color: var(--ink-2) !important;
+      border: 1px solid var(--light-grey) !important;
       border-radius: 0.75rem !important;
       padding: 0.6rem 0.75rem !important;
+      font-size: 0.875rem !important;
     }
     select[multiple] {
       padding: 0.4rem 0.5rem !important;
     }
     input::placeholder,
     textarea::placeholder {
-      color: #64748b !important;
+      color: #94a3b8 !important;
     }
     select option {
-      background-color: #020617 !important;
-      color: #e5e7eb !important;
+      background-color: #ffffff !important;
+      color: var(--ink-2) !important;
     }
     input:focus,
     select:focus,
     textarea:focus {
       outline: none !important;
-      border-color: var(--brand-light) !important;
+      border-color: var(--lens-blue) !important;
       box-shadow: 0 0 0 3px var(--ring) !important;
-    }
-
-    /* HARD OVERRIDES for Tailwind "light" utilities that are probably on your form containers */
-    .bg-white,
-    .bg-gray-50,
-    .bg-gray-100 {
-      background-color: #020617 !important;
-    }
-    .text-gray-900 {
-      color: #e5e7eb !important;
-    }
-    .border-gray-200,
-    .border-gray-300 {
-      border-color: #1f2937 !important;
     }
   </style>
 
@@ -299,13 +304,14 @@
   {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col">
   {% set endpoint = request.endpoint or '' %}
 
   <!-- HEADER -->
   <header class="app-header">
-    <!-- Main bar (dark, matches hero) -->
-    <div class="w-full bg-gray-900/95 border-b border-gray-800 backdrop-filter backdrop-blur">
+    <!-- Main bar -->
+    <div class="w-full border-b backdrop-filter backdrop-blur"
+         style="background-color: var(--navy); border-color: var(--light-grey);">
       <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
 
         <!-- Logo -->
@@ -316,14 +322,14 @@
             class="h-8 w-auto"
             onerror="this.onerror=null;this.src='{{ url_for('static', filename='logos/placeholder.png') }}';"
           >
-          <span class="hidden sm:inline text-sm font-semibold text-gray-200">
+          <span class="hidden sm:inline text-sm font-semibold text-white">
             PayScope
           </span>
         </div>
 
         <!-- Centre navigation (desktop) - MARKETING NAV ONLY WHEN LOGGED OUT -->
         {% if not current_user.is_authenticated %}
-        <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-gray-200">
+        <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-100">
 
           <!-- Solutions with megamenu -->
           <div class="relative group">
@@ -337,43 +343,44 @@
               </svg>
             </button>
 
-            <!-- Mega menu panel (dark) -->
+            <!-- Mega menu panel -->
             <div class="absolute left-1/2 transform -translate-x-1/2 mt-3 hidden group-hover:block">
-              <div class="bg-gray-950/98 rounded-xl shadow-2xl border border-gray-800 p-4"
+              <div class="bg-white rounded-xl shadow-2xl border border-[color:var(--light-grey)] p-4"
                    style="min-width: 36rem;">
-                <div class="grid grid-cols-2 gap-4 text-sm text-gray-100">
+                <div class="grid grid-cols-2 gap-4 text-sm text-[color:var(--ink-2)]">
                   <div>
-                    <p class="text-xs font-semibold text-gray-400 uppercase mb-2">PayScope platform</p>
-                    <a href="{{ url_for('maps.pay_explorer') }}" class="flex flex-col mb-3 p-2 rounded-lg hover:bg-gray-900">
-                      <span class="font-semibold text-gray-100">Pay Explorer</span>
-                      <span class="text-xs text-gray-400">
+                    <p class="text-xs font-semibold text-[color:var(--slate)] uppercase mb-2">PayScope platform</p>
+                    <a href="{{ url_for('maps.pay_explorer') }}" class="flex flex-col mb-3 p-2 rounded-lg hover:bg-[color:var(--off-white)]">
+                      <span class="font-semibold text-[color:var(--ink)]">Pay Explorer</span>
+                      <span class="text-xs text-[color:var(--slate)]">
                         Role-level benchmarks across regions and sectors.
                       </span>
                     </a>
-                    <a href="{{ url_for('maps.map_sector_select') }}" class="flex flex-col mb-3 p-2 rounded-lg hover:bg-gray-900">
-                      <span class="font-semibold text-gray-100">Map View</span>
-                      <span class="text-xs text-gray-400">
+                    <a href="{{ url_for('maps.map_sector_select') }}" class="flex flex-col mb-3 p-2 rounded-lg hover:bg-[color:var(--off-white)]">
+                      <span class="font-semibold text-[color:var(--ink)]">Map View</span>
+                      <span class="text-xs text-[color:var(--slate)]">
                         Visualise pay, demand and competition on the map.
                       </span>
                     </a>
-                    <a href="{{ url_for('records.records') }}" class="flex flex-col p-2 rounded-lg hover:bg-gray-900">
-                      <span class="font-semibold text-gray-100">Internal Pay Records</span>
-                      <span class="text-xs text-gray-400">
+                    <a href="{{ url_for('records.records') }}" class="flex flex-col p-2 rounded-lg hover:bg-[color:var(--off-white)]">
+                      <span class="font-semibold text-[color:var(--ink)]">Internal Pay Records</span>
+                      <span class="text-xs text-[color:var(--slate)]">
                         Overlay your own pay data on top of the market.
                       </span>
                     </a>
                   </div>
 
                   <div>
-                    <p class="text-xs font-semibold text-gray-400 uppercase mb-2">Use cases</p>
-                    <div class="space-y-2 text-xs text-gray-400">
-                      <p>• Annual pay review & benchmarking</p>
-                      <p>• Difficult-to-fill roles & hot spots</p>
+                    <p class="text-xs font-semibold text-[color:var(--slate)] uppercase mb-2">Use cases</p>
+                    <div class="space-y-2 text-xs text-[color:var(--slate)]">
+                      <p>• Annual pay review &amp; benchmarking</p>
+                      <p>• Difficult-to-fill roles &amp; hot spots</p>
                       <p>• Board / union pay story packs</p>
                       <p>• New site or service planning</p>
                     </div>
                     <div class="mt-4">
-                      <a href="{{ url_for('marketing.solutions') }}" class="text-xs font-semibold text-teal-300 hover:underline">
+                      <a href="{{ url_for('marketing.solutions') }}" class="text-xs font-semibold"
+                         style="color: var(--lens-blue);">
                         Explore all solutions →
                       </a>
                     </div>
@@ -396,27 +403,29 @@
         <div class="hidden md:flex items-center gap-4 text-xs">
 
           {% if not current_user.is_authenticated %}
-            <a href="{{ url_for('auth.login') }}" class="text-gray-300 hover:text-white">
+            <a href="{{ url_for('auth.login') }}" class="text-slate-100 hover:text-white">
               Login
             </a>
           {% else %}
-            <span class="text-gray-400">
+            <span class="text-slate-100">
               Hi, <strong>{{ current_user.username }}</strong>
             </span>
             <form method="POST" action="{{ url_for('auth.logout') }}" class="inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-              <button type="submit" class="text-gray-300 hover:text-white">
+              <button type="submit" class="text-slate-100 hover:text-white">
                 Logout
               </button>
             </form>
           {% endif %}
 
           <a href="#"
-             class="px-3 py-1.5 rounded-full border border-teal-400 text-teal-300 hover:bg-teal-500/10 transition">
+             class="px-3 py-1.5 rounded-full border text-xs font-semibold transition"
+             style="border-color: rgba(255,255,255,0.65); color: #E5F4FF;">
             Contact Sales
           </a>
           <a href="#"
-             class="px-3 py-1.5 rounded-full bg-teal-500 text-white hover:bg-teal-400 transition">
+             class="px-3 py-1.5 rounded-full text-xs font-semibold transition"
+             style="background-color: var(--lens-blue); color: #ffffff;">
             Get a Demo
           </a>
         </div>
@@ -424,13 +433,13 @@
         <!-- Mobile placeholder for now -->
         <div class="md:hidden flex items-center gap-2">
           {% if not current_user.is_authenticated %}
-            <a href="{{ url_for('auth.login') }}" class="text-xs text-gray-200 hover:text-white">
+            <a href="{{ url_for('auth.login') }}" class="text-xs text-slate-100 hover:text-white">
               Login
             </a>
           {% else %}
             <form method="POST" action="{{ url_for('auth.logout') }}" class="inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
-              <button type="submit" class="text-xs text-gray-200 hover:text-white">
+              <button type="submit" class="text-xs text-slate-100 hover:text-white">
                 Logout
               </button>
             </form>
@@ -441,9 +450,9 @@
 
     {% if current_user.is_authenticated %}
     <!-- App sub-navigation for logged-in users -->
-    <div class="w-full bg-gray-950 border-b border-gray-800">
-      <div class="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2 text-xs">
-        <span class="uppercase tracking-wide text-gray-500 mr-1">App</span>
+    <div class="w-full border-b" style="background-color:#122D4A; border-color: var(--light-grey);">
+      <div class="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--slate)]">
+        <span class="uppercase tracking-wide text-[color:rgba(226,232,240,0.9)] mr-1">App</span>
 
         <a href="{{ url_for('auth.home') }}"
            class="nav-chip {% if endpoint == 'auth.home' %}nav-chip--active{% endif %}">
@@ -465,7 +474,7 @@
           Pay Explorer
         </a>
 
-        <!-- NEW: Recruiter Radar -->
+        <!-- Recruiter Radar -->
         <a href="{{ url_for('maps.recruiter_radar') }}"
            class="nav-chip {% if endpoint == 'maps.recruiter_radar' or endpoint == 'maps.api_recruiter_radar' %}nav-chip--active{% endif %}">
           Recruiter radar
@@ -509,16 +518,17 @@
 
     <!-- Legal links footer ONLY for public/landing pages -->
     {% if hide_nav %}
-    <footer class="mt-24 border-t border-white/10">
-      <div class="max-w-7xl mx_auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400">
+    <footer class="mt-24 border-t" style="border-color: var(--light-grey); background-color: var(--off-white);">
+      <div class="max-w-7xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm"
+           style="color: var(--slate);">
         <div>
           © {{ (today.year if today is defined else 2025) }} PayScope. All rights reserved.
         </div>
 
         <div class="flex items-center gap-6">
-          <a href="{{ url_for('public.cookies') }}" class="hover:text-white transition">Cookies</a>
-          <a href="{{ url_for('public.privacy') }}" class="hover:text-white transition">Privacy</a>
-          <a href="{{ url_for('public.terms') }}" class="hover:text-white transition">Terms</a>
+          <a href="{{ url_for('public.cookies') }}" class="hover:underline">Cookies</a>
+          <a href="{{ url_for('public.privacy') }}" class="hover:underline">Privacy</a>
+          <a href="{{ url_for('public.terms') }}" class="hover:underline">Terms</a>
         </div>
       </div>
     </footer>
@@ -527,10 +537,11 @@
 
   <!-- App Footer (logged-in area) -->
   {% if current_user.is_authenticated %}
-  <footer class="bg-gray-950 text-center text-sm text-gray-500 py-5 border-t border-gray-800">
+  <footer class="text-center text-sm py-5 border-t"
+          style="background-color: var(--navy); border-color: var(--light-grey); color: rgba(226,232,240,0.9);">
     <div class="max-w-7xl mx-auto px-4">
-      <p class="text-gray-500">
-        &copy; {{ (today.year if today is defined else 2025) }} PayScope • Real-time pay & labour market intelligence
+      <p>
+        &copy; {{ (today.year if today is defined else 2025) }} PayScope • Real-time pay &amp; labour market intelligence
       </p>
     </div>
   </footer>

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 import math
+import re
 from typing import Tuple, List, Dict, Any
 
 import requests
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from extensions import db
 from models import JobRecord, JobSummaryDaily
 from app.blueprints.dashboard.helpers import _canonical_role_filter_options  # type: ignore
 from .utils import geocode_postcode_cached, inside_uk
+
 
 bp = Blueprint("recruiter", __name__)
 
@@ -97,23 +99,76 @@ def _pay_stats_from_records(records: List[JobRecord]) -> Dict[str, Any]:
             "min_rate": None,
             "max_rate": None,
             "avg_rate": None,
+            "median_rate": None,
         }
+    sorted_rates = sorted(rates)
+    n = len(sorted_rates)
+    mid = n // 2
+    if n % 2 == 1:
+        median = float(sorted_rates[mid])
+    else:
+        median = float(sorted_rates[mid - 1] + sorted_rates[mid]) / 2.0
+
     return {
         "count": len(rates),
         "min_rate": min(rates),
         "max_rate": max(rates),
         "avg_rate": sum(rates) / len(rates),
+        "median_rate": median,
     }
 
 
-def _build_timeseries(job_role_group: str, counties: List[str], lookback_days: int) -> Dict[str, Any]:
+def _role_fragments(raw_role_input: str) -> List[str]:
+    """
+    Turn the free-text role input into one or more lowercase fragments that we
+    will use as case-insensitive substring matches.
+
+    Examples:
+      "HR Advisor"                  -> ["hr advisor"]
+      "Support Worker / Senior SW"  -> ["support worker", "senior sw"]
+    """
+    text = (raw_role_input or "").strip()
+    if not text:
+        return []
+
+    # Split on common separators, but keep words together.
+    parts = re.split(r"[/,;|+]", text)
+    seen: set[str] = set()
+    fragments: List[str] = []
+
+    for part in parts:
+        frag = part.strip()
+        if not frag:
+            continue
+        low = frag.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        fragments.append(low)
+
+    # If we failed to produce any fragments for some reason, fall back to the
+    # whole string lowercased.
+    if not fragments:
+        fragments.append(text.lower())
+
+    return fragments
+
+
+def _build_timeseries(raw_role_input: str, counties: List[str], lookback_days: int) -> Dict[str, Any]:
     """
     Build a simple daily median pay time series for the slice, aggregated
     across counties in the radius, and fit a straight line for a
     very lightweight 'forecast' 90 days ahead.
+
+    We treat the role input as free text and include any JobSummaryDaily row
+    whose job_role_group contains one of the role fragments (case-insensitive).
     """
     today = date.today()
     start_date = today - timedelta(days=lookback_days)
+
+    fragments = _role_fragments(raw_role_input)
+    if not fragments:
+        return {"points": [], "forecast_3m": None}
 
     q = (
         db.session.query(
@@ -121,11 +176,21 @@ def _build_timeseries(job_role_group: str, counties: List[str], lookback_days: i
             func.avg(JobSummaryDaily.median_pay_rate).label("median_pay_rate"),
         )
         .filter(
-            JobSummaryDaily.job_role_group == job_role_group,
             JobSummaryDaily.date >= start_date,
             JobSummaryDaily.date <= today,
         )
     )
+
+    # Apply role substring filters (case-insensitive) on canonical job_role_group.
+    role_conditions = []
+    for frag in fragments:
+        pattern = f"%{frag}%"
+        role_conditions.append(
+            func.lower(JobSummaryDaily.job_role_group).like(pattern)
+        )
+
+    if role_conditions:
+        q = q.filter(or_(*role_conditions))
 
     if counties:
         q = q.filter(JobSummaryDaily.county.in_(counties))
@@ -150,7 +215,7 @@ def _build_timeseries(job_role_group: str, counties: List[str], lookback_days: i
     y_mean = sum(ys) / n
 
     s_xx = sum((x - x_mean) ** 2 for x in xs)
-    s_xy = sum((x - x_mean) * (y - y_mean) for x in xs)
+    s_xy = sum((x - x_mean) * (y - y_mean) for x in ys)
     slope = 0.0 if s_xx == 0 else s_xy / s_xx
     intercept = y_mean - slope * x_mean
 
@@ -184,7 +249,8 @@ def api_recruiter_radar():
     One-shot 'recruiter radar' API.
 
     Query params:
-      - role (required): canonical job_role_group label
+      - role (required): free-text job role text; we include all roles where
+        job_role_group or job_role contains this text (case-insensitive).
       - location (required): UK postcode or outcode (e.g. WS13)
       - radius_miles: 5, 15, 25 (default 15)
       - lookback_days: history window for demand/forecast (default 180)
@@ -198,6 +264,12 @@ def api_recruiter_radar():
         return jsonify({"error": "Job role is required."}), 400
     if not raw_location:
         return jsonify({"error": "Location is required."}), 400
+
+    # Turn the input into one or more lowercase fragments we will use for
+    # substring matching (e.g. "HR Advisor" -> ["hr advisor"]).
+    role_fragments = _role_fragments(raw_role)
+    if not role_fragments:
+        return jsonify({"error": "Job role is required."}), 400
 
     centre_lat, centre_lon = _geocode_flexible_location(raw_location)
     if centre_lat is None or centre_lon is None:
@@ -233,11 +305,19 @@ def api_recruiter_radar():
         )
     )
 
-    # Prefer job_role_group if populated; fall back to raw job_role.
-    jr_q = jr_q.filter(
-        (JobRecord.job_role_group == raw_role)
-        | ((JobRecord.job_role_group.is_(None)) & (JobRecord.job_role == raw_role))
-    )
+    # Apply case-insensitive substring matching on BOTH job_role_group and job_role.
+    role_clauses = []
+    for frag in role_fragments:
+        pattern = f"%{frag}%"
+        role_clauses.append(
+            or_(
+                func.lower(JobRecord.job_role_group).like(pattern),
+                func.lower(JobRecord.job_role).like(pattern),
+            )
+        )
+
+    if role_clauses:
+        jr_q = jr_q.filter(or_(*role_clauses))
 
     records: List[JobRecord] = jr_q.limit(5000).all()
     pay_stats = _pay_stats_from_records(records)
@@ -296,6 +376,24 @@ def api_recruiter_radar():
         .scalar()
     )
 
+    # For debugging: what roles actually matched?
+    distinct_roles = (
+        db.session.query(
+            JobRecord.job_role,
+            JobRecord.job_role_group,
+        )
+        .filter(jr_q.whereclause)
+        .limit(50)
+        .all()
+    )
+    debug_roles = [
+        {
+            "job_role": jr.job_role,
+            "job_role_group": jr.job_role_group,
+        }
+        for jr in distinct_roles
+    ]
+
     response = {
         "params": {
             "role": raw_role,
@@ -316,14 +414,17 @@ def api_recruiter_radar():
             "min_rate": pay_stats["min_rate"],
             "max_rate": pay_stats["max_rate"],
             "avg_rate": pay_stats["avg_rate"],
+            "median_rate": pay_stats["median_rate"],
             "forecast_3m": timeseries.get("forecast_3m"),
             "recommended_rate": recommended_rate,
         },
         "timeseries": timeseries,
         "recent_roles": recent_roles,
-        # AI commentary will be wired up to OpenAI later – keep the JSON
-        # shape stable now so the front-end can be built against it.
         "ai_commentary": None,
+        "debug": {
+            "role_fragments": role_fragments,
+            "matched_sample_roles": debug_roles,
+        },
     }
 
     return jsonify(response)
